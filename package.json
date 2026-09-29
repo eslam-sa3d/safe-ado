@@ -1,0 +1,33 @@
+{
+  "name": "safe-ado",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SAFe scaling (Portfolio / Large Solution / ART / Team) for Azure DevOps Services and Azure DevOps Server 2022.1",
+  "license": "MIT",
+  "scripts": {
+    "clean": "rm -rf dist *.vsix",
+    "typecheck": "tsc --noEmit",
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "package": "npm run build && tfx extension create --manifest-globs vss-extension.json --output-path ./out",
+    "package:dev": "npm run build:dev && tfx extension create --manifest-globs vss-extension.json --overrides-file overrides.dev.json --output-path ./out --rev-version"
+  },
+  "dependencies": {
+    "azure-devops-extension-api": "^4.236.0",
+    "azure-devops-extension-sdk": "^4.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "copy-webpack-plugin": "^12.0.2",
+    "css-loader": "^7.1.2",
+    "style-loader": "^4.0.0",
+    "tfx-cli": "^0.17.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.5.4",
+    "webpack": "^5.94.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

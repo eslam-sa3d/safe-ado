@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "id": "safe-ado",
+  "publisher": "your-publisher-id",
+  "version": "1.0.0",
+  "name": "SAFe Ado",
+  "description": "Scaled Agile Framework (SAFe) for Azure DevOps: Portfolio, Large Solution, ART and Team hierarchy, Program Board, PI Objectives, ROAM risks, PI management and reports.",
+  "categories": ["Azure Boards"],
+  "tags": ["SAFe", "PI Planning", "ART", "Program Board", "Portfolio", "Scaled Agile"],
+  "targets": [
+    { "id": "Microsoft.VisualStudio.Services" }
+  ],
+  "icons": { "default": "images/logo.png" },
+  "content": { "details": { "path": "overview.md" } },
+  "scopes": ["vso.work_write", "vso.project"],
+  "files": [
+    { "path": "dist", "addressable": true },
+    { "path": "images", "addressable": true }
+  ],
+  "contributions": [
+    {
+      "id": "safe-hub",
+      "type": "ms.vss-web.hub",
+      "targets": ["ms.vss-work-web.work-hub-group"],
+      "properties": {
+        "name": "SAFe",
+        "uri": "dist/hub.html",
+        "iconName": "Org",
+        "order": 99
+      }
+    }
+  ]
+}
