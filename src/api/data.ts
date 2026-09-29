@@ -2,6 +2,7 @@ import * as SDK from "azure-devops-extension-sdk";
 import type { IExtensionDataManager, IExtensionDataService } from "azure-devops-extension-api/Common/CommonServices";
 import { getProject, ServiceIds } from "./client";
 import type { QuickFilter } from "./filters";
+import type { ConfidenceVote, ImprovementItem, PlanReview } from "./planning";
 import { IterationCapacity, Milestone, OrgNode, PiObjective, Risk, SafeConfig, WorkItemMeta, WorkItemTypeMap } from "./types";
 import { getWorkItemTypes } from "./wit";
 
@@ -135,6 +136,9 @@ export const milestonesStore = docStore<Milestone>("milestones");
 export const quickFiltersStore = docStore<QuickFilter>("quickfilters");
 export const capacityStore = docStore<IterationCapacity>("capacity");
 export const metaStore = docStore<WorkItemMeta>("wimeta");
+export const votesStore = docStore<ConfidenceVote>("votes");
+export const planReviewsStore = docStore<PlanReview>("planreviews");
+export const inspectAdaptStore = docStore<ImprovementItem>("improvements");
 
 export const capacityId = (nodeId: string, iterationPath: string) => `${nodeId}|${iterationPath}`;
 
