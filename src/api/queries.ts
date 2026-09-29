@@ -7,7 +7,7 @@ export function baseFields(config: SafeConfig): string[] {
 }
 
 /** Flat query for items of `types` inside `areas`, optionally limited to a PI iteration subtree. */
-export function scopeQuery(types: string[], areas: string[], iterationPath?: string, orderBy = F.stackRank): string {
+export function scopeQuery(types: string[], areas: string[], iterationPath?: string, orderBy: string = F.stackRank): string {
   return [
     `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project`,
     `AND ${typeIn(types)}`,

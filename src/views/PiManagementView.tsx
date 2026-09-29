@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { flatten } from "../api/org";
 import { ProgramIncrement } from "../api/types";
 import { addTeamIteration, createIteration } from "../api/wit";
@@ -30,6 +30,14 @@ export function PiManagementView() {
 
   const [name, setName] = useState(suggestName(pis));
   const [start, setStart] = useState(nextStart(pis));
+  const [edited, setEdited] = useState(false);
+
+  // PIs load asynchronously; keep the suggestions in step with them until the user edits the form.
+  useEffect(() => {
+    if (edited) return;
+    setName(suggestName(pis));
+    setStart(nextStart(pis));
+  }, [pis, edited]);
   const [weeks, setWeeks] = useState(2);
   const [sprints, setSprints] = useState(4);
   const [withIp, setWithIp] = useState(true);
@@ -138,10 +146,23 @@ export function PiManagementView() {
         <div className="pad form">
           <div className="field-row">
             <Field label="PI name">
-              <input value={name} onChange={(e) => setName(e.target.value)} />
+              <input
+                value={name}
+                onChange={(e) => {
+                  setEdited(true);
+                  setName(e.target.value);
+                }}
+              />
             </Field>
             <Field label="Start date">
-              <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+              <input
+                type="date"
+                value={start}
+                onChange={(e) => {
+                  setEdited(true);
+                  setStart(e.target.value);
+                }}
+              />
             </Field>
           </div>
           <div className="field-row">

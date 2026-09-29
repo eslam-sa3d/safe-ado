@@ -199,8 +199,9 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
             isRoot
             areas={m?.areas ?? []}
             teams={m?.teams ?? []}
-            onChange={(id, fn) => setDraft({ ...draft, root: updateNode(draft.root, id, fn) })}
-            onRemove={(id) => setDraft({ ...draft, root: removeNode(draft.root, id) })}
+            // Functional updates: the team lookup resolves later and must not overwrite newer edits.
+            onChange={(id, fn) => setDraft((d) => ({ ...d, root: updateNode(d.root, id, fn) }))}
+            onRemove={(id) => setDraft((d) => ({ ...d, root: removeNode(d.root, id) }))}
           />
         </ul>
       </section>

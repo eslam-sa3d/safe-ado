@@ -36,7 +36,9 @@ export function PortfolioKanban() {
       getStates(epic),
       queryWorkItems(scopeQuery([epic], areas), [...baseFields(config), ...wsjfFields]),
     ]);
-    return { states: states.filter((s) => s.category !== "Removed"), items };
+    const visible = states.filter((s) => s.category !== "Removed");
+    // Items in Removed (or unknown) states have no column, so they are not counted either.
+    return { states: visible, items: items.filter((i) => visible.some((s) => s.name === i.fields[F.state])) };
   }, [epic, areas.join("|")]);
 
   if (!epic) return <Empty title="No Epic type mapped">Set the Epic work item type in Setup.</Empty>;
@@ -77,6 +79,8 @@ export function PortfolioKanban() {
           return (
             <div
               key={s.name}
+              role="group"
+              aria-label={`${s.name} column`}
               className={"kanban-col" + (over === s.name ? " drop-over" : "")}
               onDragOver={(e) => {
                 e.preventDefault();

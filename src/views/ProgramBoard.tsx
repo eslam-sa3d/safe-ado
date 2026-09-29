@@ -194,6 +194,7 @@ export function ProgramBoard() {
 
   if (!pi) return null;
   if (loading && !data) return <Spinner label="Loading program board…" />;
+  if (!data) return <ErrorBar message={error} />;
 
   const conflicts = edges.filter((e) => e.severity === "conflict").length;
 
@@ -345,6 +346,8 @@ function RowCells(props: {
       {columns.map((col, ci) => (
         <div
           key={col.key}
+          role="group"
+          aria-label={`${row.title} / ${col.title}`}
           className={"board-cell" + (over === col.key ? " drop-over" : "") + (col.key === "backlog" ? " backlog" : "")}
           onDragOver={(e) => {
             e.preventDefault();

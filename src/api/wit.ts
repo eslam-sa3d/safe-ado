@@ -291,9 +291,12 @@ export async function addTeamIteration(teamId: string, iterationIdentifier: stri
 // WIQL helpers
 // ---------------------------------------------------------------------------------------------
 
-/** `field` is a full WIQL field expression, e.g. "[System.AreaPath]" or "[Source].[System.AreaPath]". */
+/**
+ * `field` is a full WIQL field expression, e.g. "[System.AreaPath]" or "[Source].[System.AreaPath]".
+ * No paths means nothing is in scope: an unconfigured node must not see the whole project.
+ */
 export function underAny(field: string, paths: string[]): string {
-  if (paths.length === 0) return "[System.Id] > 0";
+  if (paths.length === 0) return "[System.Id] < 0";
   return "(" + paths.map((a) => `${field} UNDER ${wiqlString(a)}`).join(" OR ") + ")";
 }
 

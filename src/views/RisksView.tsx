@@ -83,6 +83,8 @@ export function RisksView() {
           return (
             <div
               key={status}
+              role="group"
+              aria-label={`${status} risks`}
               className={"roam-col" + (over === status ? " drop-over" : "")}
               onDragOver={(e) => {
                 e.preventDefault();

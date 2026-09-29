@@ -40,10 +40,20 @@ It supports **Azure DevOps Services** and **Azure DevOps Server 2022.1**.
 ```bash
 npm install
 npm run typecheck
-npm run package          # -> out/<publisher>.safe-ado-<version>.vsix
+npm run package          # typecheck + tests + build -> out/SAFeADO.safe-ado-<version>.vsix
 ```
 
 The Marketplace publisher is `SAFeADO` (set in [vss-extension.json](vss-extension.json)). Bump `version` there before each publish.
+
+## Testing
+
+```bash
+npm test               # 239 tests, runs in ~2s
+npm run test:coverage  # with coverage report (fails below 95% lines / 85% branches)
+npm run typecheck      # src + tests
+```
+
+Tests run each view end to end against an in-memory fake of the Azure DevOps REST API, the Extension Data Service and the SDK (`test/fakeAdo.ts`, `test/sdkMock.ts`). [docs/TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md) lists every scenario, marks whether it is automated or manual, and includes the manual checklist for Azure DevOps Services and Server 2022.1. CI runs typecheck, tests with coverage, and packaging on every push (`.github/workflows/ci.yml`).
 
 ## Install
 

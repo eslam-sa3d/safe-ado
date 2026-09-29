@@ -1,15 +1,18 @@
 {
   "name": "safe-ado",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "SAFe scaling (Portfolio / Large Solution / ART / Team) for Azure DevOps Services and Azure DevOps Server 2022.1",
   "license": "MIT",
   "scripts": {
-    "clean": "rm -rf dist *.vsix",
-    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist out coverage",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "build": "webpack --mode production",
     "build:dev": "webpack --mode development",
-    "package": "npm run build && tfx extension create --manifest-globs vss-extension.json --output-path ./out",
+    "package": "npm run typecheck && npm run test:coverage && npm run build && tfx extension create --manifest-globs vss-extension.json --output-path ./out",
     "package:dev": "npm run build:dev && tfx extension create --manifest-globs vss-extension.json --overrides-file overrides.dev.json --output-path ./out --rev-version"
   },
   "dependencies": {
@@ -19,14 +22,20 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@vitest/coverage-v8": "^5.0.2",
     "copy-webpack-plugin": "^12.0.2",
     "css-loader": "^7.1.2",
+    "jsdom": "^30.1.1",
     "style-loader": "^4.0.0",
     "tfx-cli": "^0.17.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.5.4",
+    "vitest": "^5.0.2",
     "webpack": "^5.94.0",
     "webpack-cli": "^5.1.4"
   }
