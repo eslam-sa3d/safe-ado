@@ -16,6 +16,11 @@ export interface OrgNode {
   areaPath?: string;
   /** Azure DevOps team backing this node (usually teams, optionally ARTs). */
   teamId?: string;
+  /** Stable id of the area node; keeps the unit attached when the area is renamed. */
+  areaId?: string;
+  /** Own PI cadence (e.g. a Solution Train or an ART with its own PIs); inherited when unset. */
+  piRootIteration?: string;
+  piRootId?: string;
   /** People and their SAFe roles (RTE, PO, ...), shown in the Reports header. */
   members?: Member[];
   children: OrgNode[];
@@ -27,6 +32,10 @@ export interface WorkItemTypeMap {
   capability: string;
   feature: string;
   story: string;
+  /** Optional Enabler type, planned alongside Features / Capabilities / Epics. */
+  enabler?: string;
+  /** Optional Strategic Theme type (portfolio level). */
+  theme?: string;
 }
 
 export interface SafeConfig {
@@ -34,8 +43,16 @@ export interface SafeConfig {
   root: OrgNode;
   /** Iteration path whose direct children are PIs and grandchildren are sprints. */
   piRootIteration: string;
+  /** Stable id of the PI root iteration; keeps PIs found when the node is renamed. */
+  piRootId?: string;
   types: WorkItemTypeMap;
   storyPointsField: string;
+  /** Optional RR/OE field for WSJF (default Custom.RROEValue when present). */
+  rroeField?: string;
+  /** Link type used for dependencies (default Predecessor/Successor). */
+  dependencyLink?: { forward: string; reverse: string };
+  /** Units removed from their parent but kept in the organization. */
+  detached?: OrgNode[];
 }
 
 export interface Sprint {
@@ -53,6 +70,10 @@ export interface ProgramIncrement extends Sprint {
 export interface PiObjective {
   id: string;
   piPath: string;
+  /** Stable iteration id of the PI (survives renames). */
+  piId?: string;
+  /** Parent objective (Team -> ART -> Solution objective hierarchy). */
+  parentId?: string;
   nodeId: string;
   title: string;
   committed: boolean;
@@ -68,6 +89,10 @@ export const ROAM_STATUSES: RoamStatus[] = ["Unroamed", "Resolved", "Owned", "Ac
 export interface Risk {
   id: string;
   piPath: string;
+  /** Stable iteration id of the PI (survives renames). */
+  piId?: string;
+  /** Work items this risk treats (in addition to the legacy single workItemId). */
+  workItemIds?: number[];
   nodeId: string;
   title: string;
   description: string;
@@ -149,6 +174,8 @@ export interface IterationCapacity {
   id: string;
   nodeId: string;
   iterationPath: string;
+  /** Stable iteration id (survives renames). */
+  iterationId?: string;
   capacity: number;
   __etag?: number;
 }
@@ -163,6 +190,8 @@ export interface WorkItemMeta {
   owningNodeId?: string;
   assignedNodeIds: string[];
   assignedPiPaths: string[];
+  /** Stable ids matching assignedPiPaths (survive renames). */
+  assignedPiIds?: string[];
   /** Roadmap planned date range, YYYY-MM-DD. */
   plannedStart?: string;
   plannedEnd?: string;

@@ -13,6 +13,7 @@ export const PREFS_KEY = () => `safe-ado-prefs-${fake.projectId}`;
 /** Renders the whole hub with a saved config, starting on the given node/view. */
 export async function renderApp(opts: { nodeId?: string; view?: string; piPath?: string; config?: SafeConfig | null } = {}) {
   if (opts.config !== null) seedConfig(opts.config ?? makeConfig());
+  fake.hash = ""; // no deep link unless a test sets one
   localStorage.setItem(PREFS_KEY(), JSON.stringify({ nodeId: opts.nodeId ?? "", view: opts.view ?? "board", piPath: opts.piPath ?? "" }));
   const result = render(<App />);
   await waitFor(() => expect(screen.queryByText(/Loading SAFe configuration/)).not.toBeInTheDocument());

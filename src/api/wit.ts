@@ -265,9 +265,13 @@ function findNode(root: ClassificationNode, fieldPath: string): ClassificationNo
 }
 
 /** PIs are the direct children of the PI root iteration; their children are the sprints. */
+export class PiRootNotFoundError extends Error {}
+
 export async function getProgramIncrements(piRoot: string): Promise<ProgramIncrement[]> {
   const tree = await getIterationTree();
-  const root = findNode(tree, piRoot) ?? tree;
+  const root = findNode(tree, piRoot);
+  // Never fall back silently to the whole project: that would turn every iteration into a "PI".
+  if (!root) throw new PiRootNotFoundError(`The PI root iteration "${piRoot}" was not found. It may have been renamed or deleted; choose it again in Setup.`);
   const byStart = (a: Sprint, b: Sprint) => (a.start ?? "9999").localeCompare(b.start ?? "9999");
   return (root.children ?? [])
     .map((pi) => ({ ...toSprint(pi), sprints: (pi.children ?? []).map(toSprint).sort(byStart) }))

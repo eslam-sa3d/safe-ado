@@ -85,3 +85,10 @@ export const LEVEL_COLOR: Record<Level, string> = {
   art: "#c62828",
   team: "#6a1b9a",
 };
+
+/** The PI root iteration that applies to a node: its own cadence, the nearest ancestor's, or the project's. */
+export function effectivePiRoot(config: SafeConfig, nodeId: string): string {
+  const chain = pathTo(config.root, nodeId);
+  for (let i = chain.length - 1; i >= 0; i--) if (chain[i].piRootIteration) return chain[i].piRootIteration!;
+  return config.piRootIteration;
+}

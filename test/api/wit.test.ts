@@ -231,9 +231,10 @@ describe("classification nodes", () => {
     expect(pis[1].start).toMatch(/T00:00:00Z$/);
   });
 
-  it("matches the PI root case-insensitively and falls back to the project root", async () => {
+  it("matches the PI root case-insensitively and rejects a missing root", async () => {
     expect((await getProgramIncrements("fabrikam\\pis")).length).toBe(2);
-    const fromRoot = await getProgramIncrements("Fabrikam\\Missing");
+    await expect(getProgramIncrements("Fabrikam\\Missing")).rejects.toThrow(/was not found/);
+    const fromRoot = await getProgramIncrements("Fabrikam");
     expect(fromRoot.map((p) => p.name)).toEqual(["PIs", "Undated"]);
     // Undated nodes sort last and have no sprints.
     expect(fromRoot[1].sprints).toEqual([]);

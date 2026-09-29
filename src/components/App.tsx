@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProject } from "../api/client";
 import { defaultConfig, loadConfig, saveConfig as persistConfig } from "../api/data";
-import { findNode, LEVEL_COLOR, pathTo } from "../api/org";
+import { effectivePiRoot, findNode, pathTo } from "../api/org";
+import { ALL_ALLOWED, Capabilities, loadCapabilities } from "../api/permissions";
+import { indexTree, reconcileConfig, reconcileDocs } from "../api/reconcile";
+import { localToday } from "../api/rules";
+import { readUrlState, writeUrlState } from "../api/urlState";
 import { Level, LEVEL_LABEL, SafeConfig } from "../api/types";
-import { getProgramIncrements } from "../api/wit";
+import { getAreaTree, getIterationTree, getProgramIncrements } from "../api/wit";
 import { HierarchyView } from "../views/HierarchyView";
 import { ObjectivesView } from "../views/ObjectivesView";
 import { OrganizationView } from "../views/OrganizationView";
 import { PiManagementView } from "../views/PiManagementView";
+import { PiPlanningView } from "../views/PiPlanningView";
 import { PortfolioKanban } from "../views/PortfolioKanban";
 import { ProgramBoard } from "../views/ProgramBoard";
 import { ReportsView } from "../views/ReportsView";
@@ -16,7 +21,7 @@ import { RoadmapView } from "../views/RoadmapView";
 import { SetupView } from "../views/SetupView";
 import { TeamBoard } from "../views/TeamBoard";
 import { WorkItemList } from "../views/WorkItemList";
-import { ErrorBar, fmtDate, Spinner, storage, useAsync, LevelPill } from "./common";
+import { ErrorBar, fmtDate, Icon, LevelPill, RefreshContext, Spinner, storage, useAsync } from "./common";
 import { SafeContext, SafeContextValue } from "./context";
 import { Sidebar } from "./Sidebar";
 
@@ -30,6 +35,7 @@ export type ViewKey =
   | "risks"
   | "workitems"
   | "hierarchy"
+  | "planning"
   | "organization"
   | "pis"
   | "setup";
@@ -44,6 +50,7 @@ const VIEW_LABEL: Record<ViewKey, string> = {
   risks: "Risks (ROAM)",
   workitems: "Work Item List",
   hierarchy: "Work Item Hierarchy",
+  planning: "PI Planning",
   organization: "My Organization",
   pis: "PIs & Iterations",
   setup: "Setup",
@@ -52,8 +59,8 @@ const VIEW_LABEL: Record<ViewKey, string> = {
 /** Tabs per SAFe level, mirroring Agile Hive's project navigation (Reports is the landing page). */
 export const LEVEL_VIEWS: Record<Level, ViewKey[]> = {
   portfolio: ["reports", "roadmap", "kanban", "risks", "workitems", "hierarchy"],
-  solution: ["reports", "roadmap", "board", "objectives", "risks", "workitems", "hierarchy"],
-  art: ["reports", "roadmap", "board", "objectives", "risks", "workitems", "hierarchy"],
+  solution: ["reports", "roadmap", "board", "planning", "objectives", "risks", "workitems", "hierarchy"],
+  art: ["reports", "roadmap", "board", "planning", "objectives", "risks", "workitems", "hierarchy"],
   team: ["reports", "teamboard", "objectives", "risks", "workitems", "hierarchy"],
 };
 
@@ -72,36 +79,73 @@ export function App() {
   );
   const [nodeId, setNodeId] = useState(getPrefs().nodeId);
   const [view, setView] = useState<ViewKey>(getPrefs().view);
+  // The chosen PI, by iteration id (or, for older preferences, by path).
   const [piPath, setPiPath] = useState(getPrefs().piPath);
+  const [can, setCan] = useState<Capabilities>(ALL_ALLOWED);
+  const [tick, setTick] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState(() => new Date());
+  const urlReady = useRef(false);
+
+  const refresh = useCallback(() => {
+    setTick((t) => t + 1);
+    setUpdatedAt(new Date());
+  }, []);
 
   useEffect(() => {
     (async () => {
+      // Deep link (#node=...&view=...&pi=...) wins over the remembered preferences.
+      const url = await readUrlState();
+      if (url.node) setNodeId(url.node);
+      if (url.view) setView(url.view as ViewKey);
+      if (url.pi) setPiPath(url.pi);
+      urlReady.current = true;
       const saved = await loadConfig();
       if (saved) {
         setConfig(saved);
+        void heal(saved);
       } else {
         setConfig(await defaultConfig());
         setFirstRun(true);
         setView("setup");
       }
     })().catch((e) => setLoadError(e?.message ?? String(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pisState = useAsync(
-    () => (config ? getProgramIncrements(config.piRootIteration) : Promise.resolve([])),
-    [config?.piRootIteration]
-  );
+  /** Loads permissions and repairs keys of renamed areas / iterations (see api/reconcile.ts). */
+  const heal = async (saved: SafeConfig) => {
+    try {
+      const [areaTree, iterationTree] = await Promise.all([getAreaTree(), getIterationTree()]);
+      const caps = await loadCapabilities(areaTree.identifier, iterationTree.identifier);
+      setCan(caps);
+      const iterations = indexTree(iterationTree);
+      const fixedConfig = reconcileConfig(saved, indexTree(areaTree), iterations);
+      if (fixedConfig) {
+        setConfig(fixedConfig);
+        if (caps.admin) await persistConfig(fixedConfig).catch(() => undefined);
+      }
+      if (caps.plan && (await reconcileDocs(iterations)) > 0) refresh();
+    } catch {
+      /* healing is best effort; views still work with the stored keys */
+    }
+  };
+
+  const piRoot = config ? effectivePiRoot(config, nodeId) : "";
+  const pisState = useAsync(() => (config ? getProgramIncrements(piRoot) : Promise.resolve([])), [piRoot, !!config]);
   const pis = pisState.data ?? [];
 
   // Default to the PI running today, else the latest one.
   const pi = useMemo(() => {
-    const chosen = pis.find((p) => p.path === piPath);
+    const chosen = pis.find((p) => p.identifier === piPath || p.path === piPath);
     if (chosen) return chosen;
-    const now = new Date().toISOString();
-    return pis.find((p) => p.start && p.finish && p.start <= now && now <= p.finish) ?? pis[pis.length - 1];
+    const today = localToday();
+    return pis.find((p) => p.start && p.finish && p.start.slice(0, 10) <= today && today <= p.finish.slice(0, 10)) ?? pis[pis.length - 1];
   }, [pis, piPath]);
 
   useEffect(() => setPrefs({ nodeId, view, piPath }), [nodeId, view, piPath, setPrefs]);
+  useEffect(() => {
+    if (urlReady.current && config) void writeUrlState({ node: nodeId || undefined, view, pi: pi?.identifier });
+  }, [nodeId, view, pi?.identifier, config]);
 
   const saveConfig = useCallback(async (next: SafeConfig) => {
     const saved = await persistConfig(next);
@@ -125,11 +169,14 @@ export function App() {
     pi,
     reloadPis: () => pisState.reload(),
     openView: (v) => setView(v as ViewKey),
+    piRoot,
+    can,
   };
 
   const needsPi = NEEDS_PI.includes(activeView);
 
   return (
+    <RefreshContext.Provider value={tick}>
     <SafeContext.Provider value={ctx}>
       <div className="layout">
         <Sidebar root={config.root} selectedId={node.id} onSelect={setNodeId} />
@@ -147,8 +194,14 @@ export function App() {
               <LevelPill level={node.level} />
             </div>
             <div className="pi-picker">
+              <span className="muted small updated" title={updatedAt.toLocaleString()}>
+                Updated {updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <button className="btn subtle" onClick={refresh} title="Reload all data">
+                <Icon name="Refresh" /> Refresh all
+              </button>
               <label htmlFor="pi-select">PI</label>
-              <select id="pi-select" value={pi?.path ?? ""} onChange={(e) => setPiPath(e.target.value)} disabled={!pis.length}>
+              <select id="pi-select" value={pi?.path ?? ""} onChange={(e) => setPiPath(pis.find((p) => p.path === e.target.value)?.identifier ?? e.target.value)} disabled={!pis.length}>
                 {!pis.length && <option value="">No PIs yet</option>}
                 {pis.map((p) => (
                   <option key={p.path} value={p.path}>
@@ -183,7 +236,7 @@ export function App() {
               <div className="empty">
                 <h3>No Program Increments found</h3>
                 <p>
-                  Create PIs under <code>{config.piRootIteration}</code> or change the PI root iteration in Setup.
+                  Create PIs under <code>{piRoot}</code> or change the PI root iteration in Setup.
                 </p>
                 <button className="btn primary" onClick={() => setView("pis")}>
                   Create a PI
@@ -196,6 +249,7 @@ export function App() {
         </main>
       </div>
     </SafeContext.Provider>
+    </RefreshContext.Provider>
   );
 }
 
@@ -231,6 +285,8 @@ function ViewSwitch({ view, firstRun }: { view: ViewKey; firstRun: boolean }) {
       return <ReportsView />;
     case "pis":
       return <PiManagementView />;
+    case "planning":
+      return <PiPlanningView />;
     case "setup":
       return <SetupView firstRun={firstRun} />;
   }

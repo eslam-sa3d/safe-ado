@@ -50,7 +50,9 @@ const STATUS_ORDER: PiStatus[] = ["planned", "current", "completed"];
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function PiManagementView() {
-  const { config, pis, reloadPis } = useSafe();
+  const { config, pis, reloadPis, piRoot: cadenceRoot } = useSafe();
+  // PIs belong to the selected unit's cadence (its own, an ancestor's, or the project's).
+  const piRoot = cadenceRoot ?? config.piRootIteration;
   const teams = flatten(config.root).filter((n) => n.teamId);
 
   const [name, setName] = useState(suggestName(pis));
@@ -89,9 +91,9 @@ export function PiManagementView() {
       setLog([...out]);
     };
     try {
-      await createIteration(config.piRootIteration, name, plan[0].start, plan[plan.length - 1].finish);
+      await createIteration(piRoot, name, plan[0].start, plan[plan.length - 1].finish);
       push(`Created PI iteration "${name}"`);
-      const piPath = `${config.piRootIteration}\\${name}`;
+      const piPath = `${piRoot}\\${name}`;
       const created = [];
       for (const s of plan) {
         created.push(await createIteration(piPath, s.name, s.start, s.finish));
@@ -136,7 +138,7 @@ export function PiManagementView() {
           <div className="panel-header">
             <h3>Program Increments</h3>
             <span className="muted small">
-              under <code>{config.piRootIteration}</code>
+              under <code>{piRoot}</code>
             </span>
           </div>
           {pis.length === 0 ? (
@@ -289,7 +291,7 @@ export function PiManagementView() {
           pi={selected}
           pis={pis}
           teams={teams}
-          piRoot={config.piRootIteration}
+          piRoot={piRoot}
           onRenamed={(path) => setSelectedPath(path)}
           onDeleted={() => setSelectedPath(null)}
           reloadPis={reloadPis}

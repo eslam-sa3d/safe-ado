@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../../src/components/App";
 import { useSafe } from "../../src/components/context";
-import { dataStore, fake, makeConfig, PI1, PI2 } from "../fakeAdo";
+import { callsTo, dataStore, fake, makeConfig, PI1, PI2 } from "../fakeAdo";
 import { PREFS_KEY, renderApp } from "../utils";
 
 const tabs = () => screen.getAllByRole("tab").map((t) => t.textContent);
@@ -77,7 +77,8 @@ describe("App shell", () => {
     ]);
     fireEvent.change(select, { target: { value: PI1 } });
     expect(select.value).toBe(PI1);
-    expect(prefs().piPath).toBe(PI1);
+    // The choice is remembered by the PI's stable iteration id, which survives renames.
+    expect(prefs().piPath).toBe("iteration-PIs-PI_1");
   });
 
   it("restores a saved PI selection", async () => {
@@ -103,8 +104,14 @@ describe("App shell", () => {
   });
 
   it("lists PIs without dates", async () => {
-    await renderApp({ nodeId: "n-arta", view: "setup", config: makeConfig({ piRootIteration: "Fabrikam\\Missing" }) });
+    // A PI root whose children have no dates (the project root has PIs and Undated).
+    await renderApp({ nodeId: "n-arta", view: "setup", config: makeConfig({ piRootIteration: "Fabrikam" }) });
     await waitFor(() => expect(screen.getByRole("option", { name: "Undated" })).toBeInTheDocument());
+  });
+
+  it("reports a missing PI root instead of treating every iteration as a PI", async () => {
+    await renderApp({ nodeId: "n-arta", view: "setup", config: makeConfig({ piRootIteration: "Fabrikam\\Missing" }) });
+    expect(await screen.findByText(/The PI root iteration "Fabrikam\\Missing" was not found/)).toBeInTheDocument();
   });
 
   it("reports PI loading errors", async () => {
@@ -157,6 +164,51 @@ describe("App shell", () => {
     expect(screen.getByRole("tab", { name: "Reports" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "Portfolio Kanban" }));
     expect(await screen.findByText("3 Epics")).toBeInTheDocument();
+  });
+
+  it("opens the unit, view and PI from a deep link and keeps the URL in sync", async () => {
+    seed();
+    localStorage.setItem(PREFS_KEY(), JSON.stringify({ nodeId: "n-root", view: "reports", piPath: "" }));
+    fake.hash = "node=n-blue&view=risks&pi=iteration-PIs-PI_1";
+    render(<App />);
+    expect(await screen.findByRole("tab", { name: "Risks (ROAM)" })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector(".header .level-badge")).toHaveTextContent("Team");
+    await waitFor(() => expect((screen.getByLabelText("PI") as HTMLSelectElement).value).toBe(PI1));
+    fireEvent.click(screen.getByRole("tab", { name: "Work Item List" }));
+    await waitFor(() => expect(fake.hash).toBe("node=n-blue&view=workitems&pi=iteration-PIs-PI_1"));
+  });
+
+  it("reloads every view from the global Refresh button", async () => {
+    await renderApp({ nodeId: "n-arta", view: "hierarchy" });
+    await screen.findByRole("button", { name: "Payment API" });
+    const before = callsTo(/wiql/).length;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh all" }));
+    await waitFor(() => expect(callsTo(/wiql/).length).toBeGreaterThan(before));
+    expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+  });
+
+  it("heals a renamed area path on load and saves it for admins", async () => {
+    const config = makeConfig();
+    await renderApp({ nodeId: "n-arta", view: "setup", config });
+    await waitFor(() => expect(dataStore.values.get("config-p1").root.children[0].areaId).toBeTruthy());
+    cleanup();
+    // Rename ART A in Azure DevOps; the stored id finds it again.
+    const artA = fake.areaTree.children![0];
+    artA.name = "ART Alpha";
+    artA.path = artA.path.replace("ART A", "ART Alpha");
+    const fixChildren = (n: typeof artA) => n.children?.forEach((c) => ((c.path = `${n.path}\\${c.name}`), fixChildren(c)));
+    fixChildren(artA);
+    render(<App />);
+    await waitFor(() => expect(dataStore.values.get("config-p1").root.children[0].areaPath).toBe("Fabrikam\\ART Alpha"));
+    expect(dataStore.values.get("config-p1").root.children[0].children[0].areaPath).toBe("Fabrikam\\ART Alpha\\Team Red");
+  });
+
+  it("does not write healed config for users who can't edit the project", async () => {
+    fake.permissions["52d39943-cb85-4d7f-8fa8-c6baac873819/2"] = false;
+    await renderApp({ nodeId: "n-arta", view: "setup" });
+    await waitFor(() => expect(callsTo(/_apis\/permissions/).length).toBe(3));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(dataStore.values.get("config-p1").root.children[0].areaId).toBeUndefined();
   });
 
   it("shows a load error when configuration cannot be read", async () => {

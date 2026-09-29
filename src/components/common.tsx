@@ -1,11 +1,15 @@
-import { CSSProperties, DependencyList, ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { createContext, CSSProperties, DependencyList, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { LEVEL_COLOR } from "../api/org";
 import { Level, LEVEL_LABEL } from "../api/types";
 import { ICONS } from "./iconMap";
 
 export type IconName = keyof typeof ICONS;
 
+/** Incremented by the shell's global Refresh; every useAsync reloads when it changes. */
+export const RefreshContext = createContext(0);
+
 export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList) {
+  const tick = useContext(RefreshContext);
   const [data, setData] = useState<T | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
@@ -20,7 +24,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList) {
       .catch((e) => id === call.current && setError(e?.message ?? String(e)))
       .finally(() => id === call.current && setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, tick]);
 
   useEffect(() => run(), [run]);
   return { data, error, loading, reload: run, setData };
