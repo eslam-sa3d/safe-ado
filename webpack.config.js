@@ -2,7 +2,7 @@ const path = require("path");
 const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = (env, argv) => ({
-  entry: { hub: "./src/hub/hub.tsx" },
+  entry: { hub: "./src/hub/hub.tsx", form: "./src/form/form.tsx" },
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: "[name].js",
@@ -17,6 +17,13 @@ module.exports = (env, argv) => ({
       { test: /\.css$/, use: ["style-loader", "css-loader"] },
     ],
   },
-  plugins: [new CopyPlugin({ patterns: [{ from: "src/hub/hub.html", to: "hub.html" }] })],
+  plugins: [
+    new CopyPlugin({
+      patterns: [
+        { from: "src/hub/hub.html", to: "hub.html" },
+        { from: "src/form/form.html", to: "form.html" },
+      ],
+    }),
+  ],
   performance: { hints: false },
 });

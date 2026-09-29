@@ -34,6 +34,17 @@
         "iconName": "Org",
         "order": 99
       }
+    },
+    {
+      "id": "safe-work-item-form-group",
+      "type": "ms.vss-work-web.work-item-form-group",
+      "description": "SAFe unit, PI, hierarchy and planning data of the work item.",
+      "targets": ["ms.vss-work-web.work-item-form"],
+      "properties": {
+        "name": "SAFe",
+        "uri": "dist/form.html",
+        "height": 260
+      }
     }
   ]
 }
