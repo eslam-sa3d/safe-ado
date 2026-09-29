@@ -47,7 +47,10 @@ describe("Work Item List", () => {
       "Area",
       "Teams involved",
       "Owning team",
+      "Assigned teams",
       "Assigned PIs",
+      "PI involvement",
+      "Estimated completion",
     ]);
     expect(screen.getByText("5 of 5 items")).toBeInTheDocument();
     const query = callsTo(/wiql/)[0].body.query;
@@ -57,7 +60,7 @@ describe("Work Item List", () => {
     expect(within(row(10)).getByText("Active")).toBeInTheDocument();
     expect(cell(10, "iteration")).toHaveTextContent("PI 2 Sprint 1");
     expect(cell(10, "area")).toHaveTextContent("Team Red");
-    expect(screen.getByLabelText("Assigned to of #10")).toHaveValue("Grace Hopper");
+    await waitFor(() => expect(screen.getByLabelText("Assigned to of #10")).toHaveValue("grace@fabrikam.com"));
     expect(screen.getByLabelText("Assigned to of #11")).toHaveValue("");
     // Teams involved come from the areas of the children.
     expect(cell(10, "teams")).toHaveTextContent("Team Red");
@@ -80,7 +83,7 @@ describe("Work Item List", () => {
     await renderList("n-red");
     expect(ids()).toEqual([10, 15, 100, 101, 103]);
     expect(screen.queryByLabelText(/Show all types/)).not.toBeInTheDocument();
-    expect(headers().slice(9)).toEqual(["PI involvement"]);
+    expect(headers().slice(9)).toEqual(["PI involvement", "Assigned PIs"]);
     expect(cell(10, "piInvolvement")).toHaveTextContent("PI 2");
     expect(cell(15, "piInvolvement")).toHaveTextContent("PI 1");
   });
@@ -89,7 +92,8 @@ describe("Work Item List", () => {
     await renderList("n-root");
     expect(ids()).toEqual([1, 2, 3]);
     expect(headers()).toHaveLength(9);
-    expect(screen.getByLabelText("Assigned to of #1")).toHaveValue("Ada Lovelace");
+    // Ada is known by name on the item and by unique name from Team Red's members.
+    await waitFor(() => expect(screen.getByLabelText("Assigned to of #1")).toHaveValue("ada@fabrikam.com"));
   });
 
   it("sorts by any column ascending and descending", async () => {
@@ -207,15 +211,26 @@ describe("Work Item List", () => {
       fake.workItems.get(14)!.fields["System.AssignedTo"] = "Linus";
       await renderList();
       const select = screen.getByLabelText("Assigned to of #11") as HTMLSelectElement;
-      expect(Array.from(select.options).map((o) => o.text)).toEqual(["Unassigned", "Ada Lovelace", "Grace Hopper", "Linus"]);
+      // Members of the teams in ART A's subtree (Red, Blue; the ART team has none) plus people already assigned.
+      await waitFor(() =>
+        expect(Array.from(select.options).map((o) => o.text)).toEqual(["Unassigned", "Ada Lovelace", "Alan Turing", "Grace Hopper", "Linus"])
+      );
+      expect(callsTo(/teams\/t-(arta|red|blue)\/members/)).toHaveLength(3);
       expect(screen.getByLabelText("Assigned to of #14")).toHaveValue("Linus");
 
-      fireEvent.change(select, { target: { value: "Ada Lovelace" } });
+      fireEvent.change(select, { target: { value: "ada@fabrikam.com" } });
       await waitFor(() => expect(fake.workItems.get(11)!.fields["System.AssignedTo"]).toBe("ada@fabrikam.com"));
-      expect(screen.getByLabelText("Assigned to of #11")).toHaveValue("Ada Lovelace");
+      expect(screen.getByLabelText("Assigned to of #11")).toHaveValue("ada@fabrikam.com");
 
-      fireEvent.change(screen.getByLabelText("Assigned to of #10"), { target: { value: "Grace Hopper" } });
-      await waitFor(() => expect(fake.workItems.get(10)!.fields["System.AssignedTo"]).toBe("Grace Hopper"));
+      // A team member nobody is assigned to yet.
+      fireEvent.change(screen.getByLabelText("Assigned to of #12"), { target: { value: "alan@fabrikam.com" } });
+      await waitFor(() => expect(fake.workItems.get(12)!.fields["System.AssignedTo"]).toBe("alan@fabrikam.com"));
+      expect(within(row(12)).getByRole("option", { name: "Alan Turing" })).toHaveAttribute("title", "alan@fabrikam.com");
+
+      fireEvent.change(screen.getByLabelText("Assigned to of #10"), { target: { value: "Linus" } });
+      await waitFor(() => expect(fake.workItems.get(10)!.fields["System.AssignedTo"]).toBe("Linus"));
+      fireEvent.change(screen.getByLabelText("Assigned to of #10"), { target: { value: "grace@fabrikam.com" } });
+      await waitFor(() => expect(fake.workItems.get(10)!.fields["System.AssignedTo"]).toBe("grace@fabrikam.com"));
 
       fireEvent.change(screen.getByLabelText("Assigned to of #10"), { target: { value: "" } });
       await waitFor(() => expect(fake.workItems.get(10)!.fields["System.AssignedTo"]).toBe(""));
@@ -338,8 +353,10 @@ describe("Work Item List", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:csv");
     const text = await created[0].text();
     const lines = text.split("\r\n");
-    expect(lines[0]).toBe("ID,Type,Title,State,Priority,Assigned To,Parent,Iteration,Area,Teams involved,Owning team,Assigned PIs");
-    expect(lines[1]).toBe(`12,Feature,"Fraud ""rules"", v2",New,,Unassigned,1,${"Fabrikam\\PIs\\PI 2"},${"Fabrikam\\ART A"},,,`);
+    expect(lines[0]).toBe(
+      "ID,Type,Title,State,Priority,Assigned To,Parent,Iteration,Area,Teams involved,Owning team,Assigned teams,Assigned PIs,PI involvement,Estimated completion"
+    );
+    expect(lines[1]).toBe(`12,Feature,"Fraud ""rules"", v2",New,,Unassigned,1,${"Fabrikam\\PIs\\PI 2"},${"Fabrikam\\ART A"},,,,,,`);
     expect(lines[2]).toMatch(/^15,Feature,Old feature,Closed,/);
     expect(lines.length).toBe(3);
   });
@@ -371,8 +388,8 @@ describe("Work Item List", () => {
 describe("Work Item List helpers", () => {
   it("builds columns per level", () => {
     expect(columnsFor("portfolio")).toHaveLength(9);
-    expect(columnsFor("solution").map((c) => c.key).slice(9)).toEqual(["teams", "owner", "pis"]);
-    expect(columnsFor("team").at(-1)!.key).toBe("piInvolvement");
+    expect(columnsFor("solution").map((c) => c.key).slice(9)).toEqual(["teams", "owner", "assigned", "pis", "piInvolvement", "completion"]);
+    expect(columnsFor("team").map((c) => c.key).slice(9)).toEqual(["piInvolvement", "pis"]);
   });
 
   it("quotes CSV cells only when needed", () => {

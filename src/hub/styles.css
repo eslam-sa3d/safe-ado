@@ -661,3 +661,12 @@ tr.dep-resolved td { opacity: 0.5; }
 .quick-save { display: flex; gap: 8px; padding: 8px 16px 4px; border-top: 1px solid var(--border); margin-top: 4px; }
 .quick-save input { flex: 1; min-width: 0; }
 .readonly-banner { margin-bottom: 16px; }
+
+/* ---------- work item list / form v2 ---------- */
+.cell-picker { position: relative; display: block; }
+.cell-picker > summary { list-style: none; cursor: pointer; display: block; min-width: 90px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-picker > summary::-webkit-details-marker { display: none; }
+.cell-picker[open] > summary { border-color: var(--accent); }
+.cell-picker .facet-menu { min-width: 180px; }
+.wil-table td.col-completion { white-space: nowrap; }
+.safe-form-open { margin-left: 8px; font-size: 12px; }

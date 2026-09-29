@@ -8,6 +8,7 @@ import {
   startForm,
   unitForArea,
   WORK_ITEM_FORM_SERVICE,
+  FIELD_CHANGE_DEBOUNCE_MS,
 } from "../../src/form/FormPanel";
 import { callsTo, ART_A, dataStore, fake, makeConfig, P, PI1, PI2, PI2_S1, RED, seedConfig } from "../fakeAdo";
 import * as sdk from "../sdkMock";
@@ -52,6 +53,7 @@ async function renderPanel() {
 }
 
 const row = (label: string) => screen.getByText(label, { selector: ".field-label" }).parentElement as HTMLElement;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const metaDoc = (id = "10") => dataStore.collections.get(META())?.get(id);
 
 describe("work item form SAFe panel", () => {
@@ -224,7 +226,7 @@ describe("work item form SAFe panel", () => {
 });
 
 describe("form host integration", () => {
-  it("registers a notification listener that refreshes on relevant events only", () => {
+  it("registers a notification listener that refreshes on relevant events only (field changes debounced)", async () => {
     let instance: any;
     const fakeSdk = { register: vi.fn((_id: string, obj: object) => (instance = obj)), getContributionId: vi.fn(() => "pub.ext.form") };
     registerFormHandlers(fakeSdk);
@@ -237,17 +239,33 @@ describe("form host integration", () => {
     instance.onRefreshed({ id: 1 });
     instance.onReset({ id: 1 });
     expect(listener).toHaveBeenCalledTimes(4);
-    instance.onFieldChanged({ id: 1, changedFields: { "System.Description": "x" } });
+    // Fields the panel does not show never refresh it.
+    instance.onFieldChanged({ id: 1, changedFields: { "System.Description": "x", "System.Title": "y" } });
+    await sleep(FIELD_CHANGE_DEBOUNCE_MS + 50);
     expect(listener).toHaveBeenCalledTimes(4);
+
+    // A burst of relevant changes refreshes once, after the pause.
     instance.onFieldChanged({ id: 1, changedFields: { "System.AreaPath": RED } });
+    instance.onFieldChanged({ id: 1, changedFields: { "System.IterationPath": PI1 } });
     instance.onFieldChanged({ id: 1 });
     instance.onFieldChanged(undefined);
-    expect(listener).toHaveBeenCalledTimes(7);
+    expect(listener).toHaveBeenCalledTimes(4);
+    await waitFor(() => expect(listener).toHaveBeenCalledTimes(5));
+    await sleep(FIELD_CHANGE_DEBOUNCE_MS + 50);
+    expect(listener).toHaveBeenCalledTimes(5);
+
+    // Another event supersedes a pending field refresh; unloading cancels it.
+    instance.onFieldChanged({ id: 1, changedFields: { "System.AreaPath": RED } });
+    instance.onSaved({ id: 1 });
+    expect(listener).toHaveBeenCalledTimes(6);
+    instance.onFieldChanged({ id: 1, changedFields: { "System.AreaPath": RED } });
     instance.onUnloaded({ id: 1 });
-    expect(listener).toHaveBeenCalledTimes(7);
+    instance.onUnloaded({ id: 1 });
+    await sleep(FIELD_CHANGE_DEBOUNCE_MS + 50);
+    expect(listener).toHaveBeenCalledTimes(6);
     off();
     notifyFormChange();
-    expect(listener).toHaveBeenCalledTimes(7);
+    expect(listener).toHaveBeenCalledTimes(6);
   });
 
   it("starts up in order: init, ready, register, render, notify", async () => {
