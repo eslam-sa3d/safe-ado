@@ -103,7 +103,8 @@ describe("Dependency Overview", () => {
     expect(within(w).queryByRole("combobox")).toBeNull();
     expect(within(w).getByText("Criticality (team planning)")).toBeInTheDocument();
     expect(groupRows("Internal")).toEqual([["Checkout UI", "Wallet", "Critical"]]);
-    expect(groupRows("External")).toEqual([]);
+    // Team Red's Payment API (Sprint 1) is needed by Checkout UI (Sprint 2): healthy, external to Team Blue.
+    expect(groupRows("External")).toEqual([["Payment API", "Checkout UI", "Healthy"]]);
   });
 
   it("rates portfolio items by roadmap dates", async () => {

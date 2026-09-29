@@ -72,14 +72,21 @@ describe("work item form SAFe panel", () => {
   it("uses the deepest unit and handles items without links or sprint", async () => {
     values["System.AreaPath"] = ART_A;
     values["System.IterationPath"] = PI2;
-    form.getId.mockImplementation(async () => 12);
+    form.getId.mockImplementation(async () => 15);
     await renderPanel();
     expect(row("SAFe unit")).toHaveTextContent("Fabrikam›ART AAgile Release Train");
     expect(row("PI")).toHaveTextContent(/^PIPI 2$/);
     expect(row("Parent")).toHaveTextContent("None");
+    // #15 has one child story (#103).
+    expect(within(row("Children")).getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("shows the parent found through the reverse link", async () => {
+    values["System.AreaPath"] = ART_A;
+    form.getId.mockImplementation(async () => 12);
+    await renderPanel();
+    expect(row("Parent")).toHaveTextContent("Checkout revamp");
     expect(row("Children")).toHaveTextContent("None");
-    // Only the item itself was fetched: no related items.
-    expect(callsTo(/workitemsbatch/)).toHaveLength(1);
   });
 
   it("says when the item is not planned in a PI or its links cannot be read", async () => {

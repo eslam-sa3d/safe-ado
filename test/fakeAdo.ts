@@ -49,7 +49,49 @@ export const fake = {
   wiqlOverride: null as null | ((query: string) => Json),
   nextId: 5000,
   deletedIterations: [] as { path: string; reclassifyId: number }[],
+  /** Revision history per work item (rev 1 = the seed), as the reporting revisions API returns it. */
+  revisions: new Map<number, { rev: number; fields: Json }[]>(),
+  /** Permission answers by "namespace/bits"; missing entries are allowed. */
+  permissions: {} as Record<string, boolean>,
+  teamMembers: {} as Record<string, { id: string; displayName: string; uniqueName: string; imageUrl?: string }[]>,
+  /** Current URL hash of the host page (host navigation service). */
+  hash: "",
 };
+
+/** The reverse of each link type Azure DevOps keeps in sync automatically. */
+export const REVERSE_LINK: Record<string, string> = {
+  "System.LinkTypes.Hierarchy-Forward": "System.LinkTypes.Hierarchy-Reverse",
+  "System.LinkTypes.Hierarchy-Reverse": "System.LinkTypes.Hierarchy-Forward",
+  "System.LinkTypes.Dependency-Forward": "System.LinkTypes.Dependency-Reverse",
+  "System.LinkTypes.Dependency-Reverse": "System.LinkTypes.Dependency-Forward",
+  "System.LinkTypes.Related": "System.LinkTypes.Related",
+};
+
+const linkTarget = (url: string) => Number(/(\d+)$/.exec(url)?.[1]);
+
+/** Adds the reverse end of a link, like Azure DevOps does. */
+function addReverse(sourceId: number, rel: string, targetId: number) {
+  const reverse = REVERSE_LINK[rel];
+  const target = fake.workItems.get(targetId);
+  if (!reverse || !target) return;
+  const exists = (target.relations ?? []).some((r) => r.rel === reverse && linkTarget(r.url) === sourceId);
+  if (!exists) (target.relations ??= []).push({ rel: reverse, url: `${fake.baseUrl}/_apis/wit/workItems/${sourceId}`, attributes: {} });
+}
+
+function removeReverse(sourceId: number, rel: string, targetId: number) {
+  const reverse = REVERSE_LINK[rel];
+  const target = fake.workItems.get(targetId);
+  if (!reverse || !target?.relations) return;
+  target.relations = target.relations.filter((r) => !(r.rel === reverse && linkTarget(r.url) === sourceId));
+}
+
+/** Records a revision snapshot (used by the reporting revisions route). */
+export function recordRevision(item: WorkItem, changedDate = new Date().toISOString()) {
+  const list = fake.revisions.get(item.id) ?? [];
+  const fields = { ...clone(item.fields), "System.ChangedDate": changedDate, "System.Rev": item.rev ?? list.length + 1 };
+  list.push({ rev: fields["System.Rev"], fields });
+  fake.revisions.set(item.id, list);
+}
 
 export const dataStore = {
   values: new Map<string, Json>(),
@@ -209,6 +251,16 @@ export function resetFake() {
     wi(105, "User Story", "Cart page", BLUE, PI2_S2, "Closed", { "Microsoft.VSTS.Common.ClosedDate": new Date(now - 1 * DAY).toISOString() }),
   ];
   fake.workItems = new Map(items.map((i) => [i.id, i]));
+  // Seeds list one end of each link; add the other end as Azure DevOps would.
+  for (const item of items) for (const r of [...(item.relations ?? [])]) addReverse(item.id, r.rel, linkTarget(r.url));
+  fake.revisions = new Map();
+  for (const item of items) recordRevision(item, new Date(now - 60 * DAY).toISOString());
+  fake.permissions = {};
+  fake.teamMembers = {
+    "t-red": [{ id: "u-ada", displayName: "Ada Lovelace", uniqueName: "ada@fabrikam.com" }, { id: "u-grace", displayName: "Grace Hopper", uniqueName: "grace@fabrikam.com" }],
+    "t-blue": [{ id: "u-alan", displayName: "Alan Turing", uniqueName: "alan@fabrikam.com" }],
+  };
+  fake.hash = "";
 
   dataStore.values.clear();
   dataStore.collections.clear();
@@ -286,25 +338,172 @@ function matches(item: WorkItem, types: string[] | null, areas: string[], iterat
   return true;
 }
 
-function evalWiql(query: string): Json {
-  if (fake.wiqlOverride) return fake.wiqlOverride(query);
-  // "[System.Id] < 0" is how the extension expresses an empty scope.
-  const all = query.includes("[System.Id] < 0") ? [] : Array.from(fake.workItems.values()).sort((a, b) => a.id - b.id);
+// A small WIQL WHERE-clause parser/evaluator: AND / OR / NOT, parentheses, and the operators
+// the extension emits (=, <>, <, >, <=, >=, UNDER, NOT UNDER, IN, NOT IN, CONTAINS, NOT CONTAINS).
+// Anything it doesn't understand throws, which the router turns into a 400 like a real server,
+// so tests can't silently pass with clauses the fake ignores.
 
-  if (/FROM WorkItemLinks/i.test(query)) {
-    const [sourcePart] = query.split(/\) AND \(\[System\.Links\.LinkType\]/);
-    const srcType = new RegExp(`\\[Source\\]\\.\\[System\\.WorkItemType\\] = ${STR}`).exec(sourcePart)?.[1];
-    const roots = all.filter((i) =>
-      matches(i, srcType ? [unq(srcType)] : null, allUnder(sourcePart, "[Source].[System.AreaPath]"), allUnder(sourcePart, "[Source].[System.IterationPath]"))
-    );
-    const targetTypes = listAfter(query, "[Target].[System.WorkItemType]");
+type Tok = { t: "(" | ")" | "and" | "or" | "not" | "field" | "op" | "str" | "num" | "macro" | ","; v: string };
+
+export class WiqlSyntaxError extends Error {}
+
+function tokenize(src: string): Tok[] {
+  const out: Tok[] = [];
+  const re = /\s*(?:(\()|(\))|(,)|('(?:[^']|'')*')|(\[[^\]]+\](?:\.\[[^\]]+\])?)|(<>|<=|>=|=|<|>)|(@\w+)|(-?\d+(?:\.\d+)?)|([A-Za-z]+))/y;
+  let m: RegExpExecArray | null;
+  re.lastIndex = 0;
+  while (re.lastIndex < src.length) {
+    if (/^\s*$/.test(src.slice(re.lastIndex))) break;
+    m = re.exec(src);
+    if (!m) throw new WiqlSyntaxError(`TF51005: The query references a field or operator that is not valid near '${src.slice(re.lastIndex, re.lastIndex + 20)}'.`);
+    if (m[1]) out.push({ t: "(", v: "(" });
+    else if (m[2]) out.push({ t: ")", v: ")" });
+    else if (m[3]) out.push({ t: ",", v: "," });
+    else if (m[4]) out.push({ t: "str", v: unq(m[4].slice(1, -1)) });
+    else if (m[5]) out.push({ t: "field", v: m[5] });
+    else if (m[6]) out.push({ t: "op", v: m[6] });
+    else if (m[7]) out.push({ t: "macro", v: m[7].toLowerCase() });
+    else if (m[8]) out.push({ t: "num", v: m[8] });
+    else {
+      const w = m[9].toLowerCase();
+      if (w === "and" || w === "or" || w === "not") out.push({ t: w, v: w });
+      else if (w === "under" || w === "in" || w === "contains") out.push({ t: "op", v: w });
+      else throw new WiqlSyntaxError(`TF51005: Unexpected word '${m[9]}' in the query.`);
+    }
+  }
+  return out;
+}
+
+type Pred = (item: WorkItem) => boolean;
+
+function fieldValue(item: WorkItem, field: string): any {
+  const name = field.replace(/^\[(?:Source|Target)\]\./, "").replace(/^\[|\]$/g, "");
+  if (name === "System.Id") return item.id;
+  // Every real work item belongs to the project; test-created items may omit it.
+  if (name === "System.TeamProject") return item.fields[name] ?? fake.projectName;
+  const v = item.fields[name];
+  if (v && typeof v === "object") return v.uniqueName ?? v.displayName;
+  return v;
+}
+
+function parseWhere(src: string): Pred {
+  const toks = tokenize(src);
+  let i = 0;
+  const peek = () => toks[i];
+  const take = (t?: Tok["t"]) => {
+    const tok = toks[i++];
+    if (!tok || (t && tok.t !== t)) throw new WiqlSyntaxError(`TF51005: Expected ${t ?? "a token"} in the query.`);
+    return tok;
+  };
+  const value = (): any => {
+    const tok = take();
+    if (tok.t === "str") return tok.v;
+    if (tok.t === "num") return Number(tok.v);
+    if (tok.t === "macro") {
+      if (tok.v === "@project") return fake.projectName;
+      if (tok.v === "@today") return new Date().toISOString().slice(0, 10);
+      throw new WiqlSyntaxError(`TF51005: Unsupported macro ${tok.v}.`);
+    }
+    throw new WiqlSyntaxError("TF51005: Expected a value.");
+  };
+  const cond = (): Pred => {
+    const field = take("field").v;
+    let negate = false;
+    if (peek()?.t === "not") {
+      take();
+      negate = true;
+    }
+    const op = take("op").v;
+    let pred: Pred;
+    if (op === "in") {
+      take("(");
+      const list: any[] = [];
+      while (peek()?.t !== ")") {
+        list.push(value());
+        if (peek()?.t === ",") take(",");
+      }
+      take(")");
+      pred = (it) => list.some((v) => String(v).toLowerCase() === String(fieldValue(it, field) ?? "").toLowerCase());
+    } else {
+      const v = value();
+      pred = (it) => {
+        const a = fieldValue(it, field);
+        switch (op) {
+          case "=": return String(a ?? "").toLowerCase() === String(v).toLowerCase();
+          case "<>": return String(a ?? "").toLowerCase() !== String(v).toLowerCase();
+          case "<": return a !== undefined && a < v;
+          case ">": return a !== undefined && a > v;
+          case "<=": return a !== undefined && a <= v;
+          case ">=": return a !== undefined && a >= v;
+          case "under": return typeof a === "string" && under(a, String(v));
+          case "contains": return String(a ?? "").toLowerCase().includes(String(v).toLowerCase());
+          default: throw new WiqlSyntaxError(`TF51005: Unsupported operator ${op}.`);
+        }
+      };
+    }
+    return negate ? (it) => !pred(it) : pred;
+  };
+  const factor = (): Pred => {
+    if (peek()?.t === "not") {
+      take();
+      const f = factor();
+      return (it) => !f(it);
+    }
+    if (peek()?.t === "(") {
+      take("(");
+      const e = expr();
+      take(")");
+      return e;
+    }
+    return cond();
+  };
+  const term = (): Pred => {
+    let left = factor();
+    while (peek()?.t === "and") {
+      take();
+      const l = left, r = factor();
+      left = (it) => l(it) && r(it);
+    }
+    return left;
+  };
+  const expr = (): Pred => {
+    let left = term();
+    while (peek()?.t === "or") {
+      take();
+      const l = left, r = term();
+      left = (it) => l(it) || r(it);
+    }
+    return left;
+  };
+  const result = expr();
+  if (i < toks.length) throw new WiqlSyntaxError(`TF51005: Unexpected '${toks[i].v}' in the query.`);
+  return result;
+}
+
+function splitQuery(query: string) {
+  const m = /^\s*SELECT\s+.+?\s+FROM\s+(WorkItems|WorkItemLinks)\s*(?:WHERE\s+(.*?))?\s*(?:ORDER BY\s+(.*?))?\s*(?:MODE\s*\((\w+)\))?\s*$/is.exec(query);
+  if (!m) throw new WiqlSyntaxError("TF51005: The query is not a valid WIQL SELECT statement.");
+  return { from: m[1], where: m[2] ?? "", orderBy: m[3] ?? "", mode: m[4] ?? "" };
+}
+
+function evalWiql(query: string, top?: number): Json {
+  if (fake.wiqlOverride) return fake.wiqlOverride(query);
+  const all = Array.from(fake.workItems.values()).sort((a, b) => a.id - b.id);
+  const q = splitQuery(query);
+
+  if (/WorkItemLinks/i.test(q.from)) {
+    // "( source conditions ) AND ([System.Links.LinkType] = '...') AND ( target conditions )"
+    const [sourcePart, rest = ""] = q.where.split(/\s+AND\s+\(\s*\[System\.Links\.LinkType\][^)]*\)\s*/i);
+    const sourcePred = parseWhere(sourcePart);
+    const targetPred = rest.trim() ? parseWhere(rest.replace(/^\s*AND\s+/i, "")) : () => true;
+    const roots = all.filter(sourcePred);
     const rels: Json[] = [];
     const walk = (parent: WorkItem, depth: number) => {
       if (depth > 10) return;
       for (const r of parent.relations ?? []) {
         if (r.rel !== CHILD) continue;
         const child = fake.workItems.get(Number(/(\d+)$/.exec(r.url)![1]));
-        if (!child || (targetTypes && !targetTypes.includes(child.fields["System.WorkItemType"]))) continue;
+        if (!child || !targetPred(child)) continue;
         rels.push({ source: { id: parent.id }, target: { id: child.id }, rel: CHILD });
         walk(child, depth + 1);
       }
@@ -316,8 +515,20 @@ function evalWiql(query: string): Json {
     return { workItemRelations: rels };
   }
 
-  const types = listAfter(query, "[System.WorkItemType]");
-  const result = all.filter((i) => matches(i, types, allUnder(query, "[System.AreaPath]"), allUnder(query, "[System.IterationPath]")));
+  let result = q.where ? all.filter(parseWhere(q.where)) : all;
+  const order = /\[([^\]]+)\]\s*(ASC|DESC)?/i.exec(q.orderBy);
+  if (order) {
+    const [, f, dir] = order;
+    const key = (it: WorkItem) => (f === "System.Id" ? it.id : it.fields[f]);
+    result = [...result].sort((a, b) => {
+      const x = key(a), y = key(b);
+      if (x === y || (x === undefined && y === undefined)) return a.id - b.id;
+      if (x === undefined) return 1;
+      if (y === undefined) return -1;
+      return (x < y ? -1 : 1) * (dir?.toUpperCase() === "DESC" ? -1 : 1);
+    });
+  }
+  if (top !== undefined) result = result.slice(0, top);
   return { workItems: result.map((i) => ({ id: i.id })) };
 }
 
@@ -339,7 +550,15 @@ function route(method: string, path: string, body: Json, full: string): Response
   const P1 = fake.projectId;
   let m: RegExpExecArray | null;
 
-  if (method === "POST" && path === `${P1}/_apis/wit/wiql`) return json(evalWiql(body.query));
+  if (method === "POST" && path === `${P1}/_apis/wit/wiql`) {
+    const top = new URL(full).searchParams.get("$top");
+    try {
+      return json(evalWiql(body.query, top ? Number(top) : undefined));
+    } catch (e) {
+      if (e instanceof WiqlSyntaxError) return json({ message: e.message }, 400);
+      throw e;
+    }
+  }
 
   if (method === "POST" && path === `${P1}/_apis/wit/workitemsbatch`) {
     const known = new Set(fake.fields.map((f) => f.referenceName));
@@ -366,10 +585,16 @@ function route(method: string, path: string, body: Json, full: string): Response
     if (!item) return json({ message: "TF401232: Work item does not exist" }, 404);
     for (const op of body) {
       if (op.path.startsWith("/fields/")) item.fields[op.path.slice(8)] = op.value;
-      else if (op.path === "/relations/-") (item.relations ??= []).push(op.value);
-      else if (op.op === "remove" && op.path.startsWith("/relations/")) item.relations!.splice(Number(op.path.slice(11)), 1);
+      else if (op.path === "/relations/-") {
+        (item.relations ??= []).push(op.value);
+        addReverse(item.id, op.value.rel, linkTarget(op.value.url));
+      } else if (op.op === "remove" && op.path.startsWith("/relations/")) {
+        const [removed] = item.relations!.splice(Number(op.path.slice(11)), 1);
+        if (removed) removeReverse(item.id, removed.rel, linkTarget(removed.url));
+      }
     }
     item.rev = (item.rev ?? 1) + 1;
+    recordRevision(item);
     return json(clone(item));
   }
 
@@ -428,6 +653,36 @@ function route(method: string, path: string, body: Json, full: string): Response
       fake.deletedIterations.push({ path: node.path, reclassifyId: Number(new URL(full).searchParams.get("$reclassifyId")) });
       return new Response(null, { status: 204 });
     }
+  }
+
+  // Reporting revisions (used for history-based burnup): all revisions of the requested types.
+  if ((method === "POST" || method === "GET") && path === `${P1}/_apis/wit/reporting/workitemrevisions`) {
+    const types: string[] | undefined = body?.types;
+    const fields: string[] | undefined = body?.fields;
+    const values = Array.from(fake.revisions.entries())
+      .flatMap(([id, revs]) => revs.map((r) => ({ id, rev: r.rev, fields: r.fields })))
+      .filter((r) => !types || types.includes(r.fields["System.WorkItemType"]))
+      .map((r) => ({ ...r, fields: fields ? Object.fromEntries(Object.entries(r.fields).filter(([k]) => fields.includes(k))) : r.fields }));
+    return json({ values, isLastBatch: true, nextLink: null });
+  }
+
+  if (method === "GET" && (m = /^_apis\/permissions\/([^/]+)\/(\d+)$/.exec(path))) {
+    const url = new URL(full);
+    const tokens = (url.searchParams.get("tokens") ?? "").split(",").filter(Boolean);
+    const allowed = fake.permissions[`${m[1]}/${m[2]}`] ?? true;
+    return json({ count: tokens.length, value: tokens.map(() => allowed) });
+  }
+
+  if (method === "GET" && path === `_apis/wit/workitemrelationtypes`) {
+    return json({
+      value: Object.keys(REVERSE_LINK).map((ref) => ({ referenceName: ref, name: ref.split(".").pop(), attributes: { usage: "workItemLink", topology: ref.includes("Hierarchy") ? "tree" : ref.includes("Dependency") ? "dependency" : "network" } }))
+        .concat([{ referenceName: "Custom.Blocks-Forward", name: "Blocks", attributes: { usage: "workItemLink", topology: "dependency" } }]),
+    });
+  }
+
+  if (method === "GET" && (m = new RegExp(`^_apis/projects/${P1}/teams/([^/]+)/members$`).exec(path))) {
+    const team = decodeURIComponent(m[1]);
+    return json({ value: (fake.teamMembers[team] ?? []).map((identity) => ({ identity })) });
   }
 
   if (method === "GET" && path === `_apis/projects/${P1}/teams`) return json({ value: [...fake.teams].reverse() });

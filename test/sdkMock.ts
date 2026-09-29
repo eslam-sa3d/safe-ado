@@ -7,6 +7,15 @@ export const workItemForm = {
   openNewWorkItem: vi.fn(async (_type: string, _fields: Record<string, unknown>) => undefined),
 };
 
+export const hostNavigation = {
+  getHash: vi.fn(async () => fake.hash),
+  setHash: vi.fn((hash: string) => void (fake.hash = hash)),
+  replaceHash: vi.fn((hash: string) => void (fake.hash = hash)),
+  onHashChanged: vi.fn((_cb: (hash: string) => void) => undefined),
+  openNewWindow: vi.fn((_url: string, _features: string) => undefined),
+  navigate: vi.fn((_url: string) => undefined),
+};
+
 export const init = vi.fn(async (_opts?: unknown) => undefined);
 export const ready = vi.fn(async () => undefined);
 export const notifyLoadSucceeded = vi.fn();
@@ -24,6 +33,8 @@ export const getService = vi.fn(async (id: string) => {
       return { getExtensionDataManager: async () => dataManager };
     case "ms.vss-work-web.work-item-form-navigation-service":
       return workItemForm;
+    case "ms.vss-features.host-navigation-service":
+      return hostNavigation;
     default:
       throw new Error(`Unexpected service ${id}`);
   }

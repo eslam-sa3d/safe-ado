@@ -33,24 +33,21 @@ function insertBeforeOrderBy(query: string, clause: string): string {
 export async function queryIds(wiql: string): Promise<number[]> {
   const size = wiqlPaging.pageSize;
   const first = await api<WiqlFlatResult>(`${p()}/_apis/wit/wiql?$top=${size}`, { method: "POST", body: { query: wiql } });
-  const ids = first.workItems.map((w) => w.id);
-  if (ids.length < size) return ids;
+  if (first.workItems.length < size) return first.workItems.map((w) => w.id);
 
-  // Full page: continue by id. Ordering switches to id order for very large result sets.
-  const seen = new Set(ids);
+  // A full page may be truncated. The first page follows the query's own ORDER BY, so we can't
+  // continue from it; restart in id order and walk pages with "[System.Id] > last".
   const unordered = wiql.replace(/ ORDER BY .*$/i, "");
-  let last = Math.max(...ids);
+  const ids: number[] = [];
+  let last = 0;
   for (;;) {
-    if (seen.size >= wiqlPaging.maxItems) throw new QueryLimitError(`The query matches more than ${wiqlPaging.maxItems} work items. Narrow the scope or filters.`);
     const page = await api<WiqlFlatResult>(`${p()}/_apis/wit/wiql?$top=${size}`, {
       method: "POST",
       body: { query: `${insertBeforeOrderBy(unordered, `AND [System.Id] > ${last}`)} ORDER BY [System.Id] ASC` },
     });
-    const next = page.workItems.map((w) => w.id).filter((id) => !seen.has(id));
-    next.forEach((id) => {
-      seen.add(id);
-      ids.push(id);
-    });
+    const next = page.workItems.map((w) => w.id).filter((id) => id > last);
+    ids.push(...next);
+    if (ids.length > wiqlPaging.maxItems) throw new QueryLimitError(`The query matches more than ${wiqlPaging.maxItems} work items. Narrow the scope or filters.`);
     if (page.workItems.length < size || next.length === 0) return ids;
     last = Math.max(...next);
   }

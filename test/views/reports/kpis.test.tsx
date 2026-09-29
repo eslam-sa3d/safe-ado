@@ -172,8 +172,8 @@ describe("Critical Dependencies", () => {
   it("shows zero in green when nothing is critical", async () => {
     await renderReports({ nodeId: "n-red" });
     expect(within(widget("Critical Dependencies")).getByText("0")).toHaveClass("good");
-    // Payment API -> Checkout UI (same sprint) and -> Reports (later); the fake has no reverse links, so Fraud rules is not seen
-    expect(within(widget("Critical Dependencies")).getByText("of 2 unresolved in PI 2")).toBeInTheDocument();
+    // Payment API -> Checkout UI and -> Reports, plus Fraud rules -> Payment API (seen through the reverse link)
+    expect(within(widget("Critical Dependencies")).getByText("of 3 unresolved in PI 2")).toBeInTheDocument();
   });
 
   it("works for a Large Solution with an unconfigured sibling", async () => {

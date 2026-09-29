@@ -226,7 +226,7 @@ describe("Work Item List", () => {
     });
 
     it("re-parents: removes the old reverse link and adds the new one", async () => {
-      fake.workItems.get(10)!.relations!.push({ rel: PARENT, url: url(1), attributes: {} });
+      // #10's parent link to Epic #1 comes from the seed; Azure DevOps keeps both ends.
       await renderList();
       const input = screen.getByLabelText("Parent of #10");
       expect(input).toHaveValue("1");
@@ -257,19 +257,23 @@ describe("Work Item List", () => {
       expect(screen.getByLabelText("Parent of #10")).toHaveValue("");
     });
 
-    it("adds a parent to an orphan and removes a parent seen only from the parent's child link", async () => {
+    it("adds a parent to an orphan and removes a story's parent on both ends", async () => {
       await renderList();
-      fireEvent.change(screen.getByLabelText("Parent of #12"), { target: { value: "1" } });
-      fireEvent.blur(screen.getByLabelText("Parent of #12"));
-      await waitFor(() => expect(patches(12)).toHaveLength(1));
-      expect(patches(12)[0].body[0]).toMatchObject({ op: "add", path: "/relations/-", value: { rel: PARENT, url: url(1) } });
+      // #15 "Old feature" has no parent.
+      expect(screen.getByLabelText("Parent of #15")).toHaveValue("");
+      fireEvent.change(screen.getByLabelText("Parent of #15"), { target: { value: "1" } });
+      fireEvent.blur(screen.getByLabelText("Parent of #15"));
+      await waitFor(() => expect(patches(15)).toHaveLength(1));
+      expect(patches(15)[0].body[0]).toMatchObject({ op: "add", path: "/relations/-", value: { rel: PARENT, url: url(1) } });
+      expect(fake.workItems.get(1)!.relations!.some((r) => r.rel === CHILD && r.url === url(15))).toBe(true);
 
       fireEvent.click(screen.getByLabelText(/Show all types/));
       await waitFor(() => expect(ids()).toContain(100));
+      expect(screen.getByLabelText("Parent of #100")).toHaveValue("10");
       fireEvent.change(screen.getByLabelText("Parent of #100"), { target: { value: "" } });
       fireEvent.blur(screen.getByLabelText("Parent of #100"));
       await waitFor(() => expect(fake.workItems.get(10)!.relations!.some((r) => r.rel === CHILD && r.url === url(100))).toBe(false));
-      expect(patches(100)).toHaveLength(0);
+      expect(fake.workItems.get(100)!.relations!.some((r) => r.rel === PARENT)).toBe(false);
     });
 
     it("validates parent input and rolls back failed link changes", async () => {
@@ -278,7 +282,7 @@ describe("Work Item List", () => {
       fireEvent.change(input, { target: { value: "abc" } });
       fireEvent.blur(input);
       expect(screen.getByRole("alert")).toHaveTextContent('"abc" is not a work item ID.');
-      expect(screen.getByLabelText("Parent of #11")).toHaveValue("");
+      expect(screen.getByLabelText("Parent of #11")).toHaveValue("1");
       fireEvent.change(input, { target: { value: "11" } });
       fireEvent.blur(input);
       expect(screen.getByRole("alert")).toHaveTextContent("A work item cannot be its own parent.");
@@ -287,7 +291,7 @@ describe("Work Item List", () => {
       fireEvent.change(input, { target: { value: "2" } });
       fireEvent.blur(input);
       expect(await screen.findByRole("alert")).toHaveTextContent("Could not update the parent of #11: TF201036");
-      expect(screen.getByLabelText("Parent of #11")).toHaveValue("");
+      expect(screen.getByLabelText("Parent of #11")).toHaveValue("1");
     });
 
     it("sets the owning team in the SAFe metadata and shows assigned PIs", async () => {
@@ -333,7 +337,7 @@ describe("Work Item List", () => {
     const text = await created[0].text();
     const lines = text.split("\r\n");
     expect(lines[0]).toBe("ID,Type,Title,State,Priority,Assigned To,Parent,Iteration,Area,Teams involved,Owning team,Assigned PIs");
-    expect(lines[1]).toBe(`12,Feature,"Fraud ""rules"", v2",New,,Unassigned,,${"Fabrikam\\PIs\\PI 2"},${"Fabrikam\\ART A"},,,`);
+    expect(lines[1]).toBe(`12,Feature,"Fraud ""rules"", v2",New,,Unassigned,1,${"Fabrikam\\PIs\\PI 2"},${"Fabrikam\\ART A"},,,`);
     expect(lines[2]).toMatch(/^15,Feature,Old feature,Closed,/);
     expect(lines.length).toBe(3);
   });

@@ -477,7 +477,8 @@ describe("Team Planning Board", () => {
     fireEvent.change(wiql, { target: { value: "[System.Tags] CONTAINS 'MVP'" } });
     fireEvent.keyDown(wiql, { key: "Enter" });
     await waitFor(() => expect(callsTo(/wiql/).some((c) => c.body.query.includes("AND ([System.Tags] CONTAINS 'MVP') ORDER BY"))).toBe(true));
-    await screen.findByText("Charge card");
+    // The clause is evaluated server-side: no story is tagged MVP, so the board empties.
+    await waitFor(() => expect(screen.queryByText("Refund card")).toBeNull());
   });
 
   it("searches and sorts the Team and ART backlogs", async () => {
