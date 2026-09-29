@@ -1,12 +1,13 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { emptyMeta, metaStore } from "../api/data";
-import { EMPTY_FILTER, facetOptions, ItemFilter, matchesFilter, withWiqlFilter } from "../api/filters";
-import { boardType, scopeAreas } from "../api/org";
+import { EMPTY_FILTER, ExtraFacet, facetOptions, ItemFilter, matchesFilter, withWiqlFilter } from "../api/filters";
+import { boardType, findNode, flatten, scopeAreas } from "../api/org";
 import { scopeQuery, typeChain } from "../api/queries";
-import { F, LINK, OrgNode, ProgramIncrement, WorkItem, WorkItemMeta } from "../api/types";
+import { F, LINK, OrgNode, ProgramIncrement, SafeConfig, WorkItem, WorkItemMeta } from "../api/types";
 import {
   addLink,
   getStateCategories,
+  getTeamMembers,
   getWorkItems,
   isUnder,
   openWorkItem,
@@ -15,9 +16,17 @@ import {
   removeLink,
   setFields,
 } from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, lastSegment, Spinner, typeColor, useAsync } from "../components/common";
-import { useSafe } from "../components/context";
+import { CATEGORY_COLOR, Empty, ErrorBar, Info, lastSegment, Spinner, typeColor, useAsync } from "../components/common";
+import { useCan, useSafe } from "../components/context";
 import { FilterBar } from "../components/FilterBar";
+import {
+  estimatedCompletion,
+  isPiAssigned,
+  PI_LIMIT_MESSAGE,
+  piInvolvement,
+  toggleAssignedNode,
+  toggleAssignedPi,
+} from "../form/planning";
 
 /** A work item row plus the SAFe data derived for it. */
 export interface Row {
@@ -26,7 +35,9 @@ export interface Row {
   parentId: number | null;
   /** Whether the parent link is stored on this item (Hierarchy-Reverse) or only seen from the parent. */
   parentOnItem: boolean;
+  /** Area / iteration paths of the item's (not removed) children; loaded for ARTs and Solutions. */
   childAreas: string[];
+  childIterations?: string[];
   meta?: WorkItemMeta;
 }
 
@@ -46,8 +57,10 @@ type ColumnKey =
   | "area"
   | "teams"
   | "owner"
+  | "assigned"
   | "pis"
-  | "piInvolvement";
+  | "piInvolvement"
+  | "completion";
 
 interface Column {
   key: ColumnKey;
@@ -70,10 +83,16 @@ const BASE_COLUMNS: Column[] = [
 const PROGRAM_COLUMNS: Column[] = [
   { key: "teams", label: "Teams involved" },
   { key: "owner", label: "Owning team" },
+  { key: "assigned", label: "Assigned teams" },
   { key: "pis", label: "Assigned PIs" },
+  { key: "piInvolvement", label: "PI involvement" },
+  { key: "completion", label: "Estimated completion" },
 ];
 
-const TEAM_COLUMNS: Column[] = [{ key: "piInvolvement", label: "PI involvement" }];
+const TEAM_COLUMNS: Column[] = [
+  { key: "piInvolvement", label: "PI involvement" },
+  { key: "pis", label: "Assigned PIs" },
+];
 
 export function columnsFor(level: OrgNode["level"]): Column[] {
   if (level === "art" || level === "solution") return [...BASE_COLUMNS, ...PROGRAM_COLUMNS];
@@ -81,16 +100,42 @@ export function columnsFor(level: OrgNode["level"]): Column[] {
   return BASE_COLUMNS;
 }
 
-interface Assignee {
+export interface Person {
   displayName: string;
   uniqueName?: string;
 }
 
-function assigneeOf(item: WorkItem): Assignee | undefined {
+export const personKey = (p: Person) => p.uniqueName || p.displayName;
+
+function assigneeOf(item: WorkItem): Person | undefined {
   const v = item.fields[F.assignedTo];
   if (!v) return undefined;
   if (typeof v === "string") return { displayName: v, uniqueName: v };
   return { displayName: v.displayName ?? v.uniqueName ?? "", uniqueName: v.uniqueName };
+}
+
+/**
+ * Team members first, then people already assigned; deduplicated by unique name, and by display
+ * name for people known only by name. Sorted by display name.
+ */
+export function mergePeople(members: Person[], assigned: Person[]): Person[] {
+  const byKey = new Map<string, Person>();
+  const names = new Set<string>();
+  for (const p of [...members, ...assigned]) {
+    const key = personKey(p).toLowerCase();
+    const name = p.displayName.toLowerCase();
+    if (!key || byKey.has(key) || (!p.uniqueName && names.has(name))) continue;
+    byKey.set(key, p);
+    names.add(name);
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+/** Members of every Azure DevOps team backing a unit in `node`'s subtree (a failing team is skipped). */
+export async function loadMembers(node: OrgNode): Promise<Person[]> {
+  const teamIds = Array.from(new Set(flatten(node).map((n) => n.teamId).filter((t): t is string => !!t)));
+  const lists = await Promise.all(teamIds.map((id) => getTeamMembers(id).catch(() => [])));
+  return lists.flat().map((i) => ({ displayName: i.displayName, uniqueName: i.uniqueName }));
 }
 
 /** Child nodes (units) of `node` whose area contains any child work item of the row. */
@@ -105,16 +150,30 @@ export function piOf(iteration: string | undefined, pis: ProgramIncrement[]): Pr
   return pis.find((p) => isUnder(iteration, p.path));
 }
 
-function piName(path: string, pis: ProgramIncrement[]): string {
-  return pis.find((p) => p.path === path)?.name ?? lastSegment(path);
+/** Names of the assigned PIs: by stable id, else by path, else the path's last segment. */
+export function assignedPiNames(meta: WorkItemMeta | undefined, pis: ProgramIncrement[]): string[] {
+  if (!meta) return [];
+  return meta.assignedPiPaths.map((path, i) => {
+    const id = meta.assignedPiIds?.[i];
+    return (id && pis.find((p) => p.identifier === id)?.name) || pis.find((p) => p.path === path)?.name || lastSegment(path);
+  });
 }
 
-/** Loads the unit's items, their parents, child areas and SAFe metadata. */
-async function loadRows(types: string[], areas: string[], wiql: string, needChildren: boolean): Promise<ListData> {
+/** The SAFe type one level above `type`: Story→Feature, Feature→Capability (or Epic), Capability→Epic. */
+export function expectedParentType(config: SafeConfig, type: string): string | undefined {
+  const chain = typeChain(config);
+  const i = chain.indexOf(type);
+  if (i > 0) return chain[i - 1];
+  if (i === 0) return config.types.theme || undefined;
+  return undefined;
+}
+
+/** Loads the unit's items, their parents, child areas / iterations and SAFe metadata. */
+async function loadRows(types: string[], chain: string[], areas: string[], wiql: string, needChildren: boolean): Promise<ListData> {
   const query = withWiqlFilter(scopeQuery(types, areas, undefined, F.id), { ...EMPTY_FILTER, wiql });
   const [items, categoryOf, metas] = await Promise.all([
     queryWorkItems(query, [], true),
-    getStateCategories(types),
+    getStateCategories(Array.from(new Set([...types, ...chain]))),
     metaStore.list(),
   ]);
   const live = items.filter((i) => categoryOf(i.fields[F.type], i.fields[F.state]) !== "Removed");
@@ -136,31 +195,38 @@ async function loadRows(types: string[], areas: string[], wiql: string, needChil
     childIds.set(item.id, kids);
   }
 
-  const areaById = new Map<number, string>();
+  const kidById = new Map<number, WorkItem>();
   const allKids = Array.from(new Set(Array.from(childIds.values()).flat()));
   if (needChildren && allKids.length) {
-    const kids = await getWorkItems(allKids, [F.id, F.area]);
-    kids.forEach((k) => areaById.set(k.id, k.fields[F.area]));
+    const kids = await getWorkItems(allKids, [F.id, F.area, F.iteration, F.type, F.state]);
+    kids.filter((k) => categoryOf(k.fields[F.type], k.fields[F.state]) !== "Removed").forEach((k) => kidById.set(k.id, k));
   }
 
   const rows = live.map((item): Row => {
     const reverse = (item.relations ?? []).find((r) => r.rel === LINK.parent);
     const onItem = reverse ? relationTargetId(reverse.url) : null;
     const parentId = onItem ?? parentFromForward.get(item.id) ?? null;
+    const kids = (childIds.get(item.id) ?? []).map((id) => kidById.get(id)).filter((k): k is WorkItem => !!k);
     return {
       item,
       category: categoryOf(item.fields[F.type], item.fields[F.state]),
       parentId,
       parentOnItem: onItem !== null,
-      childAreas: (childIds.get(item.id) ?? []).map((id) => areaById.get(id)).filter((a): a is string => !!a),
+      childAreas: kids.map((k) => k.fields[F.area]).filter((a): a is string => !!a),
+      childIterations: kids.map((k) => k.fields[F.iteration]).filter((a): a is string => !!a),
       meta: metaById.get(item.id),
     };
   });
   return { rows };
 }
 
-function csvCell(value: string | number): string {
-  const s = String(value);
+/**
+ * One CSV cell. Text starting with =, +, -, @, tab or CR is prefixed with an apostrophe so
+ * spreadsheets don't evaluate it as a formula (CSV injection); then quoted when needed.
+ */
+export function csvCell(value: string | number): string {
+  let s = String(value);
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -168,9 +234,13 @@ export function toCsv(header: string[], rows: (string | number)[][]): string {
   return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
 }
 
+const uniq = (xs: string[]) => Array.from(new Set(xs.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
 /** Agile Hive's Work Item List: every item of the unit, sortable, filterable and editable inline. */
 export function WorkItemList() {
   const { config, node, pis } = useSafe();
+  const can = useCan();
+  const readOnly = !can.plan;
   const chain = typeChain(config);
   const isTeam = node.level === "team";
   const [showAll, setShowAll] = useState(false);
@@ -184,22 +254,32 @@ export function WorkItemList() {
   const [error, setError] = useState<string>();
 
   const { data, loading, error: loadError, setData } = useAsync(
-    () => loadRows(types, areas, filter.wiql, needChildren),
-    [types.join("|"), areas.join("|"), filter.wiql, needChildren]
+    () => loadRows(types, chain, areas, filter.wiql, needChildren),
+    [types.join("|"), chain.join("|"), areas.join("|"), filter.wiql, needChildren]
   );
+  const { data: members } = useAsync(() => (readOnly ? Promise.resolve([]) : loadMembers(node)), [node.id, readOnly]);
 
   const rows = data?.rows ?? [];
   const options = useMemo(() => facetOptions(rows.map((r) => r.item)), [rows]);
-  const assignees = useMemo(() => {
-    const byName = new Map<string, Assignee>();
-    rows.forEach((r) => {
-      const a = assigneeOf(r.item);
-      if (a && a.displayName && !byName.has(a.displayName)) byName.set(a.displayName, a);
-    });
-    return Array.from(byName.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
-  }, [rows]);
+  const people = useMemo(
+    () => mergePeople(members ?? [], rows.map((r) => assigneeOf(r.item)).filter((a): a is Person => !!a && !!a.displayName)),
+    [members, rows]
+  );
+  const personFor = (a: Person | undefined): string => {
+    if (!a) return "";
+    const hit =
+      (a.uniqueName && people.find((p) => p.uniqueName?.toLowerCase() === a.uniqueName!.toLowerCase())) ||
+      people.find((p) => p.displayName === a.displayName);
+    return hit ? personKey(hit) : "";
+  };
 
+  const unitName = (id: string) => findNode(config.root, id)?.name ?? "";
   const nodeName = (id?: string) => (id ? node.children.find((c) => c.id === id)?.name ?? "" : "");
+  const involvedPis = (row: Row) =>
+    (needChildren ? piInvolvement(row.childIterations ?? [], pis) : [piOf(row.item.fields[F.iteration], pis)].filter((p): p is ProgramIncrement => !!p)).map(
+      (p) => p.name
+    );
+  const assignedTeams = (row: Row) => (row.meta?.assignedNodeIds ?? []).map(unitName).filter(Boolean);
 
   const cellText = (row: Row, key: ColumnKey): string | number => {
     const f = row.item.fields;
@@ -228,16 +308,44 @@ export function WorkItemList() {
           .join(", ");
       case "owner":
         return nodeName(row.meta?.owningNodeId);
+      case "assigned":
+        return assignedTeams(row).join(", ");
       case "pis":
-        return (row.meta?.assignedPiPaths ?? []).map((p) => piName(p, pis)).join(", ");
+        return assignedPiNames(row.meta, pis).join(", ");
       case "piInvolvement":
-        return piOf(f[F.iteration], pis)?.name ?? "";
+        return involvedPis(row).join(", ");
+      case "completion":
+        return estimatedCompletion(row.childIterations ?? [], pis) ?? "";
     }
   };
 
+  const rowById = useMemo(() => new Map(rows.map((r) => [r.item.id, r])), [rows]);
+  const extraFacets = useMemo((): ExtraFacet[] => {
+    const facet = (key: string, label: string, get: (r: Row) => string[]): ExtraFacet => ({
+      key,
+      label,
+      options: uniq(rows.flatMap(get)),
+      values: (item) => {
+        const r = rowById.get(item.id);
+        return r ? get(r) : [];
+      },
+    });
+    const pisFacet = facet("pis", "Assigned PIs", (r) => assignedPiNames(r.meta, pis));
+    const involvement = facet("piInvolvement", "PI involvement", involvedPis);
+    if (isTeam) return [pisFacet, involvement];
+    if (!needChildren) return [];
+    return [
+      pisFacet,
+      facet("owner", "Owning team", (r) => [nodeName(r.meta?.owningNodeId)].filter(Boolean)),
+      facet("assigned", "Assigned teams", assignedTeams),
+      involvement,
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, rowById, pis, node, config]);
+
   const visible = useMemo(() => {
     const col = columns.find((c) => c.key === sort.key)!;
-    const filtered = rows.filter((r) => matchesFilter(r.item, filter));
+    const filtered = rows.filter((r) => matchesFilter(r.item, filter, extraFacets));
     return [...filtered].sort((a, b) => {
       const x = cellText(a, sort.key);
       const y = cellText(b, sort.key);
@@ -251,7 +359,7 @@ export function WorkItemList() {
       return (cmp || a.item.id - b.item.id) * sort.dir;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filter, sort, pis, node]);
+  }, [rows, filter, sort, pis, node, extraFacets]);
 
   const updateRow = (id: number, fn: (r: Row) => Row) =>
     setData((d) => (d ? { rows: d.rows.map((r) => (r.item.id === id ? fn(r) : r)) } : d));
@@ -287,18 +395,18 @@ export function WorkItemList() {
   const savePriority = (row: Row, value: number) =>
     optimistic(row, (r) => withField(r, F.priority, value), () => setFields(row.item.id, { [F.priority]: value }), "the priority");
 
-  const saveAssignee = (row: Row, displayName: string) => {
-    const a = assignees.find((x) => x.displayName === displayName);
-    const value = a ? a.uniqueName ?? a.displayName : "";
+  const saveAssignee = (row: Row, key: string) => {
+    const p = people.find((x) => personKey(x) === key);
+    const value = p ? personKey(p) : "";
     return optimistic(
       row,
-      (r) => withField(r, F.assignedTo, a ? { ...a } : undefined),
+      (r) => withField(r, F.assignedTo, p ? { ...p } : undefined),
       () => setFields(row.item.id, { [F.assignedTo]: value }),
       "the assignee"
     );
   };
 
-  const saveParent = (row: Row, text: string) => {
+  const saveParent = async (row: Row, text: string) => {
     const raw = text.trim().replace(/^#/, "");
     const next = raw === "" ? null : Number(raw);
     if (next !== null && (!Number.isInteger(next) || next <= 0)) {
@@ -310,6 +418,27 @@ export function WorkItemList() {
       return;
     }
     if (next === row.parentId) return;
+    const type = row.item.fields[F.type];
+    const expected = expectedParentType(config, type);
+    if (next !== null && expected) {
+      setError(undefined);
+      let parent: WorkItem | undefined;
+      try {
+        [parent] = await getWorkItems([next], [F.id, F.type]);
+      } catch (e: any) {
+        setError(`Could not check work item #${next}: ${e?.message ?? e}`);
+        return;
+      }
+      if (!parent) {
+        setError(`Work item #${next} does not exist.`);
+        return;
+      }
+      const parentType = parent.fields[F.type];
+      if (parentType !== expected) {
+        setError(`Work item #${next} is of type ${parentType}; the parent of #${row.item.id} (${type}) must be of type ${expected}.`);
+        return;
+      }
+    }
     const old = row.parentId;
     return optimistic(
       row,
@@ -325,19 +454,32 @@ export function WorkItemList() {
     );
   };
 
-  const saveOwner = (row: Row, owningNodeId: string) => {
-    const base = row.meta ?? emptyMeta(row.item.id);
-    const next: WorkItemMeta = { ...base, owningNodeId: owningNodeId || undefined };
-    return optimistic(
+  const saveMeta = (row: Row, next: WorkItemMeta, what: string) =>
+    optimistic(
       row,
       (r) => ({ ...r, meta: next }),
       async () => {
         const saved = await metaStore.save(next);
         updateRow(row.item.id, (r) => ({ ...r, meta: saved }));
       },
-      "the owning team"
+      what
     );
+
+  const baseMeta = (row: Row) => row.meta ?? emptyMeta(row.item.id);
+
+  const saveOwner = (row: Row, owningNodeId: string) =>
+    saveMeta(row, { ...baseMeta(row), owningNodeId: owningNodeId || undefined }, "the owning team");
+
+  const togglePi = (row: Row, pi: ProgramIncrement) => {
+    const next = toggleAssignedPi(baseMeta(row), pi);
+    if (!next) {
+      setError(PI_LIMIT_MESSAGE);
+      return;
+    }
+    return saveMeta(row, next, "the assigned PIs");
   };
+
+  const toggleTeam = (row: Row, nodeId: string) => saveMeta(row, toggleAssignedNode(baseMeta(row), nodeId), "the assigned teams");
 
   const exportCsv = () => {
     const csv = toCsv(
@@ -373,8 +515,6 @@ export function WorkItemList() {
             {f[F.type]}
           </span>
         );
-      case "title":
-        return <TitleCell key={`${id}-${f[F.title]}`} id={id} value={f[F.title] ?? ""} onSave={(t) => saveTitle(row, t)} />;
       case "state":
         return (
           <span className="state">
@@ -382,6 +522,15 @@ export function WorkItemList() {
             {f[F.state]}
           </span>
         );
+      case "iteration":
+        return <span title={f[F.iteration]}>{lastSegment(f[F.iteration])}</span>;
+      case "area":
+        return <span title={f[F.area]}>{lastSegment(f[F.area])}</span>;
+    }
+    if (readOnly) return cellText(row, key);
+    switch (key) {
+      case "title":
+        return <TitleCell key={`${id}-${f[F.title]}`} id={id} value={f[F.title] ?? ""} onSave={(t) => saveTitle(row, t)} />;
       case "priority":
         return (
           <select
@@ -403,23 +552,19 @@ export function WorkItemList() {
           <select
             className="cell-input"
             aria-label={`Assigned to of #${id}`}
-            value={assigneeOf(row.item)?.displayName ?? ""}
+            value={personFor(assigneeOf(row.item))}
             onChange={(e) => saveAssignee(row, e.target.value)}
           >
             <option value="">Unassigned</option>
-            {assignees.map((a) => (
-              <option key={a.displayName} value={a.displayName}>
-                {a.displayName}
+            {people.map((p) => (
+              <option key={personKey(p)} value={personKey(p)} title={p.uniqueName}>
+                {p.displayName}
               </option>
             ))}
           </select>
         );
       case "parent":
-        return <ParentCell key={`${id}-${row.parentId}`} id={id} value={row.parentId} onSave={(t) => saveParent(row, t)} />;
-      case "iteration":
-        return <span title={f[F.iteration]}>{lastSegment(f[F.iteration])}</span>;
-      case "area":
-        return <span title={f[F.area]}>{lastSegment(f[F.area])}</span>;
+        return <ParentCell key={`${id}-${row.parentId}`} id={id} value={row.parentId} onSave={(t) => void saveParent(row, t)} />;
       case "owner":
         return (
           <select
@@ -436,6 +581,24 @@ export function WorkItemList() {
             ))}
           </select>
         );
+      case "assigned":
+        return (
+          <PickerCell
+            label={`Assigned teams of #${id}`}
+            summary={cellText(row, key) as string}
+            options={node.children.map((c) => ({ key: c.id, label: c.name, checked: (row.meta?.assignedNodeIds ?? []).includes(c.id) }))}
+            onToggle={(k) => toggleTeam(row, k)}
+          />
+        );
+      case "pis":
+        return (
+          <PickerCell
+            label={`Assigned PIs of #${id}`}
+            summary={cellText(row, key) as string}
+            options={pis.map((p) => ({ key: p.path, label: p.name, checked: !!row.meta && isPiAssigned(row.meta, p) }))}
+            onToggle={(k) => togglePi(row, pis.find((p) => p.path === k)!)}
+          />
+        );
       default:
         return cellText(row, key);
     }
@@ -443,7 +606,12 @@ export function WorkItemList() {
 
   return (
     <div className="wil">
-      <FilterBar value={filter} onChange={setFilter} options={options} />
+      <FilterBar value={filter} onChange={setFilter} options={options} extraFacets={extraFacets} />
+      {readOnly && (
+        <div className="readonly-banner">
+          <Info>You can view this list but not edit it: you lack permission to edit work items in this area.</Info>
+        </div>
+      )}
       <div className="toolbar">
         {!isTeam && (
           <label className="check">
@@ -501,6 +669,35 @@ export function WorkItemList() {
         )
       )}
     </div>
+  );
+}
+
+/** Multi-select popover cell (assigned teams / PIs): the summary shows the selection. */
+function PickerCell({
+  label,
+  summary,
+  options,
+  onToggle,
+}: {
+  label: string;
+  summary: string;
+  options: { key: string; label: string; checked: boolean }[];
+  onToggle: (key: string) => void;
+}) {
+  return (
+    <details className="facet cell-picker">
+      <summary className="cell-input" title={summary}>
+        {summary || "–"}
+      </summary>
+      <div className="facet-menu" role="group" aria-label={label}>
+        {options.length === 0 && <span className="muted small">Nothing to choose</span>}
+        {options.map((o) => (
+          <label key={o.key} className="check">
+            <input type="checkbox" checked={o.checked} onChange={() => onToggle(o.key)} /> {o.label}
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }
 
