@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach, vi } from "vitest";
+import { beforeEach, vi } from "vitest";
 import { dataManager, fetchMock, resetFake } from "./fakeAdo";
 import * as sdk from "./sdkMock";
 
@@ -26,6 +26,9 @@ if (typeof (globalThis as any).DOMRect === "undefined") {
   };
 }
 
+// fetch is never unstubbed: async work that outlives a test must hit the fake, never the network.
+vi.stubGlobal("fetch", fetchMock);
+
 beforeEach(() => {
   resetFake();
   vi.stubGlobal("fetch", fetchMock);
@@ -39,8 +42,4 @@ beforeEach(() => {
   Object.values(dataManager).forEach((fn) => fn.mockClear());
   sdk.workItemForm.openWorkItem.mockClear();
   sdk.workItemForm.openNewWorkItem.mockClear();
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
 });

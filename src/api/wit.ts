@@ -132,10 +132,12 @@ const stateCache = new Map<string, Promise<WitState[]>>();
 export function getStates(type: string): Promise<WitState[]> {
   if (!type) return Promise.resolve([]);
   if (!stateCache.has(type)) {
-    stateCache.set(
-      type,
-      api<{ value: WitState[] }>(`${p()}/_apis/wit/workitemtypes/${encodeURIComponent(type)}/states`).then((r) => r.value)
+    const request = api<{ value: WitState[] }>(`${p()}/_apis/wit/workitemtypes/${encodeURIComponent(type)}/states`).then(
+      (r) => r.value
     );
+    // Don't let a transient failure poison the cache for the rest of the session.
+    request.catch(() => stateCache.get(type) === request && stateCache.delete(type));
+    stateCache.set(type, request);
   }
   return stateCache.get(type)!;
 }

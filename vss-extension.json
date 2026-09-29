@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "safe-ado",
   "publisher": "SAFeADO",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "public": true,
   "name": "SAFe Ado",
   "description": "Scaled Agile Framework (SAFe) for Azure DevOps: Portfolio, Large Solution, ART and Team hierarchy, Program Board, PI Objectives, ROAM risks, PI management and reports.",

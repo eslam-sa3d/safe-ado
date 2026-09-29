@@ -48,7 +48,7 @@ The Marketplace publisher is `SAFeADO` (set in [vss-extension.json](vss-extensio
 ## Testing
 
 ```bash
-npm test               # 239 tests, runs in ~2s
+npm test               # 240 tests, runs in ~2s
 npm run test:coverage  # with coverage report (fails below 95% lines / 85% branches)
 npm run typecheck      # src + tests
 ```

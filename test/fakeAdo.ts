@@ -414,6 +414,7 @@ export const fetchMock = vi.fn(async (input: string, init: RequestInit = {}) => 
   const method = (init.method ?? "GET").toUpperCase();
   const full = String(input);
   const base = fake.baseUrl + "/";
+  // Anything outside the fake collection is a test bug: fail loudly rather than touching the network.
   if (!full.startsWith(base)) throw new Error(`Unexpected URL ${full}`);
   // Path segments stay URL-encoded; routes decode the parts they capture.
   const [path] = full.slice(base.length).split("?");

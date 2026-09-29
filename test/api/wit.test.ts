@@ -196,6 +196,13 @@ describe("metadata", () => {
     expect(cat("Feature", "Unknown")).toBe("InProgress");
   });
 
+  it("does not cache failed state lookups", async () => {
+    fail(/workitemtypes\/Bug\/states/, 503, "Service unavailable", { once: true });
+    await expect(getStates("Bug")).rejects.toThrow("Service unavailable");
+    fake.states.Bug = [{ name: "Active", category: "InProgress", color: "x" }];
+    expect((await getStates("Bug")).map((s) => s.name)).toEqual(["Active"]);
+  });
+
   it("URL-encodes work item type names", async () => {
     await getStates("User Story");
     expect(fake.calls.at(-1)?.path).toBe("p1/_apis/wit/workitemtypes/User%20Story/states");

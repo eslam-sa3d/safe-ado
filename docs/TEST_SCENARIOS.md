@@ -40,6 +40,7 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | CMP-04 | Error bodies are JSON or HTML | The message comes from the JSON `message`, falling back to the HTTP status text | Auto: `api/client.test.ts` |
 | CMP-05 | The dark theme applies | Text, backgrounds and borders follow the host theme | Manual |
 | CMP-06 | Narrow window (< 800px) | The sidebar shrinks and panels stack; nothing is cut off | Manual |
+| CMP-08 | A transient failure while loading work item states | Retried on the next view; not cached for the session | Auto: `api/wit.test.ts` |
 | CMP-07 | Work item form dialogs open from the hub | Clicking a card opens the standard work item dialog | Auto (service call): several view tests; Manual (real dialog) |
 
 ## 3. Setup and configuration
@@ -192,3 +193,4 @@ These were found while writing the tests, fixed in the source, and are now cover
 3. **Picking a team could discard the selection.** The area lookup wrote back into stale form state (SET-12).
 4. **The Kanban count included Removed epics** (KAN-01).
 5. **PI suggestions ignored PIs that loaded later.** This could lead to an overlapping "PI 1" (PI-05).
+6. **A failed state lookup was cached for the whole session.** Every later view showed the error until the page was reloaded (CMP-08). CI found this, and it also led to hardening the harness so tests can never reach the real network.
