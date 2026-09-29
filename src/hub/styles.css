@@ -237,3 +237,59 @@ tr.uncommitted td:first-child { font-style: italic; }
 .facet > summary { list-style: none; }
 .facet > summary::-webkit-details-marker { display: none; }
 .facet-menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; min-width: 180px; max-height: 280px; overflow: auto; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px; display: grid; gap: 6px; }
+
+/* ---------- team planning board ---------- */
+.tb-layout { display: flex; gap: 12px; align-items: flex-start; }
+.tb-main { flex: 1; min-width: 0; }
+.tb-toggle { display: inline-flex; }
+.tb-toggle .btn { border-radius: 0; }
+.tb-toggle .btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.tb-toggle .btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.tb-deps { font-size: 12px; }
+.tb-col-header .tb-col-title { display: flex; align-items: center; gap: 6px; }
+.tb-col-header.past { background: var(--bg-3); color: var(--text-2); }
+.tb-col-header.current { box-shadow: inset 0 3px 0 var(--accent); }
+.tb-today { background: var(--accent); color: #fff; font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 8px; }
+.tb-capacity-row { margin-top: 4px; font-weight: 400; }
+.tb-capacity { color: var(--text); }
+.tb-capacity.locked { cursor: not-allowed; }
+.tb-load.overload { color: var(--bad); font-weight: 700; }
+.tb-capacity-input { width: 72px; padding: 1px 4px; }
+.tb-block-header { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: var(--bg-3); border-bottom: 1px solid var(--border); font-weight: 600; }
+.tb-block-header.current { border-top: 2px solid var(--accent); }
+.tb-block-header.external { border-top: 2px solid var(--warn); }
+.tb-feature-drop { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--text-2); border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 2px 10px; }
+.tb-span { grid-column: 1 / -1; }
+.tb-empty { padding: 8px; }
+.tb-lane-header { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+.tb-lane-title { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px; word-break: break-word; }
+.tb-lane-header.external { font-weight: 400; }
+.tb-outside { width: 100%; display: grid; gap: 4px; }
+.tb-cell { min-height: 70px; }
+.tb-cell.past { background: var(--bg-3); opacity: 0.7; }
+.tb-cell.readonly { background: var(--bg-2); }
+.tb-card { position: relative; padding-right: 22px; }
+.tb-parent { background: rgba(119, 59, 147, 0.14); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-extended { margin-top: 4px; }
+.tb-tag { background: var(--accent-soft); }
+.tb-menu-wrap { position: absolute; top: 2px; right: 4px; }
+.tb-menu-btn { color: var(--text-2); font-weight: 700; padding: 0 2px; }
+.tb-menu { position: absolute; right: 0; top: 18px; z-index: 5; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow); display: grid; padding: 4px 0; min-width: 150px; }
+.tb-menu .link { color: var(--text); padding: 4px 12px; }
+.tb-menu .link:hover { background: var(--bg-3); text-decoration: none; }
+.tb-create { display: grid; gap: 6px; padding: 6px; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow); position: relative; z-index: 3; }
+.tb-create-row { display: flex; gap: 6px; }
+.tb-create-row select { flex: 1; min-width: 0; }
+.tb-create-row input { width: 64px; }
+.tb-critical { background: rgba(205, 74, 69, 0.18); color: var(--bad); }
+.tb-dep { stroke-width: 2; }
+.tb-sidebar { width: 280px; flex-shrink: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); position: sticky; top: 0; max-height: calc(100vh - 140px); overflow: auto; }
+.tb-sidebar-title { font-weight: 600; padding: 10px 12px 4px; }
+.tb-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; }
+.tb-backlog { display: grid; gap: 6px; padding: 8px; }
+.tb-search { width: 100%; }
+.tb-backlog-card { cursor: grab; }
+@media (max-width: 800px) {
+  .tb-layout { flex-direction: column; }
+  .tb-sidebar { width: 100%; position: static; max-height: none; }
+}
