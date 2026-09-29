@@ -134,6 +134,8 @@ describe("filters", () => {
       states: ["Active", "Closed", "New"],
       assignees: ["Ada", "Unassigned"],
       tags: ["MVP", "Payments"],
+      priorities: ["None"],
+      iterations: [],
     });
     expect(facetOptions([{ id: 1, fields: {} }]).types).toEqual([]);
   });

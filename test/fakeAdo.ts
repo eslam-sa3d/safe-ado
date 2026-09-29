@@ -293,13 +293,13 @@ export function seedConfig(config: SafeConfig = makeConfig()) {
   return config;
 }
 
-export function seedDocs(collection: "objectives" | "risks", docs: Json[]) {
+export function seedDocs(collection: "objectives" | "risks" | "milestones" | "capacity" | "wimeta" | "quickfilters" | "votes" | "snapshots", docs: Json[]) {
   const map = new Map<string, Json>();
   docs.forEach((d) => map.set(d.id, { ...clone(d), __etag: 1 }));
   dataStore.collections.set(`${collection}-${fake.projectId}`, map);
 }
 
-export function docs(collection: "objectives" | "risks"): Json[] {
+export function docs(collection: "objectives" | "risks" | "milestones" | "capacity" | "wimeta" | "quickfilters" | "votes" | "snapshots"): Json[] {
   return Array.from(dataStore.collections.get(`${collection}-${fake.projectId}`)?.values() ?? []);
 }
 
@@ -763,6 +763,12 @@ export const dataManager = {
     const c = dataStore.collections.get(collection);
     if (!c) throw Object.assign(new Error(`Document collection '${collection}' does not exist.`), { status: 404 });
     return Array.from(c.values()).map(clone);
+  }),
+  getDocument: vi.fn(async (collection: string, id: string) => {
+    dataFailure("getDocument");
+    const doc = dataStore.collections.get(collection)?.get(id);
+    if (!doc) throw Object.assign(new Error(`Document '${id}' does not exist.`), { status: 404 });
+    return clone(doc);
   }),
   setDocument: vi.fn(async (collection: string, doc: Json) => {
     dataFailure("setDocument");

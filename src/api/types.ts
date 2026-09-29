@@ -156,6 +156,10 @@ export const LINK = {
 export interface Member {
   name: string;
   role: string;
+  /** Azure DevOps identity when picked from the team (enables avatars / profile links). */
+  id?: string;
+  uniqueName?: string;
+  imageUrl?: string;
 }
 
 /** A dated milestone shown on the Roadmap, ART board header and Milestone report. */

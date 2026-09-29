@@ -1,6 +1,7 @@
 import * as SDK from "azure-devops-extension-sdk";
 import type { IExtensionDataManager, IExtensionDataService } from "azure-devops-extension-api/Common/CommonServices";
 import { getProject, ServiceIds } from "./client";
+import type { QuickFilter } from "./filters";
 import { IterationCapacity, Milestone, OrgNode, PiObjective, Risk, SafeConfig, WorkItemMeta, WorkItemTypeMap } from "./types";
 import { getWorkItemTypes } from "./wit";
 
@@ -97,26 +98,41 @@ async function deleteDoc(collection: string, id: string): Promise<void> {
 
 export const objectivesStore = {
   list: () => getDocs<PiObjective>(objectivesCollection()),
+  get: (id: string) => getDoc<PiObjective>(objectivesCollection(), id),
   save: (o: PiObjective) => setDoc(objectivesCollection(), o),
   remove: (id: string) => deleteDoc(objectivesCollection(), id),
 };
 
 export const risksStore = {
   list: () => getDocs<Risk>(risksCollection()),
+  get: (id: string) => getDoc<Risk>(risksCollection(), id),
   save: (r: Risk) => setDoc(risksCollection(), r),
   remove: (id: string) => deleteDoc(risksCollection(), id),
 };
+
+async function getDoc<T>(collection: string, id: string): Promise<T | undefined> {
+  const m = await manager();
+  try {
+    return await m.getDocument(collection, id, { scopeType: "Default" });
+  } catch (e: any) {
+    if (e?.status === 404 || /not.?found|does not exist/i.test(String(e?.message ?? e))) return undefined;
+    throw e;
+  }
+}
 
 function docStore<T extends { id: string }>(name: string) {
   const coll = collection(name);
   return {
     list: () => getDocs<T>(coll()),
+    /** One document by id (undefined when missing) — avoids loading the whole collection. */
+    get: (id: string) => getDoc<T>(coll(), id),
     save: (doc: T) => setDoc(coll(), doc),
     remove: (id: string) => deleteDoc(coll(), id),
   };
 }
 
 export const milestonesStore = docStore<Milestone>("milestones");
+export const quickFiltersStore = docStore<QuickFilter>("quickfilters");
 export const capacityStore = docStore<IterationCapacity>("capacity");
 export const metaStore = docStore<WorkItemMeta>("wimeta");
 

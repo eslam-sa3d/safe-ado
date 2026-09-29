@@ -649,3 +649,15 @@ tr.dep-resolved td { opacity: 0.5; }
 @media (max-width: 800px) {
   .widget-medium { grid-column: 1 / -1; }
 }
+
+/* ---------- filter bar: quick filters, WIQL validation ---------- */
+.wiql-box { display: inline-flex; flex-direction: column; gap: 4px; flex: 1; min-width: 220px; }
+.wiql-box .wiql { width: 100%; }
+.wiql.invalid { border-color: var(--bad); }
+.field-error { color: var(--bad); font-size: 12px; }
+.quick-menu { min-width: 260px; }
+.quick-row { display: flex; align-items: center; justify-content: space-between; padding-right: 12px; }
+.quick-row .check { flex: 1; }
+.quick-save { display: flex; gap: 8px; padding: 8px 16px 4px; border-top: 1px solid var(--border); margin-top: 4px; }
+.quick-save input { flex: 1; min-width: 0; }
+.readonly-banner { margin-bottom: 16px; }

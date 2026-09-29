@@ -408,3 +408,70 @@ export async function getTeamIterations(teamId: string): Promise<TeamIteration[]
 export async function removeTeamIteration(teamId: string, iterationIdentifier: string): Promise<void> {
   await api(`${p()}/${encodeURIComponent(teamId)}/_apis/work/teamsettings/iterations/${iterationIdentifier}`, { method: "DELETE" });
 }
+
+/**
+ * Checks a user-entered WIQL clause against the server before applying it. Returns the server's
+ * error message, or null when the clause is valid.
+ */
+export async function validateWiqlClause(clause: string): Promise<string | null> {
+  try {
+    await api(`${p()}/_apis/wit/wiql?$top=1`, {
+      method: "POST",
+      body: { query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND (${clause})` },
+    });
+    return null;
+  } catch (e: any) {
+    return e?.message ?? String(e);
+  }
+}
+
+export interface Identity {
+  id: string;
+  displayName: string;
+  uniqueName: string;
+  imageUrl?: string;
+}
+
+/** Members of an Azure DevOps team (for assignee and member pickers). */
+export async function getTeamMembers(teamId: string): Promise<Identity[]> {
+  const res = await api<{ value: { identity: Identity }[] }>(`_apis/projects/${p()}/teams/${encodeURIComponent(teamId)}/members?$top=500`);
+  return res.value.map((m) => m.identity);
+}
+
+export interface RelationType {
+  referenceName: string;
+  name: string;
+  attributes?: { usage?: string; topology?: string };
+}
+
+/** Work item link types (for the dependency link setting). */
+export async function getRelationTypes(): Promise<RelationType[]> {
+  const res = await api<{ value: RelationType[] }>(`_apis/wit/workitemrelationtypes`);
+  return res.value.filter((t) => t.attributes?.usage !== "resourceLink");
+}
+
+export interface Revision {
+  id: number;
+  rev: number;
+  fields: Record<string, any>;
+}
+
+/**
+ * Work item revisions from the reporting API (history for burnups and rolled-over items).
+ * Pages through continuation tokens; limited to the given types and fields.
+ */
+export async function getRevisions(types: string[], fields: string[], startDateTime?: string): Promise<Revision[]> {
+  const out: Revision[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < 50; page++) {
+    const qs = [token ? `continuationToken=${encodeURIComponent(token)}` : "", startDateTime ? `startDateTime=${encodeURIComponent(startDateTime)}` : ""].filter(Boolean).join("&");
+    const res = await api<{ values: Revision[]; isLastBatch?: boolean; continuationToken?: string }>(
+      `${p()}/_apis/wit/reporting/workitemrevisions${qs ? `?${qs}` : ""}`,
+      { method: "POST", body: { types: types.filter(Boolean), fields } }
+    );
+    out.push(...res.values);
+    if (res.isLastBatch !== false || !res.continuationToken) break;
+    token = res.continuationToken;
+  }
+  return out;
+}

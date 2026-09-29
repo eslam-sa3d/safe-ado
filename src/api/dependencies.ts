@@ -10,8 +10,22 @@ export interface Dependency {
   consumer: number;
 }
 
-/** Extracts unique provider->consumer pairs from Successor and Predecessor links of `items`. */
-export function dependenciesOf(items: WorkItem[]): Dependency[] {
+export interface DependencyLinkTypes {
+  /** Link from provider to consumer (default Successor). */
+  forward: string;
+  /** Link from consumer to provider (default Predecessor). */
+  reverse: string;
+}
+
+export const DEFAULT_DEPENDENCY_LINK: DependencyLinkTypes = { forward: LINK.successor, reverse: LINK.predecessor };
+
+/** The dependency link types configured in Setup (Agile Hive's "Dependency link" mapping). */
+export function dependencyLinkTypes(config?: { dependencyLink?: DependencyLinkTypes }): DependencyLinkTypes {
+  return config?.dependencyLink ?? DEFAULT_DEPENDENCY_LINK;
+}
+
+/** Extracts unique provider->consumer pairs from the dependency links of `items`. */
+export function dependenciesOf(items: WorkItem[], link: DependencyLinkTypes = DEFAULT_DEPENDENCY_LINK): Dependency[] {
   const seen = new Set<string>();
   const out: Dependency[] = [];
   const add = (provider: number, consumer: number) => {
@@ -24,8 +38,8 @@ export function dependenciesOf(items: WorkItem[]): Dependency[] {
     for (const rel of item.relations ?? []) {
       const other = relationTargetId(rel.url);
       if (other === null) continue;
-      if (rel.rel === LINK.successor) add(item.id, other);
-      else if (rel.rel === LINK.predecessor) add(other, item.id);
+      if (rel.rel === link.forward) add(item.id, other);
+      else if (rel.rel === link.reverse) add(other, item.id);
     }
   }
   return out;

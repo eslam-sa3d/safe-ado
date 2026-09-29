@@ -138,8 +138,10 @@ describe("Work Item List", () => {
     const wiql = screen.getByLabelText("WIQL clause");
     fireEvent.change(wiql, { target: { value: "[System.Tags] CONTAINS 'MVP'" } });
     fireEvent.keyDown(wiql, { key: "Enter" });
-    await waitFor(() => expect(callsTo(/wiql/)).toHaveLength(2));
-    expect(callsTo(/wiql/)[1].body.query).toContain("AND ([System.Tags] CONTAINS 'MVP') ORDER BY");
+    // First the server validates the clause, then the list reloads with it.
+    await waitFor(() => expect(callsTo(/wiql/)).toHaveLength(3));
+    expect(callsTo(/wiql/)[1].url).toContain("$top=1");
+    expect(callsTo(/wiql/)[2].body.query).toContain("AND ([System.Tags] CONTAINS 'MVP') ORDER BY");
   });
 
   it("opens a work item from its ID", async () => {
