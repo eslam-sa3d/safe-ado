@@ -237,3 +237,57 @@ tr.uncommitted td:first-child { font-style: italic; }
 .facet > summary { list-style: none; }
 .facet > summary::-webkit-details-marker { display: none; }
 .facet-menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; min-width: 180px; max-height: 280px; overflow: auto; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px; display: grid; gap: 6px; }
+
+/* ---------- art board / risks / pi management ---------- */
+.segmented { display: inline-flex; align-items: center; gap: 4px; }
+.segmented .btn { border-radius: 0; }
+.segmented .btn:first-of-type { border-radius: var(--radius) 0 0 var(--radius); }
+.segmented .btn:last-of-type { border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
+.dep-line.atRisk { stroke-dasharray: 5 3; }
+.dep-line.resolved { stroke-dasharray: 2 3; opacity: 0.7; }
+.dep-line.readonly { cursor: default; }
+.legend-bar .check { display: inline-flex; align-items: center; gap: 4px; }
+.line.healthy, .line.atRisk, .line.critical, .line.resolved { border-top-width: 2px; }
+.line.atRisk { border-top-style: dashed; }
+.line.resolved { border-top-style: dotted; }
+.board-col-header.current { box-shadow: inset 0 -3px 0 var(--accent); }
+.today-badge { display: inline-block; margin-top: 2px; background: var(--accent); color: #fff; border-radius: 8px; padding: 0 6px; font-size: 10px; font-weight: 600; }
+.milestone-chip { margin-top: 4px; font-size: 11px; font-weight: 400; color: #8b5cf6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-title { display: flex; align-items: center; gap: 4px; }
+.row-toggle { width: 16px; color: var(--text-2); }
+.board-row-header.collapsed, .board-cell.collapsed { padding-top: 4px; padding-bottom: 4px; }
+.board-cell.collapsed { min-height: 0; }
+.pill.link { cursor: pointer; color: var(--text); }
+.pill.due { background: rgba(0, 120, 212, 0.12); }
+.pill.owner { background: rgba(139, 92, 246, 0.14); }
+.pill.warn-icon { background: rgba(214, 127, 60, 0.22); color: var(--warn); font-weight: 600; }
+.card-popover {
+  position: absolute; z-index: 5; left: 0; top: 100%; min-width: 180px; max-width: 280px; margin-top: 2px;
+  background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 6px 8px; cursor: default; font-size: 12px;
+}
+.card-popover ul { margin: 4px 0 0; padding-left: 16px; }
+.exposure-chip { display: inline-block; color: #fff; border-radius: 8px; padding: 0 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
+.risk-assessment { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin: 8px 0; }
+.risk-assessment legend { font-weight: 600; padding: 0 4px; }
+.pi-group-row th { background: var(--bg-2); text-align: left; }
+.pi-status { display: inline-block; border-radius: 8px; padding: 0 8px; font-size: 11px; font-weight: 600; color: #fff; }
+.pi-status-planned { background: #8a8886; }
+.pi-status-current { background: var(--accent); }
+.pi-status-completed { background: var(--good); }
+.pi-row.selected td { background: var(--accent-soft); }
+.pi-row .actions { display: flex; gap: 8px; }
+.ip-iteration { font-weight: 600; color: #8b5cf6; }
+.pill.ip-badge { background: rgba(139, 92, 246, 0.16); color: #8b5cf6; margin-left: 4px; font-weight: 600; }
+.pi-details { margin-top: 16px; }
+.pi-details h4 { margin: 16px 0 6px; }
+.sprint-map-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.sprint-map-list li { padding: 2px 0; }
+.members-editor { margin: 4px 0 8px 32px; padding: 8px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.member-row { display: flex; gap: 6px; align-items: center; }
+.member-row input:first-child { width: 180px; }
+.member-row input:nth-child(2) { width: 240px; }
+@media (max-width: 700px) {
+  .member-row { flex-wrap: wrap; }
+  .member-row input:first-child, .member-row input:nth-child(2) { width: 100%; }
+}

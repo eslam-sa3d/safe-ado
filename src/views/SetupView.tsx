@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { newId } from "../api/data";
 import { childLevels, flatten, LEVEL_COLOR } from "../api/org";
-import { Level, LEVEL_LABEL, OrgNode, SafeConfig } from "../api/types";
+import { Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
 import {
   ClassificationNode,
   getAreaPaths,
@@ -20,6 +20,9 @@ function updateNode(root: OrgNode, id: string, fn: (n: OrgNode) => OrgNode): Org
   if (root.id === id) return fn(root);
   return { ...root, children: root.children.map((c) => updateNode(c, id, fn)) };
 }
+
+export const MAX_MEMBERS = 25;
+export const MAX_ROLE_LENGTH = 100;
 
 function removeNode(root: OrgNode, id: string): OrgNode {
   return { ...root, children: root.children.filter((c) => c.id !== id).map((c) => removeNode(c, id)) };
@@ -218,7 +221,21 @@ function NodeEditor(props: {
   onRemove: (id: string) => void;
 }) {
   const { node, onChange } = props;
+  const [showMembers, setShowMembers] = useState(false);
+  const members = node.members ?? [];
   const set = (patch: Partial<OrgNode>) => onChange(node.id, (n) => ({ ...n, ...patch }));
+  // An empty list is stored as "no members" so adding and removing leaves the config unchanged.
+  const updateMembers = (fn: (m: Member[]) => Member[]) =>
+    onChange(node.id, (n) => {
+      const next = fn(n.members ?? []);
+      return { ...n, members: next.length ? next : undefined };
+    });
+  const move = (i: number, delta: number) =>
+    updateMembers((m) => {
+      const next = [...m];
+      [next[i], next[i + delta]] = [next[i + delta], next[i]];
+      return next;
+    });
   const add = (level: Level) =>
     onChange(node.id, (n) => ({
       ...n,
@@ -261,6 +278,14 @@ function NodeEditor(props: {
             + {LEVEL_LABEL[l]}
           </button>
         ))}
+        <button
+          className="link small"
+          aria-expanded={showMembers}
+          aria-label={`Members of ${node.name}`}
+          onClick={() => setShowMembers(!showMembers)}
+        >
+          {showMembers ? "▾" : "▸"} Members ({members.length})
+        </button>
         {!props.isRoot && (
           <button
             className="link small danger"
@@ -272,6 +297,56 @@ function NodeEditor(props: {
           </button>
         )}
       </div>
+      {showMembers && (
+        <div className="members-editor" role="group" aria-label={`${node.name} members`}>
+          {members.length === 0 && <div className="muted small">No members yet.</div>}
+          {members.map((m, i) => (
+            <div key={i} className="member-row">
+              <input
+                aria-label={`Member ${i + 1} name`}
+                placeholder="Name"
+                value={m.name}
+                onChange={(e) => updateMembers((list) => list.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+              />
+              <input
+                aria-label={`Member ${i + 1} role`}
+                placeholder="Role (e.g. RTE, Product Owner)"
+                maxLength={MAX_ROLE_LENGTH}
+                value={m.role}
+                onChange={(e) =>
+                  updateMembers((list) => list.map((x, j) => (j === i ? { ...x, role: e.target.value.slice(0, MAX_ROLE_LENGTH) } : x)))
+                }
+              />
+              <button className="link small" aria-label={`Move member ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                ↑
+              </button>
+              <button
+                className="link small"
+                aria-label={`Move member ${i + 1} down`}
+                disabled={i === members.length - 1}
+                onClick={() => move(i, 1)}
+              >
+                ↓
+              </button>
+              <button
+                className="link small danger"
+                aria-label={`Remove member ${i + 1}`}
+                onClick={() => updateMembers((list) => list.filter((_, j) => j !== i))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            className="link small"
+            disabled={members.length >= MAX_MEMBERS}
+            onClick={() => updateMembers((list) => [...list, { name: "", role: "" }])}
+          >
+            + Add member
+          </button>
+          {members.length >= MAX_MEMBERS && <span className="muted small"> A node can have at most {MAX_MEMBERS} members.</span>}
+        </div>
+      )}
       {node.children.length > 0 && (
         <ul>
           {node.children.map((c) => (

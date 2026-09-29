@@ -101,7 +101,15 @@ describe("ROAM board", () => {
     fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Key engineer leaving" } });
     fireEvent.change(within(dialog).getByLabelText("Description"), { target: { value: "Knowledge silo" } });
     fireEvent.change(within(dialog).getByLabelText("ROAM status"), { target: { value: "Owned" } });
-    fireEvent.change(within(dialog).getByLabelText("Impact"), { target: { value: "Low" } });
+    fireEvent.change(within(dialog).getByLabelText("Priority"), { target: { value: "Low" } });
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("INTERMEDIATE");
+    fireEvent.change(within(dialog).getByLabelText("Probability"), { target: { value: "Almost Certain" } });
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("INTERMEDIATE");
+    fireEvent.change(within(dialog).getByLabelText("Impact"), { target: { value: "Catastrophic" } });
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("EXTREME");
+    fireEvent.change(within(dialog).getByLabelText("Residual probability"), { target: { value: "Very Unlikely" } });
+    fireEvent.change(within(dialog).getByLabelText("Residual impact"), { target: { value: "Insignificant" } });
+    expect(within(dialog).getByTestId("residual-exposure")).toHaveTextContent("Residual LOW");
     const owner = within(dialog).getByLabelText("Raised by / belongs to") as HTMLSelectElement;
     expect(Array.from(owner.options).map((o) => o.textContent)).toEqual([
       "ART A (Agile Release Train)",
@@ -123,7 +131,50 @@ describe("ROAM board", () => {
       impact: "Low",
       owner: "Priya",
       workItemId: 14,
+      probability: "Almost Certain",
+      impactLevel: "Catastrophic",
+      residualProbability: "Very Unlikely",
+      residualImpact: "Insignificant",
     });
+    const created = card("Key engineer leaving");
+    expect(within(created).getByTitle("Exposure: EXTREME")).toHaveStyle({ background: "#8b0000" });
+    expect(within(created).getByTitle("Residual exposure: LOW")).toHaveTextContent("Residual LOW");
+  });
+
+  it("shows exposure chips on cards, defaulting to INTERMEDIATE when unassessed", async () => {
+    await renderRisks();
+    const c = card("Test env shortage");
+    expect(within(c).getByTitle("Exposure: INTERMEDIATE")).toBeInTheDocument();
+    expect(within(c).getByTitle("Residual exposure: INTERMEDIATE")).toBeInTheDocument();
+    expect(within(c).getByTitle("Priority")).toHaveTextContent("Medium");
+  });
+
+  it("loads existing assessment values into the dialog", async () => {
+    seedDocs("risks", [risk("r9", "n-red", "Assessed", "Owned", "Low", PI2, { probability: "Likely", impactLevel: "Minor", residualProbability: "Unlikely", residualImpact: "Major" })]);
+    await renderView(<RisksView />);
+    fireEvent.click(await screen.findByText("Assessed"));
+    const dialog = screen.getByRole("dialog", { name: "Edit risk" });
+    expect(within(dialog).getByLabelText("Probability")).toHaveValue("Likely");
+    expect(within(dialog).getByLabelText("Impact")).toHaveValue("Minor");
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("MEDIUM");
+    expect(within(dialog).getByTestId("residual-exposure")).toHaveTextContent("Residual HIGH");
+  });
+
+  it("sorts risks within columns by exposure when asked", async () => {
+    seedDocs("risks", [
+      risk("a", "n-red", "Alpha", "Owned", "Low"),
+      risk("b", "n-red", "Bravo", "Owned", "Low", PI2, { probability: "Very Unlikely", impactLevel: "Insignificant" }),
+      risk("c", "n-red", "Charlie", "Owned", "Low", PI2, { probability: "Almost Certain", impactLevel: "Catastrophic" }),
+      risk("d", "n-red", "Delta", "Owned", "Low", PI2, { probability: "Likely", impactLevel: "Major", residualProbability: "Likely", residualImpact: "Major" }),
+      risk("e", "n-red", "Echo", "Owned", "Low", PI2, { probability: "Likely", impactLevel: "Major" }),
+      risk("f", "n-red", "Foxtrot", "Owned", "Low", PI2, { probability: "Likely", impactLevel: "Major" }),
+    ]);
+    await renderView(<RisksView />);
+    await screen.findByText("Alpha");
+    const titles = () => Array.from(column("Owned").querySelectorAll(".card-title")).map((t) => t.textContent);
+    expect(titles()).toEqual(["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]);
+    fireEvent.click(screen.getByLabelText("Sort by exposure"));
+    expect(titles()).toEqual(["Charlie", "Delta", "Echo", "Foxtrot", "Alpha", "Bravo"]);
   });
 
   it("edits an existing risk and clears the linked work item", async () => {

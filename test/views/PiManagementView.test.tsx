@@ -33,9 +33,9 @@ describe("PIs & Iterations view", () => {
   it("lists PIs newest first with dates and short iteration names", async () => {
     await renderPis();
     const table = screen.getByRole("heading", { name: "Program Increments" }).closest(".panel")!;
-    const rows = within(table as HTMLElement).getAllByRole("row").slice(1);
+    const rows = Array.from(table.querySelectorAll("tr.pi-row")) as HTMLElement[];
     expect(rows.map((r) => within(r).getAllByRole("cell")[0].textContent)).toEqual(["PI 2", "PI 1"]);
-    expect(within(rows[0]).getByText("Sprint 1, Sprint 2, IP")).toBeInTheDocument();
+    expect(within(rows[0]).getAllByRole("cell")[2].textContent).toBe("Sprint 1, Sprint 2, IP");
     expect(within(rows[0]).getAllByRole("cell")[1].textContent).toMatch(/ – /);
   });
 

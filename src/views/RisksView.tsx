@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { newId, risksStore } from "../api/data";
 import { flatten, subtreeIds } from "../api/org";
+import { exposure, Exposure, EXPOSURE_COLOR, EXPOSURE_RANK, ImpactLevel, IMPACTS, PROBABILITIES, Probability } from "../api/risk";
 import { LEVEL_LABEL, Risk, ROAM_STATUSES, RoamStatus } from "../api/types";
 import { openWorkItem } from "../api/wit";
 import { ErrorBar, Field, Modal, Spinner, useAsync } from "../components/common";
@@ -14,6 +15,27 @@ const ROAM_HINT: Record<RoamStatus, string> = {
   Mitigated: "Plan in place to reduce impact",
 };
 
+export const riskExposure = (r: Risk) => exposure(r.probability, r.impactLevel);
+export const residualExposure = (r: Risk) => exposure(r.residualProbability, r.residualImpact);
+
+/** Highest exposure first, then highest residual exposure, then title. */
+export function byExposure(a: Risk, b: Risk): number {
+  return (
+    EXPOSURE_RANK[riskExposure(b)] - EXPOSURE_RANK[riskExposure(a)] ||
+    EXPOSURE_RANK[residualExposure(b)] - EXPOSURE_RANK[residualExposure(a)] ||
+    a.title.localeCompare(b.title)
+  );
+}
+
+function ExposureChip({ label, value }: { label: string; value: Exposure }) {
+  return (
+    <span className="exposure-chip" style={{ background: EXPOSURE_COLOR[value] }} title={`${label}: ${value}`}>
+      {label === "Exposure" ? "" : "Residual "}
+      {value}
+    </span>
+  );
+}
+
 /** ROAM board for PI risks, scoped to the selected node and its descendants. */
 export function RisksView() {
   const { node, pi, config } = useSafe();
@@ -21,6 +43,7 @@ export function RisksView() {
   const [editing, setEditing] = useState<Risk | null>(null);
   const [error, setError] = useState<string>();
   const [over, setOver] = useState<RoamStatus | null>(null);
+  const [sortByExposure, setSortByExposure] = useState(false);
   const { data, loading, error: loadError, setData } = useAsync(() => risksStore.list(), []);
 
   if (loading && !data) return <Spinner />;
@@ -54,6 +77,9 @@ export function RisksView() {
         <strong>{risks.length} risks</strong>
         <span className="spacer" />
         <label className="check">
+          <input type="checkbox" checked={sortByExposure} onChange={(e) => setSortByExposure(e.target.checked)} /> Sort by exposure
+        </label>
+        <label className="check">
           <input type="checkbox" checked={allPis} onChange={(e) => setAllPis(e.target.checked)} /> All PIs
         </label>
         <button
@@ -80,6 +106,7 @@ export function RisksView() {
       <div className="roam">
         {ROAM_STATUSES.map((status) => {
           const col = risks.filter((r) => r.status === status);
+          if (sortByExposure) col.sort(byExposure);
           return (
             <div
               key={status}
@@ -113,7 +140,11 @@ export function RisksView() {
                 >
                   <div className="card-title">{r.title}</div>
                   <div className="card-meta">
-                    <span className="pill">{r.impact}</span>
+                    <ExposureChip label="Exposure" value={riskExposure(r)} />
+                    <ExposureChip label="Residual exposure" value={residualExposure(r)} />
+                    <span className="pill" title="Priority">
+                      {r.impact}
+                    </span>
                     <span className="muted">{nodeName.get(r.nodeId)}</span>
                     {r.owner && <span className="muted">· {r.owner}</span>}
                     {r.workItemId ? (
@@ -193,7 +224,7 @@ function RiskDialog(props: {
             ))}
           </select>
         </Field>
-        <Field label="Impact">
+        <Field label="Priority">
           <select value={r.impact} onChange={(e) => set("impact", e.target.value as Risk["impact"])}>
             <option>Low</option>
             <option>Medium</option>
@@ -201,6 +232,56 @@ function RiskDialog(props: {
           </select>
         </Field>
       </div>
+      <fieldset className="risk-assessment">
+        <legend>Assessment</legend>
+        <div className="field-row">
+          <Field label="Probability">
+            <select value={r.probability ?? "Unspecified"} onChange={(e) => set("probability", e.target.value as Probability)}>
+              {PROBABILITIES.map((p) => (
+                <option key={p}>{p}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Impact">
+            <select value={r.impactLevel ?? "Unspecified"} onChange={(e) => set("impactLevel", e.target.value as ImpactLevel)}>
+              {IMPACTS.map((p) => (
+                <option key={p}>{p}</option>
+              ))}
+            </select>
+          </Field>
+          <div className="field">
+            <span className="field-label">Exposure</span>
+            <span data-testid="exposure">
+              <ExposureChip label="Exposure" value={riskExposure(r)} />
+            </span>
+          </div>
+        </div>
+        <div className="field-row">
+          <Field label="Residual probability">
+            <select
+              value={r.residualProbability ?? "Unspecified"}
+              onChange={(e) => set("residualProbability", e.target.value as Probability)}
+            >
+              {PROBABILITIES.map((p) => (
+                <option key={p}>{p}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Residual impact">
+            <select value={r.residualImpact ?? "Unspecified"} onChange={(e) => set("residualImpact", e.target.value as ImpactLevel)}>
+              {IMPACTS.map((p) => (
+                <option key={p}>{p}</option>
+              ))}
+            </select>
+          </Field>
+          <div className="field">
+            <span className="field-label">Residual exposure</span>
+            <span data-testid="residual-exposure">
+              <ExposureChip label="Residual exposure" value={residualExposure(r)} />
+            </span>
+          </div>
+        </div>
+      </fieldset>
       <div className="field-row">
         <Field label="Raised by / belongs to">
           <select value={r.nodeId} onChange={(e) => set("nodeId", e.target.value)}>
