@@ -1,4 +1,5 @@
 import { F, Level, ProgramIncrement, WorkItemMeta } from "./types";
+import { localToday } from "./rules";
 
 /**
  * Pure date / geometry logic for the Roadmap (Agile Hive parity). Dates are whole UTC days;
@@ -31,7 +32,7 @@ export function fromDay(day: number): string {
 }
 
 export function todayIso(now = Date.now()): string {
-  return fromDay(Math.floor(now / DAY_MS));
+  return localToday(new Date(now));
 }
 
 export function addDays(date: string, days: number): string {

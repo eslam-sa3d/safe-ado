@@ -1,6 +1,7 @@
 import { calculatedSprintIndex, sprintIndex } from "./dependencies";
 import { F, LINK, Milestone, OrgNode, SafeConfig, Sprint, WorkItem } from "./types";
 import { isUnder, relationTargetId } from "./wit";
+import { localToday } from "./rules";
 
 /**
  * Pure helpers for the ART / Solution Planning Board's Agile Hive "calculated" mode:
@@ -108,5 +109,5 @@ export function milestonesBySprint(milestones: Milestone[], nodeIds: string[], s
 }
 
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localToday();
 }

@@ -53,23 +53,43 @@ interface RequestOptions {
   contentType?: string;
 }
 
+/**
+ * Retry policy for throttled requests. Azure DevOps answers 429 (and sometimes 503) with a
+ * Retry-After header when a user exceeds their TSTU budget; we honour it, else back off.
+ */
+export const retryPolicy = { retries: 3, baseDelayMs: 1000, maxDelayMs: 30000 };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function retryDelay(response: Response, attempt: number): number {
+  const header = Number(response.headers.get("Retry-After"));
+  const ms = Number.isFinite(header) && header >= 0 && response.headers.has("Retry-After") ? header * 1000 : retryPolicy.baseDelayMs * 2 ** attempt;
+  return Math.min(ms, retryPolicy.maxDelayMs);
+}
+
 /** Calls `{collectionUrl}/{path}` with api-version 7.0 and the extension's access token. */
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const base = await getBaseUrl();
   const sep = path.includes("?") ? "&" : "?";
   const url = `${base}${path}${sep}api-version=${API_VERSION}`;
-  const token = await SDK.getAccessToken();
 
-  const response = await fetch(url, {
-    method: options.method ?? "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      "Content-Type": options.contentType ?? "application/json",
-      "X-TFS-FedAuthRedirect": "Suppress",
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  let response: Response;
+  for (let attempt = 0; ; attempt++) {
+    const token = await SDK.getAccessToken();
+    response = await fetch(url, {
+      method: options.method ?? "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": options.contentType ?? "application/json",
+        "X-TFS-FedAuthRedirect": "Suppress",
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+    const throttled = response.status === 429 || response.status === 503;
+    if (!throttled || attempt >= retryPolicy.retries) break;
+    await sleep(retryDelay(response, attempt));
+  }
 
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
@@ -94,4 +114,18 @@ export function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
+}
+
+/** Runs `fn` over `items` with at most `limit` calls in flight, preserving result order. */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }

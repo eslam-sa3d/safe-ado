@@ -61,10 +61,10 @@ describe("path helpers", () => {
 });
 
 describe("work items", () => {
-  it("queries ids, capped at 5000", async () => {
+  it("queries ids in pages of up to 20,000", async () => {
     const ids = await queryIds("SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] IN ('Epic')");
     expect(ids).toEqual([1, 2, 3, 4]);
-    expect(fake.calls[0].url).toContain("wiql?$top=5000&api-version=7.0");
+    expect(fake.calls[0].url).toContain("wiql?$top=20000&api-version=7.0");
   });
 
   it("returns parent/child edges from link queries", async () => {
@@ -197,7 +197,7 @@ describe("metadata", () => {
   });
 
   it("does not cache failed state lookups", async () => {
-    fail(/workitemtypes\/Bug\/states/, 503, "Service unavailable", { once: true });
+    fail(/workitemtypes\/Bug\/states/, 500, "Service unavailable", { once: true });
     await expect(getStates("Bug")).rejects.toThrow("Service unavailable");
     fake.states.Bug = [{ name: "Active", category: "InProgress", color: "x" }];
     expect((await getStates("Bug")).map((s) => s.name)).toEqual(["Active"]);

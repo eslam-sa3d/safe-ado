@@ -1,4 +1,5 @@
 import { ProgramIncrement, Sprint } from "./types";
+import { isIpIteration } from "./rules";
 
 /** Agile Hive PI / iteration rules used by the PIs & Iterations view. */
 
@@ -12,7 +13,8 @@ export const dayOf = (iso?: string) => (iso ?? "").slice(0, 10);
 /** The ISO form Azure DevOps expects for iteration dates. */
 export const toIso = (day: string) => `${day}T00:00:00Z`;
 
-export const isIp = (name: string) => /\bIP\b/.test(name);
+/** IP iteration detection (shared rule, see api/rules.ts). */
+export const isIp = (name: string, piName?: string) => isIpIteration(name, piName);
 
 export function piStatus(pi: Sprint, today: string): PiStatus {
   if (pi.finish && dayOf(pi.finish) < today) return "completed";

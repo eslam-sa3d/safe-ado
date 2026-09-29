@@ -1,6 +1,7 @@
 import { Criticality, F, LINK, Sprint, WorkItem, WorkItemMeta } from "./types";
 import { criticalityByIteration, dependenciesOf, sprintIndex } from "./dependencies";
 import { isUnder, relationTargetId } from "./wit";
+import { localToday, wsjfOf } from "./rules";
 
 /**
  * Pure logic behind the Team Planning Board (Agile Hive's "breakout board"): iteration
@@ -11,7 +12,7 @@ export type IterationStatus = "past" | "current" | "future";
 
 /** Today as YYYY-MM-DD (UTC, like the iteration dates Azure DevOps returns). */
 export function todayIso(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
+  return localToday(now);
 }
 
 /** An iteration is past once its finish date is before today; undated iterations are future. */
@@ -139,14 +140,9 @@ export function unassignMeta(meta: WorkItemMeta, nodeId: string, piPath: string)
   return { ...meta, assignedNodeIds, assignedPiPaths };
 }
 
-/** WSJF = (Business Value + Time Criticality) / Effort, or undefined when not computable. */
-export function wsjf(item: WorkItem): number | undefined {
-  const bv = item.fields[F.businessValue];
-  const tc = item.fields[F.timeCriticality];
-  const effort = Number(item.fields[F.effort]);
-  if (bv === undefined && tc === undefined) return undefined;
-  if (!effort) return undefined;
-  return Math.round(((Number(bv ?? 0) + Number(tc ?? 0)) / effort) * 10) / 10;
+/** WSJF (shared formula in api/rules.ts), or undefined when not computable. */
+export function wsjf(item: WorkItem, rroeField?: string): number | undefined {
+  return wsjfOf(item.fields, rroeField) ?? undefined;
 }
 
 export type SortKey = "rank" | "priority" | "points" | "id" | "wsjf";

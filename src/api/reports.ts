@@ -2,6 +2,7 @@ import { calculatedSprintIndex, criticalityByDates, criticalityByIteration, Depe
 import { EXPOSURE_RANK, exposure, Exposure } from "./risk";
 import { Criticality, F, IterationCapacity, LINK, Milestone, OrgNode, PiObjective, ProgramIncrement, Risk, Sprint, WorkItem, WorkItemMeta } from "./types";
 import { isUnder, relationTargetId } from "./wit";
+import { DEFAULT_RROE_FIELD, isIpIteration, wsjfScore } from "./rules";
 
 /**
  * Pure calculations behind the Reports dashboard (Agile Hive widget formulas).
@@ -48,6 +49,8 @@ export interface RItem {
   assignedTo?: string;
   businessValue?: number;
   timeCriticality?: number;
+  /** Risk Reduction / Opportunity Enablement, when the process has the field. */
+  rroe?: number;
   effort?: number;
 }
 
@@ -80,6 +83,7 @@ export function normalize(wi: WorkItem, categoryOf: (type: string, state: string
     assignedTo: typeof assigned === "string" ? assigned : assigned?.displayName,
     businessValue: num(f[F.businessValue]),
     timeCriticality: num(f[F.timeCriticality]),
+    rroe: num(f[DEFAULT_RROE_FIELD]),
     effort: num(f[F.effort]),
   };
 }
@@ -129,7 +133,7 @@ export function piProgress(p: Sprint, today: number): PiProgress | null {
 }
 
 /** Agile Hive treats a sprint whose name contains "IP" as the Innovation & Planning iteration. */
-export const isIpSprint = (s: Sprint) => /\bIP\b/i.test(s.name);
+export const isIpSprint = (s: Sprint, piName?: string) => isIpIteration(s.name, piName);
 
 // ---------------------------------------------------------------------------------------------
 // KPI cards
@@ -467,9 +471,7 @@ export function riskRows(risks: Risk[]): RiskRow[] {
 
 /** WSJF = (Business Value + Time Criticality) ÷ Effort (job size); null without effort. */
 export function wsjf(i: RItem): number | null {
-  if (!i.effort || i.effort <= 0) return null;
-  if (i.businessValue === undefined && i.timeCriticality === undefined) return null;
-  return round1(((i.businessValue ?? 0) + (i.timeCriticality ?? 0)) / i.effort);
+  return wsjfScore(i.businessValue, i.timeCriticality, i.rroe, i.effort);
 }
 
 /** The deepest team node whose area path contains `area`. */

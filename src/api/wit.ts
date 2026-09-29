@@ -1,6 +1,6 @@
 import * as SDK from "azure-devops-extension-sdk";
 import type { IWorkItemFormNavigationService } from "azure-devops-extension-api/WorkItemTracking/WorkItemTrackingServices";
-import { api, chunk, getBaseUrl, getProject, ServiceIds, wiqlString } from "./client";
+import { api, chunk, getBaseUrl, getProject, mapLimit, ServiceIds, wiqlString } from "./client";
 import { ProgramIncrement, Sprint, WorkItem } from "./types";
 
 const p = () => encodeURIComponent(getProject().id);
@@ -17,9 +17,43 @@ interface WiqlLinkResult {
   workItemRelations: { source: { id: number } | null; target: { id: number }; rel: string | null }[];
 }
 
+/**
+ * WIQL paging. Azure DevOps returns at most 20,000 ids per flat query; when a page is full we
+ * continue with "[System.Id] > last" ordered by id, so large backlogs are never cut off silently.
+ */
+export const wiqlPaging = { pageSize: 20000, maxItems: 200000 };
+
+export class QueryLimitError extends Error {}
+
+function insertBeforeOrderBy(query: string, clause: string): string {
+  const i = query.search(/ ORDER BY /i);
+  return i < 0 ? `${query} ${clause}` : `${query.slice(0, i)} ${clause}${query.slice(i)}`;
+}
+
 export async function queryIds(wiql: string): Promise<number[]> {
-  const res = await api<WiqlFlatResult>(`${p()}/_apis/wit/wiql?$top=5000`, { method: "POST", body: { query: wiql } });
-  return res.workItems.map((w) => w.id);
+  const size = wiqlPaging.pageSize;
+  const first = await api<WiqlFlatResult>(`${p()}/_apis/wit/wiql?$top=${size}`, { method: "POST", body: { query: wiql } });
+  const ids = first.workItems.map((w) => w.id);
+  if (ids.length < size) return ids;
+
+  // Full page: continue by id. Ordering switches to id order for very large result sets.
+  const seen = new Set(ids);
+  const unordered = wiql.replace(/ ORDER BY .*$/i, "");
+  let last = Math.max(...ids);
+  for (;;) {
+    if (seen.size >= wiqlPaging.maxItems) throw new QueryLimitError(`The query matches more than ${wiqlPaging.maxItems} work items. Narrow the scope or filters.`);
+    const page = await api<WiqlFlatResult>(`${p()}/_apis/wit/wiql?$top=${size}`, {
+      method: "POST",
+      body: { query: `${insertBeforeOrderBy(unordered, `AND [System.Id] > ${last}`)} ORDER BY [System.Id] ASC` },
+    });
+    const next = page.workItems.map((w) => w.id).filter((id) => !seen.has(id));
+    next.forEach((id) => {
+      seen.add(id);
+      ids.push(id);
+    });
+    if (page.workItems.length < size || next.length === 0) return ids;
+    last = Math.max(...next);
+  }
 }
 
 /** Runs a WorkItemLinks query and returns parent -> child edges (roots have parent null). */
@@ -34,15 +68,14 @@ export async function queryLinks(wiql: string): Promise<{ parent: number | null;
  */
 export async function getWorkItems(ids: number[], fields?: string[], withRelations = false): Promise<WorkItem[]> {
   const unique = Array.from(new Set(ids));
-  const batches = await Promise.all(
-    chunk(unique, 200).map((batch) =>
+  // At most 4 batch requests in flight, to stay clear of Azure DevOps throttling.
+  const batches = await mapLimit(chunk(unique, 200), 4, (batch) =>
       api<{ value: WorkItem[] }>(`${p()}/_apis/wit/workitemsbatch`, {
         method: "POST",
         body: withRelations
           ? { ids: batch, $expand: "Relations", errorPolicy: "Omit" }
           : { ids: batch, fields, errorPolicy: "Omit" },
       })
-    )
   );
   return batches.flatMap((b) => b.value).filter(Boolean);
 }
@@ -302,9 +335,10 @@ export function underAny(field: string, paths: string[]): string {
   return "(" + paths.map((a) => `${field} UNDER ${wiqlString(a)}`).join(" OR ") + ")";
 }
 
+/** An empty type list (e.g. a level the process doesn't have) matches nothing rather than producing invalid WIQL. */
 export function typeIn(types: string[], field = "[System.WorkItemType]"): string {
   const list = Array.from(new Set(types.filter(Boolean))).map(wiqlString).join(", ");
-  return `${field} IN (${list})`;
+  return list ? `${field} IN (${list})` : "[System.Id] < 0";
 }
 
 export function isUnder(path: string | undefined, parent: string): boolean {

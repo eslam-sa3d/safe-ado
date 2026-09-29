@@ -27,13 +27,15 @@ import { ProgramIncrement } from "../../src/api/types";
 const pi = (path: string, start?: string, finish?: string): ProgramIncrement => ({ name: path, path, identifier: path, start, finish, sprints: [] });
 
 describe("roadmap date helpers", () => {
-  it("converts between dates and day numbers in UTC", () => {
+  it("converts between dates and day numbers, with a local today", () => {
     expect(toDay("1970-01-02")).toBe(1);
     expect(toDay("2026-03-01T00:00:00Z")).toBe(toDay("2026-03-01"));
     expect(fromDay(toDay("2024-02-29"))).toBe("2024-02-29");
     expect(addDays("2024-02-28", 2)).toBe("2024-03-01");
     expect(addDays("2024-03-01", -1)).toBe("2024-02-29");
-    expect(todayIso(Date.parse("2026-09-29T23:59:00Z"))).toBe("2026-09-29");
+    // "Today" is the user's local date, not the UTC date.
+    expect(todayIso(new Date(2026, 8, 29, 23, 59).getTime())).toBe("2026-09-29");
+    expect(todayIso(new Date(2026, 8, 30, 0, 1).getTime())).toBe("2026-09-30");
     expect(todayIso()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(toIsoDateTime("2026-01-05")).toBe("2026-01-05T00:00:00Z");
     expect(toIsoDateTime("2026-01-05T10:00:00Z")).toBe("2026-01-05T00:00:00Z");

@@ -5,6 +5,7 @@ import { F, WorkItem } from "../api/types";
 import { getFieldNames, getStates, openNewWorkItem, openWorkItem, queryWorkItems, setFields } from "../api/wit";
 import { Empty, ErrorBar, Spinner, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
+import { wsjfOf } from "../api/rules";
 
 /**
  * WSJF = Cost of Delay / Job Size. Stock processes carry Business Value and Time Criticality;
@@ -12,13 +13,7 @@ import { useSafe } from "../components/context";
  */
 const RROE_FIELD = "Custom.RROEValue";
 
-function wsjf(item: WorkItem): number | null {
-  const f = item.fields;
-  const size = Number(f[F.effort]) || 0;
-  if (!size) return null;
-  const cod = (Number(f[F.businessValue]) || 0) + (Number(f[F.timeCriticality]) || 0) + (Number(f[RROE_FIELD]) || 0);
-  return cod ? Math.round((cod / size) * 10) / 10 : null;
-}
+const wsjf = (item: WorkItem) => wsjfOf(item.fields, RROE_FIELD);
 
 export function PortfolioKanban() {
   const { config, node } = useSafe();

@@ -19,6 +19,7 @@ import { PointsBurnedWidget } from "./reports/PointsBurnedWidget";
 import { PredictabilityWidget } from "./reports/PredictabilityWidget";
 import { RisksWidget } from "./reports/RisksWidget";
 import { VelocityWidget } from "./reports/VelocityWidget";
+import { localToday } from "../api/rules";
 
 export type WidgetKey =
   | "piProgress"
@@ -94,7 +95,7 @@ function render(key: WidgetKey, data: ReportData, today: number) {
 /** Reports: Agile Hive's landing dashboard, composed per SAFe layer. */
 export function ReportsView() {
   const { config, node, pi } = useSafe();
-  const today = useMemo(() => toDay(new Date()), []);
+  const today = useMemo(() => toDay(localToday()), []);
   const { data, loading, error, reload } = useAsync(() => loadReportData(config, node, pi), [config, node.id, pi?.path]);
 
   return (

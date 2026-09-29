@@ -1,6 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { beforeEach, vi } from "vitest";
+import { retryPolicy } from "../src/api/client";
 import { dataManager, fetchMock, resetFake } from "./fakeAdo";
+
+// Retry throttled requests immediately in tests.
+retryPolicy.baseDelayMs = 0;
 import * as sdk from "./sdkMock";
 
 vi.mock("azure-devops-extension-sdk", () => import("./sdkMock"));
