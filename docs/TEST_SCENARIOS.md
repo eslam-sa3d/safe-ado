@@ -175,6 +175,32 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | KAN-04 | Open an epic, create a new epic in the portfolio area, refresh | As described | Auto: `views/PortfolioKanban.test.tsx` |
 | KAN-05 | No Epic type mapped | Guidance shown | Auto: `views/PortfolioKanban.test.tsx` |
 
+## 11a. Agile Hive parity features
+
+| ID | Scenario | Expected | Verified by |
+|---|---|---|---|
+| RMP-01 | Roadmap timeline: zoom, Today button, PI / iteration / milestone rows | As in Agile Hive | Auto: `views/RoadmapView.test.tsx` |
+| RMP-02 | Move, resize and change the lane of a card; save planned dates (and Start/Target Date when the fields exist) | Saved; overlap with a PI assigns it at ART level | Auto: `views/RoadmapView.test.tsx`, `api/roadmap.test.ts` |
+| RMP-03 | Plan an item by dragging it from the unplanned sidebar (or with the Plan button) | Default durations 60/30/21 days | Auto: `views/RoadmapView.test.tsx` |
+| RMP-04 | Date-based dependency criticality, filter and edge indicators | Healthy / At risk / Critical / Resolved | Auto: `views/RoadmapView.test.tsx` |
+| TPB-01 | Team board: sprint columns, feature swimlanes, Independent lane, completed sprints locked | As described | Auto: `views/TeamBoard.test.tsx`, `api/teamboard.test.ts` |
+| TPB-02 | Edit capacity; load vs. capacity with the overload highlight | Saved per team and sprint | Auto: `views/TeamBoard.test.tsx` |
+| TPB-03 | Drag a story to set its sprint and parent; drag a feature to create a swimlane; remove an empty swimlane | As described | Auto: `views/TeamBoard.test.tsx` |
+| TPB-04 | Create an item in a cell; remove an item from the board | As described | Auto: `views/TeamBoard.test.tsx` |
+| TPB-05 | Sibling teams load lazily and are read-only; EXTERNAL lanes; swimlane filter | As described | Auto: `views/TeamBoard.test.tsx` |
+| ART-01 | Calculated placement from children; owning team; involved teams; unplanned-children warning | As described | Auto: `views/ProgramBoard.test.tsx`, `api/artboard.test.ts` |
+| ART-02 | Milestones in the header; critical dependencies per row; collapse rows | As described | Auto: `views/ProgramBoard.test.tsx` |
+| REP-01 | All 14 report widgets and their formulas, per level | See the parity document | Auto: `views/ReportsView.test.tsx`, `views/reports/*`, `api/reports.test.ts` |
+| WIL-01 | Work Item List: inline edits with rollback on failure, sorting, level columns, CSV export | As described | Auto: `views/WorkItemList.test.tsx` |
+| ORG-01 | My Organization: add, re-parent by drag with adjacency rules, detach, remove, hover highlighting | As described | Auto: `views/OrganizationView.test.tsx` |
+| STAR-01 | Star units; the list persists per user | As described | Auto: `components/Sidebar.test.tsx` |
+| FORM-01 | SAFe panel on the work item form shows the unit, PI, parent and children, and edits planning metadata | As described | Auto: `form/FormPanel.test.tsx`, `form/form.test.tsx`; **Manual**: open a work item in real Azure DevOps and check the panel loads and refreshes on save |
+| PIM-01 | Edit or delete a PI; add or edit iterations; overlap and 10-iteration limits; sprint mapping per team | As described | Auto: `views/PiManagementDetails.test.tsx`, `api/artboard.test.ts` (PI rules); **Manual on Server 2022.1**: delete with reclassification |
+| RSK-08 | Risk probability and impact, residual values, exposure chips, sort by exposure | Follows the Agile Hive matrix | Auto: `views/RisksView.test.tsx`, `api/risk.test.ts` |
+| MEM-01 | Members per unit in Setup (maximum 25), shown in the Reports header | As described | Auto: `views/SetupMembers.test.tsx`, `views/ReportsView.test.tsx` |
+| FLT-01 | Shared filter bar: facets, WIQL clause, Copy WIQL, Clear | As described | Auto: `components/FilterBar.test.tsx`, `api/foundation.test.ts` |
+| MAN-DND | Mouse and touchpad dragging on the Roadmap and boards in a real browser | Smooth; no text selection glitches | **Manual** |
+
 ## 12. Security and permissions (manual)
 
 | ID | Scenario | Expected |

@@ -154,17 +154,8 @@ tr.uncommitted td:first-child { font-style: italic; }
 .dep-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; overflow: visible; }
 .dep-line { fill: none; stroke-width: 2; pointer-events: stroke; cursor: pointer; }
 .dep-line:hover { stroke-width: 4; }
-.dep-line.ok, .dep-head.ok { stroke: #8a8886; fill: none; }
-.dep-head.ok { fill: #8a8886; }
-.dep-line.warn { stroke: var(--warn); stroke-dasharray: 5 3; }
-.dep-head.warn { fill: var(--warn); }
-.dep-line.conflict { stroke: var(--bad); }
-.dep-head.conflict { fill: var(--bad); }
 .legend-bar { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
 .legend-bar .line { display: inline-block; width: 20px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
-.line.ok { border-color: #8a8886; }
-.line.warn { border-color: var(--warn); border-top-style: dashed; }
-.line.conflict { border-color: var(--bad); }
 
 /* ---------- kanban / ROAM ---------- */
 .kanban, .roam { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 12px; overflow-x: auto; align-items: start; }
@@ -288,6 +279,7 @@ tr.uncommitted td:first-child { font-style: italic; }
 @media (max-width: 800px) {
   .rm-body { flex-direction: column; }
   .rm-sidebar { width: auto; max-height: 200px; }
+}
 /* ---------- team planning board ---------- */
 .tb-layout { display: flex; gap: 12px; align-items: flex-start; }
 .tb-main { flex: 1; min-width: 0; }
@@ -437,6 +429,7 @@ tr.uncommitted td:first-child { font-style: italic; }
 @media (max-width: 700px) {
   .member-row { flex-wrap: wrap; }
   .member-row input:first-child, .member-row input:nth-child(2) { width: 100%; }
+}
 /* ---------- reports ---------- */
 .reports-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; align-items: stretch; }
 .widget { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; }

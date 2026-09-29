@@ -108,9 +108,9 @@ describe("Reports header", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: "Setup" })).toHaveAttribute("aria-selected", "true"));
   });
 
-  it("does nothing on the Setup link outside the hub shell", async () => {
+  it("hides the Setup link outside the hub shell", async () => {
     await renderReports();
-    fireEvent.click(within(widget("Unit")).getByRole("button", { name: "Add members in Setup" }));
-    expect(widget("Unit")).toBeInTheDocument();
+    expect(within(widget("Unit")).getByText(/No members/)).toBeInTheDocument();
+    expect(within(widget("Unit")).queryByRole("button", { name: "Add members in Setup" })).toBeNull();
   });
 });

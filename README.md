@@ -6,16 +6,25 @@ It supports **Azure DevOps Services** and **Azure DevOps Server 2022.1**.
 
 ## Features
 
+The feature set follows Agile Hive for Jira. [docs/AGILE_HIVE_PARITY.md](docs/AGILE_HIVE_PARITY.md) compares the two feature by feature.
+
 | View | Level | What it does |
 |---|---|---|
-| Portfolio Kanban | Portfolio | Epics by state; drag to change state; WSJF sort |
-| Program Board | Solution / ART / Team | Features by team row × iteration column for the selected PI; drag to re-plan; successor links drawn as dependencies (red = conflict); click two cards to add a dependency |
-| PI Objectives | Solution / ART / Team | Committed/uncommitted objectives, planned/actual BV, predictability |
-| Risks (ROAM) | All | ROAM board with drag-and-drop |
-| Work Item Hierarchy | All | Epic → Capability → Feature → Story tree with point roll-ups |
-| Reports | All | PI predictability trend, feature/epic progress, velocity per team per iteration |
-| PIs & Iterations | Global | Create a PI (sprints + IP iteration) and assign it to all teams |
-| Setup | Global | Type mapping, PI root iteration, hierarchy editor, generate from area paths |
+| **Reports** (landing page) | All | Header with members; PI progress; story points burned; business value; load vs. capacity; velocity; critical dependencies; dependency overview; burnup (scope, burned, ideal, forecast); milestones; PI objectives; PI risks with exposure; PI / Epic overview; iteration overview; predictability trend |
+| **Roadmap** | Portfolio / Solution / ART | Timeline with PI, iteration and milestone rows. Drag and resize to set planned dates. Unplanned items sit in a sidebar. The PI is assigned automatically at ART level. Dependencies are rated by date |
+| **ART / Solution Planning Board** | Solution / ART | *Calculated* mode (the default) places features by their teams' plans and shows involved teams, the owning team, unplanned-children warnings, milestones and critical dependencies per row. *Feature iteration* mode supports drag-and-drop re-planning and dependency editing |
+| **Team Planning Board** | Team | Sprint columns with feature swimlanes and an Independent lane. Load vs. capacity per sprint. Team and ART backlogs. Drag to set sprint and parent. Create items in a cell. Read-only sibling teams. EXTERNAL dependency lanes |
+| **Portfolio Kanban** | Portfolio | Epics by state; drag to change state; sort by WSJF |
+| **PI Objectives** | Solution / ART / Team | Committed and uncommitted objectives, planned and actual BV, predictability |
+| **Risks (ROAM)** | All | ROAM board; probability and impact, with residual values and the exposure matrix |
+| **Work Item List** | All | Inline edit of title, priority, assignee and parent. Level-specific columns (owning team, involved teams, assigned PIs, PI involvement). Sort, filter, CSV export |
+| **Work Item Hierarchy** | All | Epic → Capability → Feature → Story tree with story-point roll-ups |
+| **My Organization** | Global | Canvas with one band per layer. Add, re-parent by drag, detach or remove units |
+| **PIs & Iterations** | Global | Create, edit and delete PIs and iterations, including an IP iteration. Overlap checks and a maximum of 10 iterations. Sprint mapping per team |
+| **Setup** | Global | Type mapping, PI root iteration, hierarchy editor with members, generate the hierarchy from area paths |
+| **SAFe panel** on the work item form | — | Shows the item's unit, PI, parent and children. Edits owning team, assigned PIs and planned dates |
+
+Every board and list has the shared filter bar: text search, Type / State / Assignee / Tags facets, an advanced WIQL clause, Copy WIQL, and Clear. Units can be starred in the sidebar.
 
 ## How SAFe maps onto Azure DevOps
 
@@ -48,7 +57,7 @@ The Marketplace publisher is `SAFeADO` (set in [vss-extension.json](vss-extensio
 ## Testing
 
 ```bash
-npm test               # 240 tests, runs in ~2s
+npm test               # 558 tests
 npm run test:coverage  # with coverage report (fails below 95% lines / 85% branches)
 npm run typecheck      # src + tests
 ```

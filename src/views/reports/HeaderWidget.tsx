@@ -4,18 +4,9 @@ import { LEVEL_LABEL } from "../../api/types";
 import { fmtDate } from "../../components/common";
 import { useSafe } from "../../components/context";
 
-/**
- * Opens the global Setup tab. The shell keeps the active view to itself, so the report
- * clicks the tab rather than reaching into App state.
- */
-export function openSetup() {
-  const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-  tabs.find((t) => t.textContent === "Setup")?.click();
-}
-
 /** Unit name, layer, the PI and iteration running today, and the unit's members. */
 export function HeaderWidget({ today }: { today: number }) {
-  const { node, pis } = useSafe();
+  const { node, pis, openView } = useSafe();
   const { pi, sprint } = currentIteration(pis, today);
   const members = node.members ?? [];
   return (
@@ -40,9 +31,11 @@ export function HeaderWidget({ today }: { today: number }) {
         {members.length === 0 ? (
           <span className="muted small">
             No members.{" "}
-            <button className="link" onClick={openSetup}>
-              Add members in Setup
-            </button>
+            {openView && (
+              <button className="link" onClick={() => openView("setup")}>
+                Add members in Setup
+              </button>
+            )}
           </span>
         ) : (
           members.map((m, i) => (

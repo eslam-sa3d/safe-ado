@@ -124,6 +124,7 @@ export function App() {
     pis,
     pi,
     reloadPis: () => pisState.reload(),
+    openView: (v) => setView(v as ViewKey),
   };
 
   const needsPi = NEEDS_PI.includes(activeView);

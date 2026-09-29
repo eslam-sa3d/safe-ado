@@ -74,7 +74,7 @@ This document compares Agile Hive Cloud with SAFe Ado. The Agile Hive side comes
 | Team board: drag sets sprint and parent; drag a feature to create a swimlane | ✅ | Team Planning Board |
 | Team board: create in a cell; remove from board | ✅ | Team Planning Board |
 | Team board: dependency lines with criticality; EXTERNAL lanes; swimlane filter | ✅ | Team Planning Board |
-| **ART Planning Board**: calculated placement (last child's sprint), Owning Unit swimlanes | ✅ | ART Planning Board, calculated mode |
+| **ART Planning Board**: calculated placement (last child's sprint), Owning Unit swimlanes | ✅ | ART Planning Board, calculated mode (the default, read-only like Agile Hive's) |
 | ART board: involved teams, unplanned-children warning, critical dependencies per row, collapse | ✅ | ART Planning Board |
 | ART board: milestones in the header | ✅ | ART Planning Board |
 | Drag-and-drop program board (not in Agile Hive) | ✅ | ART Planning Board, "feature iteration" mode |
@@ -114,12 +114,20 @@ This document compares Agile Hive Cloud with SAFe Ado. The Agile Hive side comes
 
 | Agile Hive | Status | SAFe Ado |
 |---|---|---|
-| WSJF: (UBV + TC + RROE) ÷ Job Size | ✅ | Business Value, Time Criticality, optional RR/OE field, Effort |
+| WSJF: (UBV + TC + RROE) ÷ Job Size | 🟡 | Portfolio Kanban: Business Value + Time Criticality + optional `Custom.RROEValue`, ÷ Effort. Reports and backlogs: (BV + TC) ÷ Effort |
 | Objective fields: Plan BV, Actual BV, Uncommitted | ✅ | PI Objectives |
-| Risk fields: probability, impact, residual values, exposure matrix | ✅ | Risks (ROAM); `api/risk.ts` |
+| Risk fields: probability, impact, residual values, exposure matrix | ✅ | Risks (ROAM); `api/risk.ts`. The earlier Low/Medium/High field is kept and labelled **Priority** |
 | Milestones with a date | ✅ | Roadmap, Reports, ART board |
 | Assigned PIs, Assigned Units, Owning Unit | ✅ | `wimeta` documents |
 | Involved Units, PI Involvement, Estimated Completion (calculated) | ✅ | Calculated from children |
 | Project members and roles | ✅ | Setup |
 | Initial Setup (create Jira types, schemes, workflows, screens) | ➖ | Azure DevOps processes already provide Epic/Feature/Story. The type mapping is set in Setup |
 | Jira permission scheme entries | ➖ | Azure DevOps project and area security applies |
+
+## Adaptation notes
+
+- **"Remove from board"** on the Team Planning Board moves the story to the PI root iteration. It leaves every PI and returns to the Team backlog, which is the Azure DevOps equivalent of clearing the Jira sprint.
+- **Burnup** counts a story as burned on its Closed Date, or today if it has none. The forecast uses the velocity of completed non-IP iterations.
+- **Velocity** counts completed points in the iteration a story is planned in.
+- **Detach from parent** in My Organization re-attaches the unit under the portfolio root. The configuration always has a single root.
+- **Swimlane un-assignment** removes the PI once no team remains assigned to the feature.
