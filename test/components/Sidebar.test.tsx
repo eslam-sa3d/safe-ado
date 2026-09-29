@@ -1,7 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../src/components/Sidebar";
-import { makeConfig } from "../fakeAdo";
+import { dataManager, dataStore, fake, makeConfig } from "../fakeAdo";
+
+const STAR_KEY = () => `starred-${fake.projectId}`;
 
 describe("Sidebar", () => {
   const root = makeConfig().root;
@@ -49,5 +51,71 @@ describe("Sidebar", () => {
     const leaf = screen.getByText("Team Blue").closest(".tree-row")!;
     expect((leaf.querySelector(".twisty") as HTMLElement).style.visibility).toBe("hidden");
     expect(screen.getByText("Team Blue").closest("li")).not.toHaveAttribute("aria-expanded");
+  });
+
+  describe("starred units", () => {
+    it("stars a unit per user, lists it above the tree and selects it from there", async () => {
+      const onSelect = vi.fn();
+      render(<Sidebar root={root} selectedId="n-root" onSelect={onSelect} />);
+      await waitFor(() => expect(dataManager.getValue).toHaveBeenCalled());
+      expect(screen.queryByText("Starred")).not.toBeInTheDocument();
+
+      const star = screen.getByRole("button", { name: "Star Team Blue" });
+      expect(star).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(star);
+      // Starring does not select the row.
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Unstar Team Blue" })).toHaveAttribute("aria-pressed", "true");
+      await waitFor(() => expect(dataStore.values.get(STAR_KEY())).toEqual(["n-blue"]));
+      expect(dataManager.setValue).toHaveBeenCalledWith(STAR_KEY(), ["n-blue"], { scopeType: "User" });
+
+      const list = screen.getByRole("list", { name: "Starred units" });
+      expect(screen.getByText("Starred")).toBeInTheDocument();
+      fireEvent.click(within(list).getByText("Team Blue"));
+      expect(onSelect).toHaveBeenCalledWith("n-blue");
+
+      fireEvent.click(screen.getByRole("button", { name: "Star ART B" }));
+      expect(within(list).getAllByText(/Team Blue|ART B/).map((e) => e.textContent)).toEqual(["Team Blue", "ART B"]);
+
+      fireEvent.click(screen.getByRole("button", { name: "Unstar Team Blue" }));
+      await waitFor(() => expect(dataStore.values.get(STAR_KEY())).toEqual(["n-artb"]));
+      fireEvent.click(screen.getByRole("button", { name: "Unstar ART B" }));
+      expect(screen.queryByRole("list", { name: "Starred units" })).not.toBeInTheDocument();
+    });
+
+    it("loads saved stars on mount, marks the selection and skips units no longer in the hierarchy", async () => {
+      dataStore.values.set(STAR_KEY(), ["gone", "n-green", "n-root"]);
+      render(<Sidebar root={root} selectedId="n-green" onSelect={() => {}} />);
+      const list = await screen.findByRole("list", { name: "Starred units" });
+      expect(list.querySelectorAll("li")).toHaveLength(2);
+      expect(within(list).getByText("Team Green").closest(".tree-row")).toHaveClass("selected");
+      expect(within(list).getByText("Fabrikam").closest(".tree-row")).not.toHaveClass("selected");
+      expect(screen.getByRole("button", { name: "Unstar Team Green" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Unstar Fabrikam" })).toBeInTheDocument();
+    });
+
+    it("ignores load and save failures and malformed values", async () => {
+      dataStore.failures.push({ op: "getValue", error: new Error("offline") });
+      const { unmount } = render(<Sidebar root={root} selectedId="n-root" onSelect={() => {}} />);
+      await waitFor(() => expect(dataManager.getValue).toHaveBeenCalled());
+      dataStore.failures.push({ op: "setValue", error: new Error("offline") });
+      fireEvent.click(screen.getByRole("button", { name: "Star ART A" }));
+      await waitFor(() => expect(dataManager.setValue).toHaveBeenCalled());
+      // The star stays on for this session even though it could not be saved.
+      expect(screen.getByRole("button", { name: "Unstar ART A" })).toBeInTheDocument();
+      unmount();
+
+      dataStore.values.set(STAR_KEY(), "not-a-list");
+      render(<Sidebar root={root} selectedId="n-root" onSelect={() => {}} />);
+      await waitFor(() => expect(dataManager.getValue).toHaveBeenCalledTimes(2));
+      expect(screen.queryByRole("list", { name: "Starred units" })).not.toBeInTheDocument();
+    });
+
+    it("does not update state after unmount", async () => {
+      dataStore.values.set(STAR_KEY(), ["n-red"]);
+      const { unmount } = render(<Sidebar root={root} selectedId="n-root" onSelect={() => {}} />);
+      unmount();
+      await waitFor(() => expect(dataManager.getValue).toHaveBeenCalled());
+    });
   });
 });
