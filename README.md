@@ -54,6 +54,20 @@ npm run package          # typecheck + tests + build -> out/SAFeADO.safe-ado-<ve
 
 The Marketplace publisher is `SAFeADO` (set in [vss-extension.json](vss-extension.json)). Bump `version` there before each publish.
 
+## Design
+
+The UI follows the Azure DevOps design system (the "Formula" styles used by `azure-devops-ui`):
+- **Theme:** colours come from the theme variables the host injects, so Light, Dark and High-contrast all work.
+- **Components:** buttons, pivot tabs, cards (depth-8), tables, pills, message bars and dialogs match the `bolt-*` components.
+- **Icons:** Fluent icons are subset from the official icon fonts (`src/hub/fonts`, about 7 KB).
+
+To look at the UI without an Azure DevOps organization:
+
+```bash
+npm run preview   # builds preview-dist/ against the in-memory fake backend used by the tests
+# open preview-dist/index.html?view=board&node=n-arta&theme=dark
+```
+
 ## Testing
 
 ```bash

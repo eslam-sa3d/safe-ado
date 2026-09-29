@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Icon } from "./common";
 import { getUserValue, setUserValue } from "../api/data";
 import { flatten, LEVEL_COLOR } from "../api/org";
 import { LEVEL_LABEL, OrgNode } from "../api/types";
@@ -108,7 +109,7 @@ function TreeItem({
             setOpen(!open);
           }}
         >
-          {open ? "▾" : "▸"}
+          <Icon name={open ? "ChevronDown" : "ChevronRight"} className="small" />
         </button>
         <i className="level-square" style={{ background: LEVEL_COLOR[node.level] }} />
         <span className="tree-label">{node.name}</span>
@@ -121,7 +122,7 @@ function TreeItem({
             onStar(node.id);
           }}
         >
-          {isStarred ? "★" : "☆"}
+          <Icon name={isStarred ? "FavoriteStarFill" : "FavoriteStar"} />
         </button>
       </div>
       {hasChildren && open && (

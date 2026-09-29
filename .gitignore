@@ -4,3 +4,4 @@ out/
 *.vsix
 coverage/
 .claude/
+preview-dist/

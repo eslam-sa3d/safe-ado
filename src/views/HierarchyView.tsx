@@ -3,7 +3,7 @@ import { boardType, scopeAreas } from "../api/org";
 import { loadTree, TreeNode } from "../api/queries";
 import { F } from "../api/types";
 import { openWorkItem } from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, lastSegment, Progress, Spinner, typeColor, useAsync } from "../components/common";
+import { CATEGORY_COLOR, Empty, ErrorBar, lastSegment, Progress, Spinner, typeColor, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 
 /** Epic > Capability > Feature > Story tree with story-point roll-up, scoped to the selected node. */
@@ -64,7 +64,7 @@ export function HierarchyView() {
           Collapse all
         </button>
         <button className="btn" onClick={() => reload()}>
-          Refresh
+          <Icon name="Refresh" /> Refresh
         </button>
       </div>
       <ErrorBar message={error} />
@@ -128,7 +128,7 @@ function TreeRows({
               onClick={() => toggle(node.item.id)}
               aria-label={open ? "Collapse" : "Expand"}
             >
-              {open ? "▾" : "▸"}
+              <Icon name={open ? "ChevronDown" : "ChevronRight"} className="small" />
             </button>
             <i className="type-bar" style={{ background: typeColor(f[F.type]) }} title={f[F.type]} />
             <button className="link title-link" onClick={() => openWorkItem(node.item.id)}>

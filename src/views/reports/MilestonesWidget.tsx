@@ -3,7 +3,7 @@ import { getUserValue, milestonesStore, newId, setUserValue } from "../../api/da
 import { findNode, pathTo } from "../../api/org";
 import { dayIso, milestonesInWindow, relativeDays, toDay } from "../../api/reports";
 import { Milestone } from "../../api/types";
-import { ErrorBar, Field, fmtDate, Modal } from "../../components/common";
+import { ErrorBar, Field, fmtDate, Modal, Icon } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
 import { SelectPi, Widget } from "./Widget";
@@ -71,7 +71,7 @@ export function MilestonesWidget({ data, today }: { data: ReportData; today: num
           {list.map((m) => (
             <li key={m.id} className={toDay(m.date) < today ? "past" : undefined}>
               <span className="milestone-diamond" aria-hidden="true">
-                ◆
+                <Icon name="DiamondSolid" className="small" />
               </span>
               <span className="milestone-title" title={m.description}>
                 {m.title}

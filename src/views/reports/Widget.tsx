@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { openWorkItem } from "../../api/wit";
-import { typeColor } from "../../components/common";
+import { typeColor, Icon } from "../../components/common";
 
 /** A dashboard card. `size` controls how many grid columns it spans. */
 export function Widget({
@@ -58,7 +58,7 @@ export function Ratio({
 export function Warning({ children }: { children: ReactNode }) {
   return (
     <div className="widget-warning small" role="note">
-      <span aria-hidden="true">⚠</span> {children}
+      <Icon name="Warning" className="small" /> {children}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { EMPTY_FILTER, filterToWiql, isFilterActive, ItemFilter } from "../api/filters";
+import { Icon } from "./common";
 
 type Facet = "types" | "states" | "assignees" | "tags";
 
@@ -41,13 +42,16 @@ export function FilterBar({
 
   return (
     <div className="filterbar" role="search">
-      <input
-        className="search"
-        aria-label="Filter text"
-        placeholder="Filter by title or ID"
-        value={value.text}
-        onChange={(e) => onChange({ ...value, text: e.target.value })}
-      />
+      <span className="search-box">
+        <Icon name="Filter" />
+        <input
+          className="search"
+          aria-label="Filter text"
+          placeholder="Filter by title or ID"
+          value={value.text}
+          onChange={(e) => onChange({ ...value, text: e.target.value })}
+        />
+      </span>
       {(Object.keys(FACET_LABEL) as Facet[]).map((facet) => (
         <details key={facet} className="facet">
           <summary className={"btn" + (value[facet].length ? " primary" : "")}>
@@ -75,7 +79,13 @@ export function FilterBar({
         />
       )}
       <button className="btn" onClick={copy} disabled={!isFilterActive(value)} title="Copy the filter as a WIQL clause">
-        {copied ? "Copied ✓" : "Copy WIQL"}
+        {copied ? (
+          <>
+            <Icon name="CheckMark" /> Copied
+          </>
+        ) : (
+          "Copy WIQL"
+        )}
       </button>
       <button className="btn" onClick={() => onChange(EMPTY_FILTER)} disabled={!isFilterActive(value)}>
         Clear filters

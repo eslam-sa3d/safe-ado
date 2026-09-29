@@ -26,7 +26,7 @@ import {
   removeLink,
   setFields,
 } from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, fmtDate, Info, Spinner, storage, typeColor, useAsync } from "../components/common";
+import { CATEGORY_COLOR, Empty, ErrorBar, fmtDate, Info, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 
 interface Column {
@@ -328,7 +328,7 @@ export function ProgramBoard() {
           Expand all
         </button>
         <button className="btn" onClick={() => reload()}>
-          Refresh
+          <Icon name="Refresh" /> Refresh
         </button>
       </div>
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
@@ -361,7 +361,7 @@ export function ProgramBoard() {
               {ci > 0 && ci - 1 === currentSprint && <span className="today-badge">Today</span>}
               {(milestones.get(ci - 1) ?? []).map((m) => (
                 <div key={m.id} className="milestone-chip" title={`${m.title} — ${fmtDate(m.date)}${m.description ? `\n${m.description}` : ""}`}>
-                  ◆ {m.title}
+                  <Icon name="DiamondSolid" className="small" /> {m.title}
                 </div>
               ))}
             </div>
@@ -502,7 +502,7 @@ function RowCells(props: {
             aria-label={`${collapsed ? "Expand" : "Collapse"} ${row.title}`}
             onClick={props.onToggle}
           >
-            {collapsed ? "▸" : "▾"}
+            <Icon name={collapsed ? "ChevronRight" : "ChevronDown"} className="small" />
           </button>
           <span>{row.title}</span>
         </div>
@@ -603,14 +603,14 @@ function BoardCard(props: {
         {pts ? <span className="pill">{pts} pts</span> : null}
         {props.ext > 0 && (
           <span className="pill ext" title="Dependencies on items outside this board">
-            ↗ {props.ext}
+            <Icon name="Link" className="small" /> {props.ext}
           </span>
         )}
         {target && <span className="pill due">Due {fmtDate(target)}</span>}
-        {info.owner && <span className="pill owner" title="Owning team">★ {info.owner}</span>}
+        {info.owner && <span className="pill owner" title="Owning team"><Icon name="TeamFavorite" className="small" /> {info.owner}</span>}
         {info.hasChildren && (
           <button className="pill link involved" aria-label={`Involved teams: ${info.involved.length}`} onClick={(e) => toggle(e, "teams")}>
-            👥 {info.involved.length}
+            <Icon name="People" className="small" /> {info.involved.length}
           </button>
         )}
         {info.unplanned.length > 0 && (
@@ -619,7 +619,7 @@ function BoardCard(props: {
             aria-label={`${info.unplanned.length} children not planned in this PI`}
             onClick={(e) => toggle(e, "unplanned")}
           >
-            ⚠ {info.unplanned.length}
+            <Icon name="Warning" className="small" /> {info.unplanned.length}
           </button>
         )}
       </div>

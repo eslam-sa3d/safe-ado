@@ -1,4 +1,9 @@
-import { DependencyList, ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { CSSProperties, DependencyList, ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { LEVEL_COLOR } from "../api/org";
+import { Level, LEVEL_LABEL } from "../api/types";
+import { ICONS } from "./iconMap";
+
+export type IconName = keyof typeof ICONS;
 
 export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList) {
   const [data, setData] = useState<T | undefined>();
@@ -36,7 +41,7 @@ export function ErrorBar({ message, onClose }: { message?: string; onClose?: () 
       <span>{message}</span>
       {onClose && (
         <button className="link" onClick={onClose} aria-label="Dismiss">
-          ✕
+          <Icon name="Cancel" />
         </button>
       )}
     </div>
@@ -88,7 +93,7 @@ export function Modal({
         <div className="modal-header">
           <h2>{title}</h2>
           <button className="link" onClick={onClose} aria-label="Close">
-            ✕
+            <Icon name="Cancel" />
           </button>
         </div>
         <div className="modal-body">{children}</div>
@@ -158,4 +163,26 @@ export function storage<T>(key: string, fallback: T): [() => T, (v: T) => void] 
       }
     },
   ];
+}
+
+/** Azure DevOps Fluent icon (glyph rendered via CSS so it never adds text content). */
+export function Icon({ name, className, title }: { name: IconName; className?: string; title?: string }) {
+  const [font, codepoint] = ICONS[name];
+  return (
+    <i
+      className={"icon" + (font === "filled" ? " filled" : "") + (className ? " " + className : "")}
+      data-icon={String.fromCodePoint(codepoint)}
+      aria-hidden="true"
+      title={title}
+    />
+  );
+}
+
+/** SAFe level pill: outlined pill with the level's colour dot (bolt-pill outlined). */
+export function LevelPill({ level, className }: { level: Level; className?: string }) {
+  return (
+    <span className={className ?? "level-badge"} style={{ ["--level-color" as string]: LEVEL_COLOR[level] } as CSSProperties}>
+      {LEVEL_LABEL[level]}
+    </span>
+  );
 }

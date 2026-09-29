@@ -5,7 +5,7 @@ import { emptyMeta, loadConfig, metaStore } from "../api/data";
 import { flatten, LEVEL_COLOR, pathTo } from "../api/org";
 import { F, LEVEL_LABEL, LINK, OrgNode, ProgramIncrement, SafeConfig, Sprint, WorkItem, WorkItemMeta } from "../api/types";
 import { getProgramIncrements, getWorkItems, isUnder, openWorkItem, relationTargetId } from "../api/wit";
-import { ErrorBar, Spinner } from "../components/common";
+import { ErrorBar, Spinner, LevelPill } from "../components/common";
 
 /** Runtime id of the work item form service (the api package ships AMD, so only its types are imported). */
 export const WORK_ITEM_FORM_SERVICE = "ms.vss-work-web.work-item-form";
@@ -244,9 +244,7 @@ export function FormPanel() {
               {i < all.length - 1 && <span className="sep">›</span>}
             </span>
           ))}
-          <span className="level-badge" style={{ background: LEVEL_COLOR[unit.level] }}>
-            {LEVEL_LABEL[unit.level]}
-          </span>
+          <LevelPill level={unit.level} />
         </span>
       </div>
       <div className="safe-form-row">

@@ -106,7 +106,7 @@ describe("Portfolio Kanban", () => {
     fireEvent.click(card("Checkout revamp"));
     await waitFor(() => expect(sdk.workItemForm.openWorkItem).toHaveBeenCalledWith(1));
 
-    fireEvent.click(screen.getByRole("button", { name: "+ New Epic" }));
+    fireEvent.click(screen.getByRole("button", { name: "New Epic" }));
     await waitFor(() => expect(sdk.workItemForm.openNewWorkItem).toHaveBeenCalledWith("Epic", { "System.AreaPath": "Fabrikam" }));
 
     const before = callsTo(/wiql/).length;

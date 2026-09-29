@@ -4,7 +4,7 @@ import { flatten, subtreeIds } from "../api/org";
 import { exposure, Exposure, EXPOSURE_COLOR, EXPOSURE_RANK, ImpactLevel, IMPACTS, PROBABILITIES, Probability } from "../api/risk";
 import { LEVEL_LABEL, Risk, ROAM_STATUSES, RoamStatus } from "../api/types";
 import { openWorkItem } from "../api/wit";
-import { ErrorBar, Field, Modal, Spinner, useAsync } from "../components/common";
+import { ErrorBar, Field, Modal, Spinner, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 
 const ROAM_HINT: Record<RoamStatus, string> = {
@@ -99,7 +99,7 @@ export function RisksView() {
             })
           }
         >
-          + New risk
+          <Icon name="Add" /> New risk
         </button>
       </div>
       <ErrorBar message={loadError ?? error} onClose={() => setError(undefined)} />

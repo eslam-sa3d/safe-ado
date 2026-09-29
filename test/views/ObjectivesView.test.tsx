@@ -109,7 +109,7 @@ describe("PI Objectives view", () => {
 
   it("adds an objective to the right node and PI", async () => {
     await renderObjectives({ nodeId: "n-red" });
-    fireEvent.click(within(panel("Team Red")).getByRole("button", { name: "+ Objective" }));
+    fireEvent.click(within(panel("Team Red")).getByRole("button", { name: "New objective" }));
     expect(await screen.findByDisplayValue("New objective")).toBeInTheDocument();
     const created = docs("objectives").find((d) => d.title === "New objective");
     expect(created).toMatchObject({ nodeId: "n-red", piPath: PI2, committed: true, plannedBV: 5, actualBV: null, featureIds: [] });
@@ -189,7 +189,7 @@ describe("PI Objectives view", () => {
   it("reports save and delete errors", async () => {
     await renderObjectives({ nodeId: "n-red" });
     dataStore.failures.push({ op: "setDocument", error: new Error("quota exceeded") });
-    fireEvent.click(screen.getByRole("button", { name: "+ Objective" }));
+    fireEvent.click(screen.getByRole("button", { name: "New objective" }));
     expect(await screen.findByText("Could not save objective: quota exceeded")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Dismiss"));
 

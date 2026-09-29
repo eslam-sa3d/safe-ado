@@ -3,7 +3,7 @@ import { newId, objectivesStore } from "../api/data";
 import { LEVEL_COLOR, subtreeIds } from "../api/org";
 import { LEVEL_LABEL, OrgNode, PiObjective } from "../api/types";
 import { openWorkItem } from "../api/wit";
-import { ErrorBar, Progress, Spinner, useAsync } from "../components/common";
+import { ErrorBar, Progress, Spinner, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 
 /** SAFe predictability: actual BV of all objectives / planned BV of committed objectives. */
@@ -118,7 +118,7 @@ function ObjectiveGroup(props: {
           <Progress done={p.actual} total={p.planned} label={p.pct === null ? "No committed BV" : `${p.pct}% predictability`} />
         </div>
         <button className="btn" onClick={props.onAdd}>
-          + Objective
+          <Icon name="Add" /> New objective
         </button>
       </div>
       {sorted.length === 0 ? (

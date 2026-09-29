@@ -15,6 +15,8 @@ module.exports = (env, argv) => ({
     rules: [
       { test: /\.tsx?$/, loader: "ts-loader", exclude: /node_modules/ },
       { test: /\.css$/, use: ["style-loader", "css-loader"] },
+      // Subsetted Fluent icon fonts (~7 KB) are inlined into the bundle.
+      { test: /\.woff2$/, type: "asset/inline" },
     ],
   },
   plugins: [

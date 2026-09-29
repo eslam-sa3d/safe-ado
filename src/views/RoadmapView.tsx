@@ -29,7 +29,7 @@ import {
 } from "../api/roadmap";
 import { Criticality, F, Milestone, WorkItem, WorkItemMeta } from "../api/types";
 import { getFieldNames, getStateCategories, openWorkItem, queryWorkItems, setFields } from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, Field, Info, Modal, Spinner, storage, typeColor, useAsync } from "../components/common";
+import { CATEGORY_COLOR, Empty, ErrorBar, Field, Info, Modal, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 import { FilterBar } from "../components/FilterBar";
 
@@ -392,10 +392,10 @@ function Roadmap() {
           </div>
         </details>
         <button className="btn" onClick={() => setMilestoneEdit({ id: "", nodeId: node.id, title: "", date: today, description: "" })}>
-          + Milestone
+          <Icon name="Add" /> New milestone
         </button>
         <button className="btn" onClick={() => reload()}>
-          Refresh
+          <Icon name="Refresh" /> Refresh
         </button>
       </div>
       <FilterBar value={filter} onChange={setFilter} options={facetOptions(items)} />

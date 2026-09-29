@@ -175,3 +175,31 @@ describe("storage", () => {
     setItem.mockRestore();
   });
 });
+
+describe("Icon and LevelPill", () => {
+  it("renders Fluent icons without adding text content", async () => {
+    const { Icon } = await import("../../src/components/common");
+    const { container } = render(
+      <button>
+        <Icon name="Refresh" /> Refresh <Icon name="FavoriteStarFill" className="small" title="Starred" />
+      </button>
+    );
+    const icons = container.querySelectorAll("i.icon");
+    expect(icons).toHaveLength(2);
+    expect(icons[0]).toHaveAttribute("aria-hidden", "true");
+    expect(icons[0].getAttribute("data-icon")!.codePointAt(0)).toBe(0xe0aa);
+    expect(icons[1]).toHaveClass("filled", "small");
+    expect(icons[1]).toHaveAttribute("title", "Starred");
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+  });
+
+  it("renders level pills with the level colour", async () => {
+    const { LevelPill } = await import("../../src/components/common");
+    const { container, rerender } = render(<LevelPill level="art" />);
+    const pill = container.querySelector(".level-badge") as HTMLElement;
+    expect(pill).toHaveTextContent("Agile Release Train");
+    expect(pill.style.getPropertyValue("--level-color")).toBe("#c62828");
+    rerender(<LevelPill level="team" className="report-level-badge" />);
+    expect(container.querySelector(".report-level-badge")).toHaveTextContent("Team");
+  });
+});

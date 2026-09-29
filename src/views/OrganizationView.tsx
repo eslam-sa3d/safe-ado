@@ -3,7 +3,7 @@ import { newId } from "../api/data";
 import { childLevels, findNode, flatten, LEVEL_COLOR, parentOf, pathTo } from "../api/org";
 import { Level, LEVEL_LABEL, OrgNode } from "../api/types";
 import { getAreaPaths } from "../api/wit";
-import { ErrorBar, Field, Info, Modal, Spinner, useAsync } from "../components/common";
+import { ErrorBar, Field, Info, Modal, Spinner, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 
 export const LAYERS: Level[] = ["portfolio", "solution", "art", "team"];
@@ -189,7 +189,7 @@ export function OrganizationView() {
     <div className="org-view">
       <Info>
         Hover a unit to highlight its chain. Drag a unit onto another unit to re-link it, use <strong>+</strong> to add a unit to a
-        layer and <strong>⋯</strong> for more actions. Click a unit to open it.
+        layer and <Icon name="More" /> for more actions. Click a unit to open it.
       </Info>
       <ErrorBar message={error} onClose={() => setError(undefined)} />
       {notice && (
@@ -287,7 +287,7 @@ export function OrganizationView() {
                         aria-expanded={menuId === n.id}
                         onClick={() => setMenuId(menuId === n.id ? undefined : n.id)}
                       >
-                        ⋯
+                        <Icon name="More" />
                       </button>
                       {menuId === n.id && (
                         <div className="org-menu" role="menu" aria-label={`${n.name} actions`}>

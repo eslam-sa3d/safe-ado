@@ -3,7 +3,7 @@ import { scopeAreas } from "../api/org";
 import { baseFields, scopeQuery } from "../api/queries";
 import { F, WorkItem } from "../api/types";
 import { getFieldNames, getStates, openNewWorkItem, openWorkItem, queryWorkItems, setFields } from "../api/wit";
-import { Empty, ErrorBar, Spinner, useAsync } from "../components/common";
+import { Empty, ErrorBar, Spinner, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 
 /**
@@ -66,10 +66,10 @@ export function PortfolioKanban() {
           <input type="checkbox" checked={sortByWsjf} onChange={(e) => setSortByWsjf(e.target.checked)} /> Sort by WSJF
         </label>
         <button className="btn" onClick={() => openNewWorkItem(epic, { [F.area]: areas[0] }).then(() => reload(true))}>
-          + New {epic}
+          <Icon name="Add" /> New {epic}
         </button>
         <button className="btn" onClick={() => reload()}>
-          Refresh
+          <Icon name="Refresh" /> Refresh
         </button>
       </div>
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />

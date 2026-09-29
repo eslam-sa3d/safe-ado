@@ -72,7 +72,7 @@ describe("FilterBar", () => {
       fireEvent.click(within(screen.getByRole("group", { name: "State filter" })).getByLabelText("New"));
       await act(async () => fireEvent.click(copy));
       expect(writeText).toHaveBeenCalledWith("[System.State] IN ('New')");
-      expect(copy).toHaveTextContent("Copied ✓");
+      expect(copy).toHaveTextContent("Copied");
       act(() => vi.advanceTimersByTime(1600));
       expect(copy).toHaveTextContent("Copy WIQL");
 

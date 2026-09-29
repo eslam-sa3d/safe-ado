@@ -56,7 +56,7 @@ import {
   setFields,
 } from "../api/wit";
 import { FilterBar } from "../components/FilterBar";
-import { CATEGORY_COLOR, ErrorBar, fmtDate, Info, lastSegment, Spinner, storage, typeColor, useAsync } from "../components/common";
+import { CATEGORY_COLOR, ErrorBar, fmtDate, Info, lastSegment, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
 import { useSafe } from "../components/context";
 
 /**
@@ -347,7 +347,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
             </div>
           </details>
           <button className="btn" onClick={() => reload()} disabled={busy}>
-            Refresh
+            <Icon name="Refresh" /> Refresh
           </button>
         </div>
         <FilterBar value={filter} onChange={setFilter} options={facetOptions(block.stories)} />
@@ -649,7 +649,7 @@ function LaneRow(props: {
           aria-label={`${collapsed ? "Expand" : "Collapse"} ${lane.title}`}
           onClick={props.onToggle}
         >
-          {collapsed ? "▸" : "▾"}
+          <Icon name={collapsed ? "ChevronRight" : "ChevronDown"} className="small" />
         </button>
         <span className="tb-lane-title" title={lane.feature ? `${lane.feature.fields[F.type]} #${lane.feature.id}` : undefined}>
           {lane.feature && <i className="type-bar" style={{ background: typeColor(lane.feature.fields[F.type]) }} />}
@@ -658,7 +658,7 @@ function LaneRow(props: {
         <span className="muted small">{props.count}</span>
         {props.onRemove && (
           <button className="link danger" aria-label={`Remove swimlane ${lane.title}`} title="Remove this empty swimlane" onClick={props.onRemove}>
-            ✕
+            <Icon name="Cancel" className="small" />
           </button>
         )}
       </div>
@@ -870,7 +870,7 @@ function SiblingBlock(props: {
     <>
       <div className="tb-block-header sibling">
         <button className="twisty" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} team ${team.name}`} onClick={() => setOpen(!open)}>
-          {open ? "▾" : "▸"}
+          <Icon name={open ? "ChevronDown" : "ChevronRight"} className="small" />
         </button>
         <span className="tb-block-title">{team.name}</span>
         <span className="muted small">read-only</span>

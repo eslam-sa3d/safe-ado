@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { boardType, flatten } from "../../api/org";
 import { inIteration, OverviewRow, overviewRows, RItem, toDay } from "../../api/reports";
-import { Progress } from "../../components/common";
+import { Progress, Icon } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
 import { ItemRef, SelectPi, Widget } from "./Widget";
@@ -35,7 +35,7 @@ function Row({ row, depth, onTeam }: { row: OverviewRow; depth: number; onTeam: 
           <span className="tree-cell" style={{ paddingLeft: depth * 18 }}>
             {row.children.length > 0 ? (
               <button className="twisty" aria-label={(open ? "Collapse " : "Expand ") + row.item.title} aria-expanded={open} onClick={() => setOpen(!open)}>
-                {open ? "▾" : "▸"}
+                <Icon name={open ? "ChevronDown" : "ChevronRight"} className="small" />
               </button>
             ) : (
               <span className="twisty" />

@@ -106,21 +106,21 @@ describe("Setup", () => {
     expect(within(art).getByText("Agile Release Train")).toBeInTheDocument();
     expect((within(art).getByLabelText("Area path") as HTMLSelectElement).value).toBe("Fabrikam\\ART A");
     expect((within(art).getByLabelText("Azure DevOps team") as HTMLSelectElement).value).toBe("t-arta");
-    expect(within(art).getByRole("button", { name: "+ Team" })).toBeInTheDocument();
+    expect(within(art).getByRole("button", { name: "Add Team" })).toBeInTheDocument();
     const root = nodeRow("Fabrikam");
     expect(within(root).queryByLabelText("Azure DevOps team")).toBeNull();
     expect(within(root).queryByRole("button", { name: "Remove" })).toBeNull();
-    expect(within(root).getByRole("button", { name: "+ Large Solution" })).toBeInTheDocument();
-    expect(within(nodeRow("Team Red")).queryByRole("button", { name: /^\+/ })).toBeNull();
+    expect(within(root).getByRole("button", { name: "Add Large Solution" })).toBeInTheDocument();
+    expect(within(nodeRow("Team Red")).queryByRole("button", { name: /^Add / })).toBeNull();
   });
 
   it("adds, renames and removes nodes", async () => {
     const { ctx } = await renderSetup();
-    fireEvent.click(within(nodeRow("ART B")).getByRole("button", { name: "+ Team" }));
+    fireEvent.click(within(nodeRow("ART B")).getByRole("button", { name: "Add Team" }));
     const added = nodeRow("New Team");
     expect((within(added).getByLabelText("Area path") as HTMLSelectElement).value).toBe("Fabrikam\\ART B");
     fireEvent.change(within(added).getByLabelText("Name"), { target: { value: "Team Yellow" } });
-    fireEvent.click(within(nodeRow("Fabrikam")).getByRole("button", { name: "+ Large Solution" }));
+    fireEvent.click(within(nodeRow("Fabrikam")).getByRole("button", { name: "Add Large Solution" }));
     expect(nameInputs("New Large Solution")).toHaveLength(1);
 
     // Leaf removal needs no confirmation

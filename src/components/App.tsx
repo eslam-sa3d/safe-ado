@@ -16,7 +16,7 @@ import { RoadmapView } from "../views/RoadmapView";
 import { SetupView } from "../views/SetupView";
 import { TeamBoard } from "../views/TeamBoard";
 import { WorkItemList } from "../views/WorkItemList";
-import { ErrorBar, fmtDate, Spinner, storage, useAsync } from "./common";
+import { ErrorBar, fmtDate, Spinner, storage, useAsync, LevelPill } from "./common";
 import { SafeContext, SafeContextValue } from "./context";
 import { Sidebar } from "./Sidebar";
 
@@ -144,9 +144,7 @@ export function App() {
                   {i < all.length - 1 && <span className="sep">›</span>}
                 </span>
               ))}
-              <span className="level-badge" style={{ background: LEVEL_COLOR[node.level] }}>
-                {LEVEL_LABEL[node.level]}
-              </span>
+              <LevelPill level={node.level} />
             </div>
             <div className="pi-picker">
               <label htmlFor="pi-select">PI</label>

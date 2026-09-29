@@ -1,7 +1,7 @@
 import { LEVEL_COLOR } from "../../api/org";
 import { currentIteration } from "../../api/reports";
 import { LEVEL_LABEL } from "../../api/types";
-import { fmtDate } from "../../components/common";
+import { fmtDate, LevelPill } from "../../components/common";
 import { useSafe } from "../../components/context";
 
 /** Unit name, layer, the PI and iteration running today, and the unit's members. */
@@ -13,9 +13,7 @@ export function HeaderWidget({ today }: { today: number }) {
     <section className="widget widget-wide report-header" aria-label="Unit">
       <div className="report-header-main">
         <h2>{node.name}</h2>
-        <span className="report-level-badge" style={{ background: LEVEL_COLOR[node.level] }}>
-          {LEVEL_LABEL[node.level]}
-        </span>
+        <LevelPill level={node.level} className="report-level-badge" />
       </div>
       <dl className="report-header-facts">
         <div>

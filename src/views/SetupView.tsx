@@ -13,7 +13,7 @@ import {
   getWorkItemTypes,
   nodePathToFieldPath,
 } from "../api/wit";
-import { ErrorBar, Field, Info, Spinner, useAsync } from "../components/common";
+import { ErrorBar, Field, Info, Spinner, useAsync, Icon, LevelPill } from "../components/common";
 import { useSafe } from "../components/context";
 
 function updateNode(root: OrgNode, id: string, fn: (n: OrgNode) => OrgNode): OrgNode {
@@ -253,9 +253,7 @@ function NodeEditor(props: {
   return (
     <li>
       <div className="node-row">
-        <span className="level-badge" style={{ background: LEVEL_COLOR[node.level] }}>
-          {LEVEL_LABEL[node.level]}
-        </span>
+        <LevelPill level={node.level} />
         <input className="node-name" value={node.name} onChange={(e) => set({ name: e.target.value })} aria-label="Name" />
         <select value={node.areaPath ?? ""} onChange={(e) => set({ areaPath: e.target.value || undefined })} aria-label="Area path">
           <option value="">(no area path)</option>
@@ -275,7 +273,7 @@ function NodeEditor(props: {
         )}
         {childLevels(node.level).map((l) => (
           <button key={l} className="link small" onClick={() => add(l)}>
-            + {LEVEL_LABEL[l]}
+            <Icon name="Add" className="small" /> Add {LEVEL_LABEL[l]}
           </button>
         ))}
         <button
@@ -284,7 +282,7 @@ function NodeEditor(props: {
           aria-label={`Members of ${node.name}`}
           onClick={() => setShowMembers(!showMembers)}
         >
-          {showMembers ? "▾" : "▸"} Members ({members.length})
+          <Icon name={showMembers ? "ChevronDown" : "ChevronRight"} className="small" /> Members ({members.length})
         </button>
         {!props.isRoot && (
           <button
@@ -333,7 +331,7 @@ function NodeEditor(props: {
                 aria-label={`Remove member ${i + 1}`}
                 onClick={() => updateMembers((list) => list.filter((_, j) => j !== i))}
               >
-                ✕
+                <Icon name="Cancel" className="small" />
               </button>
             </div>
           ))}
@@ -342,7 +340,7 @@ function NodeEditor(props: {
             disabled={members.length >= MAX_MEMBERS}
             onClick={() => updateMembers((list) => [...list, { name: "", role: "" }])}
           >
-            + Add member
+            <Icon name="Add" className="small" /> Add member
           </button>
           {members.length >= MAX_MEMBERS && <span className="muted small"> A node can have at most {MAX_MEMBERS} members.</span>}
         </div>

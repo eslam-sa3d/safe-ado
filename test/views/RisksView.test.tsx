@@ -92,7 +92,7 @@ describe("ROAM board", () => {
 
   it("creates a risk through the dialog", async () => {
     await renderRisks();
-    fireEvent.click(screen.getByRole("button", { name: "+ New risk" }));
+    fireEvent.click(screen.getByRole("button", { name: "New risk" }));
     const dialog = screen.getByRole("dialog", { name: "New risk" });
     const save = within(dialog).getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
@@ -224,7 +224,7 @@ describe("ROAM board", () => {
 
   it("disables New risk without a PI and shows load errors", async () => {
     await renderView(<RisksView />, { pi: null });
-    expect(await screen.findByRole("button", { name: "+ New risk" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "New risk" })).toBeDisabled();
   });
 
   it("shows load errors", async () => {

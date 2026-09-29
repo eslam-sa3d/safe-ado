@@ -29,10 +29,10 @@ describe("Setup — hierarchy members", () => {
     const group = openMembers("ART A");
     expect(within(group).getByText("No members yet.")).toBeInTheDocument();
 
-    fireEvent.click(within(group).getByRole("button", { name: "+ Add member" }));
+    fireEvent.click(within(group).getByRole("button", { name: "Add member" }));
     fireEvent.change(field(group, "Member 1 name"), { target: { value: "Rita" } });
     fireEvent.change(field(group, "Member 1 role"), { target: { value: "RTE" } });
-    fireEvent.click(within(group).getByRole("button", { name: "+ Add member" }));
+    fireEvent.click(within(group).getByRole("button", { name: "Add member" }));
     fireEvent.change(field(group, "Member 2 name"), { target: { value: "Paul" } });
     fireEvent.change(field(group, "Member 2 role"), { target: { value: "Product Manager" } });
     expect(screen.getByRole("button", { name: "Members of ART A" })).toHaveTextContent("Members (2)");
@@ -80,7 +80,7 @@ describe("Setup — hierarchy members", () => {
   it("stores no member list once the last member is removed", async () => {
     await renderSetup();
     const group = openMembers("Team Blue");
-    fireEvent.click(within(group).getByRole("button", { name: "+ Add member" }));
+    fireEvent.click(within(group).getByRole("button", { name: "Add member" }));
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     fireEvent.click(within(group).getByRole("button", { name: "Remove member 1" }));
     // Back to the saved config: nothing to save
@@ -92,7 +92,7 @@ describe("Setup — hierarchy members", () => {
     config.root.members = Array.from({ length: 24 }, (_, i) => ({ name: `P${i}`, role: "Dev" }));
     await renderSetup(config);
     const group = openMembers("Fabrikam");
-    const add = within(group).getByRole("button", { name: "+ Add member" });
+    const add = within(group).getByRole("button", { name: "Add member" });
     expect(add).toBeEnabled();
     fireEvent.click(add);
     expect(add).toBeDisabled();

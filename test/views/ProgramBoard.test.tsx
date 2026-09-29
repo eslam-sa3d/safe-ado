@@ -67,7 +67,7 @@ describe("ART Planning Board — feature iteration mode", () => {
     expect(within(payment).getByText("Active")).toBeInTheDocument();
     expect(within(payment).getByText("8 pts")).toBeInTheDocument();
     // Successor to feature 20 on another ART counts as external
-    expect(within(payment).getByTitle("Dependencies on items outside this board")).toHaveTextContent("↗ 1");
+    expect(within(payment).getByTitle("Dependencies on items outside this board")).toHaveTextContent(/^\s*1$/);
     expect(within(card("Wallet")).queryByTitle("Dependencies on items outside this board")).toBeNull();
     expect(payment).toHaveAttribute("title", "Feature #10: Payment API");
   });
@@ -439,11 +439,11 @@ describe("ART Planning Board — calculated mode (default)", () => {
     await metaStore.save({ id: "11", workItemId: 11, owningNodeId: "gone", assignedNodeIds: [], assignedPiPaths: [] });
     await renderBoard();
     expect(placement("Fraud rules")).toBe("Team Blue / PI Backlog");
-    expect(within(card("Fraud rules")).getByTitle("Owning team")).toHaveTextContent("★ Team Blue");
+    expect(within(card("Fraud rules")).getByTitle("Owning team")).toHaveTextContent("Team Blue");
     // Owning unit outside the board's rows: shown, but placement uses the children
     expect(placement("Payment API")).toBe("Team Red / PI 2 Sprint 2");
-    expect(within(card("Payment API")).getByTitle("Owning team")).toHaveTextContent("★ Team Green");
-    expect(within(card("Checkout UI")).getByTitle("Owning team")).toHaveTextContent("★ gone");
+    expect(within(card("Payment API")).getByTitle("Owning team")).toHaveTextContent("Team Green");
+    expect(within(card("Checkout UI")).getByTitle("Owning team")).toHaveTextContent("gone");
     expect(within(card("Wallet")).queryByTitle("Owning team")).toBeNull();
   });
 
@@ -510,10 +510,10 @@ describe("ART Planning Board — calculated mode (default)", () => {
     await renderBoard();
     const header = (title: string) =>
       Array.from(document.querySelectorAll(".board-col-header")).find((h) => h.firstChild!.textContent === title) as HTMLElement;
-    expect(within(header("PI 2 Sprint 2")).getByText("◆ Beta launch")).toHaveAttribute("title", expect.stringContaining("Public beta"));
-    expect(within(header("PI 2 Sprint 1")).getByText("◆ Board review")).toBeInTheDocument();
-    expect(screen.queryByText("◆ Other ART")).toBeNull();
-    expect(screen.queryByText("◆ Far future")).toBeNull();
+    expect(within(header("PI 2 Sprint 2")).getByText("Beta launch")).toHaveAttribute("title", expect.stringContaining("Public beta"));
+    expect(within(header("PI 2 Sprint 1")).getByText("Board review")).toBeInTheDocument();
+    expect(screen.queryByText("Other ART")).toBeNull();
+    expect(screen.queryByText("Far future")).toBeNull();
   });
 
   it("marks the current iteration", async () => {

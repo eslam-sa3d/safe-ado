@@ -340,7 +340,7 @@ describe("Roadmap", () => {
     expect(within(row).queryByText("ART B demo")).not.toBeInTheDocument();
 
     // Create
-    fireEvent.click(screen.getByRole("button", { name: "+ Milestone" }));
+    fireEvent.click(screen.getByRole("button", { name: "New milestone" }));
     const dialog = screen.getByRole("dialog", { name: "New milestone" });
     const save = within(dialog).getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
@@ -373,7 +373,7 @@ describe("Roadmap", () => {
     expect(dataStore.collections.get(msColl())!.has(stored.id)).toBe(false);
 
     // Cancel closes without saving
-    fireEvent.click(screen.getByRole("button", { name: "+ Milestone" }));
+    fireEvent.click(screen.getByRole("button", { name: "New milestone" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
