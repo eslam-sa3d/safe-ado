@@ -76,6 +76,11 @@ export interface Risk {
   status: RoamStatus;
   workItemId?: number;
   createdAt: string;
+  /** Agile Hive risk matrix inputs (see api/risk.ts). */
+  probability?: import("./risk").Probability;
+  impactLevel?: import("./risk").ImpactLevel;
+  residualProbability?: import("./risk").Probability;
+  residualImpact?: import("./risk").ImpactLevel;
   __etag?: number;
 }
 
