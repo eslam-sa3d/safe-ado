@@ -19,7 +19,7 @@ describe("hub entry point", () => {
     expect(sdk.init).toHaveBeenCalledWith({ loaded: false, applyTheme: true });
     expect(sdk.ready).toHaveBeenCalled();
     expect(sdk.notifyLoadFailed).not.toHaveBeenCalled();
-    expect(await screen.findByText("My Organization")).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "SAFe hierarchy" })).toBeInTheDocument();
   });
 
   it("reports load failure to the host and the page", async () => {

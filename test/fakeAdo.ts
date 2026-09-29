@@ -48,6 +48,7 @@ export const fake = {
   failures: [] as Failure[],
   wiqlOverride: null as null | ((query: string) => Json),
   nextId: 5000,
+  deletedIterations: [] as { path: string; reclassifyId: number }[],
 };
 
 export const dataStore = {
@@ -118,6 +119,7 @@ export function resetFake() {
   fake.failures = [];
   fake.wiqlOverride = null;
   fake.teamFieldRef = "System.AreaPath";
+  fake.deletedIterations = [];
 
   fake.types = [
     { name: "Epic", referenceName: "Microsoft.VSTS.WorkItemTypes.Epic" },
@@ -142,6 +144,10 @@ export function resetFake() {
     { name: "Business Value", referenceName: "Microsoft.VSTS.Common.BusinessValue", type: "integer" },
     { name: "Time Criticality", referenceName: "Microsoft.VSTS.Common.TimeCriticality", type: "double" },
     { name: "Stack Rank", referenceName: "Microsoft.VSTS.Common.StackRank", type: "double" },
+    { name: "Priority", referenceName: "Microsoft.VSTS.Common.Priority", type: "integer" },
+    { name: "Closed Date", referenceName: "Microsoft.VSTS.Common.ClosedDate", type: "dateTime" },
+    { name: "Start Date", referenceName: "Microsoft.VSTS.Scheduling.StartDate", type: "dateTime" },
+    { name: "Target Date", referenceName: "Microsoft.VSTS.Scheduling.TargetDate", type: "dateTime" },
   ];
 
   fake.areaTree = cnode("Area", [], undefined, [
@@ -195,12 +201,12 @@ export function resetFake() {
     wi(14, "Feature", "Wallet", BLUE, PI2_S1, "New", {}, [[CHILD, 102], [PRED, 11]]),
     wi(15, "Feature", "Old feature", RED, PI1_S1, "Closed", {}, [[CHILD, 103]]),
     wi(20, "Feature", "Reports", GREEN, PI2_IP, "New"),
-    wi(100, "User Story", "Charge card", RED, PI2_S1, "Closed", { [SP]: 5 }),
+    wi(100, "User Story", "Charge card", RED, PI2_S1, "Closed", { [SP]: 5, "Microsoft.VSTS.Common.ClosedDate": new Date(now - 2 * DAY).toISOString(), "Microsoft.VSTS.Common.Priority": 1 }),
     wi(101, "User Story", "Refund card", RED, PI2_S2, "Active", { [SP]: 3 }),
     wi(102, "User Story", "Add wallet", BLUE, PI2_S1, "New", { [SP]: 8 }),
-    wi(103, "User Story", "Old story", RED, PI1_S1, "Closed", { [SP]: 2 }),
+    wi(103, "User Story", "Old story", RED, PI1_S1, "Closed", { [SP]: 2, "Microsoft.VSTS.Common.ClosedDate": new Date(now - 60 * DAY).toISOString() }),
     wi(104, "User Story", "Removed story", RED, PI2_S1, "Removed", { [SP]: 13 }),
-    wi(105, "User Story", "Cart page", BLUE, PI2_S2, "Closed"),
+    wi(105, "User Story", "Cart page", BLUE, PI2_S2, "Closed", { "Microsoft.VSTS.Common.ClosedDate": new Date(now - 1 * DAY).toISOString() }),
   ];
   fake.workItems = new Map(items.map((i) => [i.id, i]));
 
@@ -329,7 +335,7 @@ function findIteration(parts: string[]): ClassificationNode | undefined {
   return node;
 }
 
-function route(method: string, path: string, body: Json): Response {
+function route(method: string, path: string, body: Json, full: string): Response {
   const P1 = fake.projectId;
   let m: RegExpExecArray | null;
 
@@ -367,6 +373,17 @@ function route(method: string, path: string, body: Json): Response {
     return json(clone(item));
   }
 
+  if (method === "POST" && (m = new RegExp(`^${P1}/_apis/wit/workitems/\\$(.+)$`).exec(path))) {
+    const type = decodeURIComponent(m[1]);
+    if (!fake.types.some((t) => t.name === type)) return json({ message: `TF401326: Invalid work item type ${type}` }, 400);
+    const id = fake.nextId++;
+    const fields: Json = { "System.Id": id, "System.WorkItemType": type, "System.State": fake.states[type]?.[0]?.name ?? "New", "System.TeamProject": fake.projectName };
+    for (const op of body) if (op.path.startsWith("/fields/")) fields[op.path.slice(8)] = op.value;
+    const item: WorkItem = { id, rev: 1, fields, relations: [] };
+    fake.workItems.set(id, item);
+    return json(clone(item));
+  }
+
   if (method === "GET" && path === `${P1}/_apis/wit/workitemtypes`) return json({ value: fake.types });
   if (method === "GET" && (m = new RegExp(`^${P1}/_apis/wit/workitemtypes/([^/]+)/states$`).exec(path))) {
     return json({ value: fake.states[decodeURIComponent(m[1])] ?? [] });
@@ -392,12 +409,49 @@ function route(method: string, path: string, body: Json): Response {
     return json(node, 201);
   }
 
+  if ((m = new RegExp(`^${P1}/_apis/wit/classificationnodes/Iterations/(.+)$`).exec(path)) && method !== "POST") {
+    const parts = m[1].split("/").map(decodeURIComponent);
+    const node = findIteration(parts);
+    if (!node) return json({ message: "VS402485: node not found" }, 404);
+    if (method === "GET") return json(node);
+    if (method === "PATCH") {
+      if (body.name) {
+        node.name = body.name;
+        node.path = node.path.replace(/[^\\]+$/, body.name);
+      }
+      if (body.attributes) node.attributes = body.attributes;
+      return json(node);
+    }
+    if (method === "DELETE") {
+      const parent = findIteration(parts.slice(0, -1))!;
+      parent.children = parent.children!.filter((c) => c !== node);
+      fake.deletedIterations.push({ path: node.path, reclassifyId: Number(new URL(full).searchParams.get("$reclassifyId")) });
+      return new Response(null, { status: 204 });
+    }
+  }
+
   if (method === "GET" && path === `_apis/projects/${P1}/teams`) return json({ value: [...fake.teams].reverse() });
+
+  if ((m = new RegExp(`^${P1}/([^/]+)/_apis/work/teamsettings/iterations/([^/]+)$`).exec(path)) && method === "DELETE") {
+    const team = decodeURIComponent(m[1]);
+    fake.teamIterations[team] = (fake.teamIterations[team] ?? []).filter((i) => i !== m![2]);
+    return new Response(null, { status: 204 });
+  }
 
   if ((m = new RegExp(`^${P1}/([^/]+)/_apis/work/teamsettings/(teamfieldvalues|iterations)$`).exec(path))) {
     const team = decodeURIComponent(m[1]);
     if (m[2] === "teamfieldvalues" && method === "GET") {
       return json({ field: { referenceName: fake.teamFieldRef }, defaultValue: fake.teamAreas[team], values: [] });
+    }
+    if (m[2] === "iterations" && method === "GET") {
+      const all: ClassificationNode[] = [];
+      const walk = (n: ClassificationNode) => (all.push(n), n.children?.forEach(walk));
+      walk(fake.iterationTree);
+      const value = (fake.teamIterations[team] ?? [])
+        .map((idf) => all.find((n) => n.identifier === idf))
+        .filter(Boolean)
+        .map((n) => ({ id: n!.identifier, name: n!.name, path: n!.path.replace(/^\\/, "").replace("\\Iteration", ""), attributes: n!.attributes }));
+      return json({ count: value.length, value });
     }
     if (m[2] === "iterations" && method === "POST") {
       const list = (fake.teamIterations[team] ??= []);
@@ -427,7 +481,7 @@ export const fetchMock = vi.fn(async (input: string, init: RequestInit = {}) => 
     if (failure.raw !== undefined) return new Response(failure.raw, { status: failure.status, statusText: "Server Error" });
     return json({ message: failure.message }, failure.status);
   }
-  return route(method, path, body);
+  return route(method, path, body, full);
 });
 
 // ---------------------------------------------------------------------------------------------

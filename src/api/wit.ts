@@ -313,3 +313,63 @@ export function isUnder(path: string | undefined, parent: string): boolean {
   const b = parent.toLowerCase();
   return a === b || a.startsWith(b + "\\");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Create / iteration maintenance
+// ---------------------------------------------------------------------------------------------
+
+/** Creates a work item of `type` with the given fields (POST json-patch). */
+export async function createWorkItem(type: string, fields: Record<string, unknown>): Promise<WorkItem> {
+  return api<WorkItem>(`${p()}/_apis/wit/workitems/$${encodeURIComponent(type)}`, {
+    method: "POST",
+    body: Object.entries(fields).map(([k, v]) => ({ op: "add", path: `/fields/${k}`, value: v })),
+    contentType: "application/json-patch+json",
+  });
+}
+
+function iterationUrl(fieldPath: string): string {
+  const relative = fieldPath.split("\\").slice(1).map(encodeURIComponent).join("/");
+  return `${p()}/_apis/wit/classificationnodes/Iterations${relative ? `/${relative}` : ""}`;
+}
+
+/** Renames an iteration and/or changes its dates. */
+export async function updateIteration(
+  fieldPath: string,
+  changes: { name?: string; startDate?: string; finishDate?: string }
+): Promise<ClassificationNode> {
+  const body: Record<string, unknown> = {};
+  if (changes.name) body.name = changes.name;
+  if (changes.startDate && changes.finishDate) body.attributes = { startDate: changes.startDate, finishDate: changes.finishDate };
+  return api<ClassificationNode>(iterationUrl(fieldPath), { method: "PATCH", body });
+}
+
+/**
+ * Deletes an iteration (and its children). Work items in it are moved to `reclassifyToId`,
+ * the numeric node id Azure DevOps requires for reclassification.
+ */
+export async function deleteIteration(fieldPath: string, reclassifyToId: number): Promise<void> {
+  await api(`${iterationUrl(fieldPath)}?$reclassifyId=${reclassifyToId}`, { method: "DELETE" });
+}
+
+/** Returns the numeric id of an iteration node by field path (needed for reclassification). */
+export async function getIterationNodeId(fieldPath: string): Promise<number | undefined> {
+  const res = await api<ClassificationNode>(iterationUrl(fieldPath));
+  return res?.id;
+}
+
+export interface TeamIteration {
+  id: string;
+  name: string;
+  path: string;
+  attributes?: { startDate?: string; finishDate?: string; timeFrame?: "past" | "current" | "future" };
+}
+
+/** Iterations a team is subscribed to (Agile Hive "sprint mapping"). */
+export async function getTeamIterations(teamId: string): Promise<TeamIteration[]> {
+  const res = await api<{ value: TeamIteration[] }>(`${p()}/${encodeURIComponent(teamId)}/_apis/work/teamsettings/iterations`);
+  return res.value;
+}
+
+export async function removeTeamIteration(teamId: string, iterationIdentifier: string): Promise<void> {
+  await api(`${p()}/${encodeURIComponent(teamId)}/_apis/work/teamsettings/iterations/${iterationIdentifier}`, { method: "DELETE" });
+}

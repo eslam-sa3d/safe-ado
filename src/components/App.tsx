@@ -2,41 +2,72 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getProject } from "../api/client";
 import { defaultConfig, loadConfig, saveConfig as persistConfig } from "../api/data";
 import { findNode, LEVEL_COLOR, pathTo } from "../api/org";
-import { LEVEL_LABEL, SafeConfig } from "../api/types";
+import { Level, LEVEL_LABEL, SafeConfig } from "../api/types";
 import { getProgramIncrements } from "../api/wit";
 import { HierarchyView } from "../views/HierarchyView";
 import { ObjectivesView } from "../views/ObjectivesView";
+import { OrganizationView } from "../views/OrganizationView";
 import { PiManagementView } from "../views/PiManagementView";
 import { PortfolioKanban } from "../views/PortfolioKanban";
 import { ProgramBoard } from "../views/ProgramBoard";
 import { ReportsView } from "../views/ReportsView";
 import { RisksView } from "../views/RisksView";
+import { RoadmapView } from "../views/RoadmapView";
 import { SetupView } from "../views/SetupView";
+import { TeamBoard } from "../views/TeamBoard";
+import { WorkItemList } from "../views/WorkItemList";
 import { ErrorBar, fmtDate, Spinner, storage, useAsync } from "./common";
 import { SafeContext, SafeContextValue } from "./context";
 import { Sidebar } from "./Sidebar";
 
-type ViewKey = "kanban" | "board" | "objectives" | "risks" | "hierarchy" | "reports" | "pis" | "setup";
+export type ViewKey =
+  | "reports"
+  | "roadmap"
+  | "kanban"
+  | "board"
+  | "teamboard"
+  | "objectives"
+  | "risks"
+  | "workitems"
+  | "hierarchy"
+  | "organization"
+  | "pis"
+  | "setup";
 
 const VIEW_LABEL: Record<ViewKey, string> = {
+  reports: "Reports",
+  roadmap: "Roadmap",
   kanban: "Portfolio Kanban",
-  board: "Program Board",
+  board: "ART Planning Board",
+  teamboard: "Team Planning Board",
   objectives: "PI Objectives",
   risks: "Risks (ROAM)",
+  workitems: "Work Item List",
   hierarchy: "Work Item Hierarchy",
-  reports: "Reports",
+  organization: "My Organization",
   pis: "PIs & Iterations",
   setup: "Setup",
 };
 
-const GLOBAL_VIEWS: ViewKey[] = ["pis", "setup"];
+/** Tabs per SAFe level, mirroring Agile Hive's project navigation (Reports is the landing page). */
+export const LEVEL_VIEWS: Record<Level, ViewKey[]> = {
+  portfolio: ["reports", "roadmap", "kanban", "risks", "workitems", "hierarchy"],
+  solution: ["reports", "roadmap", "board", "objectives", "risks", "workitems", "hierarchy"],
+  art: ["reports", "roadmap", "board", "objectives", "risks", "workitems", "hierarchy"],
+  team: ["reports", "teamboard", "objectives", "risks", "workitems", "hierarchy"],
+};
+
+const GLOBAL_VIEWS: ViewKey[] = ["organization", "pis", "setup"];
+
+/** Views that cannot render without a Program Increment. */
+const NEEDS_PI: ViewKey[] = ["board", "teamboard", "objectives"];
 
 export function App() {
   const [config, setConfig] = useState<SafeConfig | null>(null);
   const [firstRun, setFirstRun] = useState(false);
   const [loadError, setLoadError] = useState<string>();
   const [getPrefs, setPrefs] = useMemo(
-    () => storage(`safe-ado-prefs-${getProject().id}`, { nodeId: "", view: "board" as ViewKey, piPath: "" }),
+    () => storage(`safe-ado-prefs-${getProject().id}`, { nodeId: "", view: "reports" as ViewKey, piPath: "" }),
     []
   );
   const [nodeId, setNodeId] = useState(getPrefs().nodeId);
@@ -82,10 +113,7 @@ export function App() {
   if (!config) return <Spinner label="Loading SAFe configuration…" />;
 
   const node = findNode(config.root, nodeId) ?? config.root;
-  const levelViews: ViewKey[] =
-    node.level === "portfolio"
-      ? ["kanban", "hierarchy", "risks", "reports"]
-      : ["board", "objectives", "risks", "hierarchy", "reports"];
+  const levelViews = LEVEL_VIEWS[node.level];
   const activeView: ViewKey = levelViews.includes(view) || GLOBAL_VIEWS.includes(view) ? view : levelViews[0];
 
   const ctx: SafeContextValue = {
@@ -98,7 +126,7 @@ export function App() {
     reloadPis: () => pisState.reload(),
   };
 
-  const needsPi = ["board", "objectives", "risks", "reports"].includes(activeView);
+  const needsPi = NEEDS_PI.includes(activeView);
 
   return (
     <SafeContext.Provider value={ctx}>
@@ -136,7 +164,7 @@ export function App() {
           <div className="tabs" role="tablist">
             {levelViews.map((v) => (
               <Tab key={v} active={activeView === v} onClick={() => setView(v)}>
-                {VIEW_LABEL[v]}
+                {v === "board" && node.level === "solution" ? "Solution Planning Board" : VIEW_LABEL[v]}
               </Tab>
             ))}
             <span className="tabs-spacer" />
@@ -182,8 +210,16 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
 
 function ViewSwitch({ view, firstRun }: { view: ViewKey; firstRun: boolean }) {
   switch (view) {
+    case "roadmap":
+      return <RoadmapView />;
     case "kanban":
       return <PortfolioKanban />;
+    case "teamboard":
+      return <TeamBoard />;
+    case "workitems":
+      return <WorkItemList />;
+    case "organization":
+      return <OrganizationView />;
     case "board":
       return <ProgramBoard />;
     case "objectives":

@@ -228,3 +228,12 @@ tr.uncommitted td:first-child { font-style: italic; }
   .two-col { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
 }
+
+/* ---------- shared filter bar ---------- */
+.filterbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.filterbar .wiql { flex: 1; min-width: 220px; font-family: Menlo, Consolas, monospace; font-size: 12px; }
+.filterbar .wiql.active { border-color: var(--accent); }
+.facet { position: relative; }
+.facet > summary { list-style: none; }
+.facet > summary::-webkit-details-marker { display: none; }
+.facet-menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; min-width: 180px; max-height: 280px; overflow: auto; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px; display: grid; gap: 6px; }

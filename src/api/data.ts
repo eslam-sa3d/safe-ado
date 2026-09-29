@@ -1,7 +1,7 @@
 import * as SDK from "azure-devops-extension-sdk";
 import type { IExtensionDataManager, IExtensionDataService } from "azure-devops-extension-api/Common/CommonServices";
 import { getProject, ServiceIds } from "./client";
-import { OrgNode, PiObjective, Risk, SafeConfig, WorkItemTypeMap } from "./types";
+import { IterationCapacity, Milestone, OrgNode, PiObjective, Risk, SafeConfig, WorkItemMeta, WorkItemTypeMap } from "./types";
 import { getWorkItemTypes } from "./wit";
 
 /**
@@ -26,6 +26,7 @@ function manager(): Promise<IExtensionDataManager> {
 const configKey = () => `config-${getProject().id}`;
 const objectivesCollection = () => `objectives-${getProject().id}`;
 const risksCollection = () => `risks-${getProject().id}`;
+const collection = (name: string) => () => `${name}-${getProject().id}`;
 
 export function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -105,3 +106,37 @@ export const risksStore = {
   save: (r: Risk) => setDoc(risksCollection(), r),
   remove: (id: string) => deleteDoc(risksCollection(), id),
 };
+
+function docStore<T extends { id: string }>(name: string) {
+  const coll = collection(name);
+  return {
+    list: () => getDocs<T>(coll()),
+    save: (doc: T) => setDoc(coll(), doc),
+    remove: (id: string) => deleteDoc(coll(), id),
+  };
+}
+
+export const milestonesStore = docStore<Milestone>("milestones");
+export const capacityStore = docStore<IterationCapacity>("capacity");
+export const metaStore = docStore<WorkItemMeta>("wimeta");
+
+export const capacityId = (nodeId: string, iterationPath: string) => `${nodeId}|${iterationPath}`;
+
+export function emptyMeta(workItemId: number): WorkItemMeta {
+  return { id: String(workItemId), workItemId, assignedNodeIds: [], assignedPiPaths: [] };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Per-user values (starred nodes, view preferences) — follow the user across browsers.
+// ---------------------------------------------------------------------------------------------
+
+export async function getUserValue<T>(key: string, fallback: T): Promise<T> {
+  const m = await manager();
+  const value = await m.getValue<T | undefined>(`${key}-${getProject().id}`, { scopeType: "User" });
+  return value ?? fallback;
+}
+
+export async function setUserValue<T>(key: string, value: T): Promise<T> {
+  const m = await manager();
+  return m.setValue<T>(`${key}-${getProject().id}`, value, { scopeType: "User" });
+}

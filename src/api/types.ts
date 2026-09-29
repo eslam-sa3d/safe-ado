@@ -16,6 +16,8 @@ export interface OrgNode {
   areaPath?: string;
   /** Azure DevOps team backing this node (usually teams, optionally ARTs). */
   teamId?: string;
+  /** People and their SAFe roles (RTE, PO, ...), shown in the Reports header. */
+  members?: Member[];
   children: OrgNode[];
 }
 
@@ -103,6 +105,11 @@ export const F = {
   timeCriticality: "Microsoft.VSTS.Common.TimeCriticality",
   effort: "Microsoft.VSTS.Scheduling.Effort",
   stackRank: "Microsoft.VSTS.Common.StackRank",
+  priority: "Microsoft.VSTS.Common.Priority",
+  closedDate: "Microsoft.VSTS.Common.ClosedDate",
+  startDate: "Microsoft.VSTS.Scheduling.StartDate",
+  targetDate: "Microsoft.VSTS.Scheduling.TargetDate",
+  changedDate: "System.ChangedDate",
 } as const;
 
 export const LINK = {
@@ -111,3 +118,53 @@ export const LINK = {
   successor: "System.LinkTypes.Dependency-Forward",
   predecessor: "System.LinkTypes.Dependency-Reverse",
 } as const;
+
+// ---------------------------------------------------------------------------------------------
+// Planning entities (Agile Hive parity). Stored in the Extension Data Service per project.
+// ---------------------------------------------------------------------------------------------
+
+export interface Member {
+  name: string;
+  role: string;
+}
+
+/** A dated milestone shown on the Roadmap, ART board header and Milestone report. */
+export interface Milestone {
+  id: string;
+  nodeId: string;
+  title: string;
+  /** YYYY-MM-DD */
+  date: string;
+  description?: string;
+  __etag?: number;
+}
+
+/** Story-point capacity of one team (node) for one iteration. id = `${nodeId}|${iterationPath}`. */
+export interface IterationCapacity {
+  id: string;
+  nodeId: string;
+  iterationPath: string;
+  capacity: number;
+  __etag?: number;
+}
+
+/**
+ * SAFe planning metadata for a work item that Azure DevOps has no field for
+ * (Agile Hive's Owning Unit, Assigned Units, Assigned PIs, Planned Date). id = String(workItemId).
+ */
+export interface WorkItemMeta {
+  id: string;
+  workItemId: number;
+  owningNodeId?: string;
+  assignedNodeIds: string[];
+  assignedPiPaths: string[];
+  /** Roadmap planned date range, YYYY-MM-DD. */
+  plannedStart?: string;
+  plannedEnd?: string;
+  /** Roadmap vertical lane (row index). */
+  lane?: number;
+  __etag?: number;
+}
+
+/** Agile Hive dependency criticality. */
+export type Criticality = "healthy" | "atRisk" | "critical" | "resolved";

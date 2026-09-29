@@ -44,6 +44,7 @@ describe("Setup", () => {
     expect(Array.from(size.options).map((o) => o.value)).toEqual([
       "Microsoft.VSTS.Common.BusinessValue",
       "Microsoft.VSTS.Scheduling.Effort",
+      "Microsoft.VSTS.Common.Priority",
       "Microsoft.VSTS.Common.StackRank",
       "Microsoft.VSTS.Scheduling.StoryPoints",
       "Microsoft.VSTS.Common.TimeCriticality",

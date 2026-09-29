@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../../src/components/App";
 import { useSafe } from "../../src/components/context";
@@ -14,13 +14,20 @@ describe("App shell", () => {
     render(<App />);
     expect(screen.getByText("Loading SAFe configuration…")).toBeInTheDocument();
     await screen.findByRole("tab", { name: "Portfolio Kanban" });
-    expect(tabs()).toEqual(["Portfolio Kanban", "Work Item Hierarchy", "Risks (ROAM)", "Reports", "PIs & Iterations", "Setup"]);
+    expect(tabs()).toEqual([
+      "Reports", "Roadmap", "Portfolio Kanban", "Risks (ROAM)", "Work Item List", "Work Item Hierarchy",
+      "My Organization", "PIs & Iterations", "Setup",
+    ]);
+    expect(screen.getByRole("tab", { name: "Reports" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Portfolio", { selector: ".level-badge" })).toBeInTheDocument();
   });
 
   it("shows ART/team tabs and a breadcrumb that navigates up", async () => {
     await renderApp({ nodeId: "n-red", view: "objectives" });
-    expect(tabs()).toEqual(["Program Board", "PI Objectives", "Risks (ROAM)", "Work Item Hierarchy", "Reports", "PIs & Iterations", "Setup"]);
+    expect(tabs()).toEqual([
+      "Reports", "Team Planning Board", "PI Objectives", "Risks (ROAM)", "Work Item List", "Work Item Hierarchy",
+      "My Organization", "PIs & Iterations", "Setup",
+    ]);
     expect(screen.getByRole("tab", { name: "PI Objectives" })).toHaveAttribute("aria-selected", "true");
     const crumbs = document.querySelector(".breadcrumb") as HTMLElement;
     expect(within(crumbs).getAllByRole("button").map((b) => b.textContent)).toEqual(["Fabrikam", "ART A", "Team Red"]);
@@ -29,9 +36,20 @@ describe("App shell", () => {
     expect(prefs().nodeId).toBe("n-arta");
   });
 
-  it("falls back to the first tab when the saved view does not exist at this level", async () => {
+  it("falls back to the first tab (Reports) when the saved view does not exist at this level", async () => {
     await renderApp({ nodeId: "n-root", view: "board" });
-    expect(screen.getByRole("tab", { name: "Portfolio Kanban" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Reports" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("names the planning board per level and offers the team board only to teams", async () => {
+    await renderApp({ nodeId: "n-arta", view: "setup" });
+    expect(screen.getByRole("tab", { name: "ART Planning Board" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Team Planning Board" })).toBeNull();
+    const config = (await import("../fakeAdo")).makeConfig();
+    config.root.children = [{ id: "n-sol", name: "Big Solution", level: "solution", areaPath: "Fabrikam", children: config.root.children }];
+    cleanup();
+    await renderApp({ nodeId: "n-sol", view: "setup", config });
+    expect(screen.getByRole("tab", { name: "Solution Planning Board" })).toBeInTheDocument();
   });
 
   it("falls back to the root when the saved node no longer exists", async () => {
@@ -42,7 +60,7 @@ describe("App shell", () => {
   it("selects nodes from the sidebar and persists tab choice", async () => {
     await renderApp({ nodeId: "n-root", view: "kanban" });
     fireEvent.click(within(screen.getByRole("navigation")).getByText("Team Green"));
-    await screen.findByRole("tab", { name: "Program Board" });
+    await screen.findByRole("tab", { name: "Team Planning Board" });
     fireEvent.click(screen.getByRole("tab", { name: "Reports" }));
     expect(screen.getByRole("tab", { name: "Reports" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "PIs & Iterations" }));
@@ -118,7 +136,7 @@ describe("App shell", () => {
   it("renders every view through the shell", async () => {
     await renderApp({ nodeId: "n-arta", view: "risks" });
     expect(await screen.findByRole("group", { name: "Unroamed risks" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Program Board" }));
+    fireEvent.click(screen.getByRole("tab", { name: "ART Planning Board" }));
     expect(await screen.findByText("Payment API")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "PI Objectives" }));
     expect(await screen.findByText("Planned BV (committed)")).toBeInTheDocument();
@@ -126,6 +144,14 @@ describe("App shell", () => {
     expect(await screen.findByPlaceholderText("Filter by title or ID")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Reports" }));
     expect(await screen.findByRole("heading", { name: "PI Predictability" })).toBeInTheDocument();
+    for (const tab of ["Roadmap", "Work Item List", "My Organization"]) {
+      fireEvent.click(screen.getByRole("tab", { name: tab }));
+      expect(screen.getByRole("tab", { name: tab })).toHaveAttribute("aria-selected", "true");
+    }
+    fireEvent.click(screen.getByRole("tab", { name: "Reports" }));
+    fireEvent.click(within(screen.getByRole("navigation")).getByText("Team Red"));
+    fireEvent.click(screen.getByRole("tab", { name: "Team Planning Board" }));
+    expect(screen.getByRole("tab", { name: "Team Planning Board" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(within(screen.getByRole("navigation")).getByText("Fabrikam"));
     // Reports exists at portfolio level too, so the tab is kept
     expect(screen.getByRole("tab", { name: "Reports" })).toHaveAttribute("aria-selected", "true");
