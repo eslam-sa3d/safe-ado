@@ -43,7 +43,7 @@ npm run typecheck
 npm run package          # -> out/<publisher>.safe-ado-<version>.vsix
 ```
 
-Before publishing, set `publisher` in [vss-extension.json](vss-extension.json) to your Marketplace publisher ID.
+The Marketplace publisher is `SAFeADO` (set in [vss-extension.json](vss-extension.json)). Bump `version` there before each publish.
 
 ## Install
 

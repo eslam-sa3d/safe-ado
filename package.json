@@ -1,6 +1,6 @@
 {
   "name": "safe-ado",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "SAFe scaling (Portfolio / Large Solution / ART / Team) for Azure DevOps Services and Azure DevOps Server 2022.1",
   "license": "MIT",
