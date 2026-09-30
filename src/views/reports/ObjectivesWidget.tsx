@@ -4,7 +4,7 @@ import { subtreeIds } from "../../api/org";
 import { businessValue, inPi, teamProgress } from "../../api/reports";
 import { PiObjective } from "../../api/types";
 import { Progress } from "../../components/common";
-import { useCan, useSafe } from "../../components/context";
+import { useDataCan, useSafe } from "../../components/context";
 import { bvTone } from "./BusinessValueWidget";
 import { ObjectiveDialog } from "./CreateDialogs";
 import { ReportData } from "./data";
@@ -53,7 +53,7 @@ function ObjectiveTable({ title, objectives }: { title: string; objectives: PiOb
 /** PI Objectives of this unit, plus the business-value progress of each child unit. */
 export function ObjectivesWidget({ data }: { data: ReportData }) {
   const { node, pi, selectNode } = useSafe();
-  const can = useCan();
+  const can = useDataCan();
   const [created, setCreated] = useState<PiObjective[]>([]);
   const [adding, setAdding] = useState(false);
   if (!pi)

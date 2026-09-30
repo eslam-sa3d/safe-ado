@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { ALL_ALLOWED, Capabilities } from "../api/permissions";
+import { ALL_ALLOWED, Capabilities, dataCapabilities } from "../api/permissions";
 import { OrgNode, ProgramIncrement, SafeConfig } from "../api/types";
 
 export interface SafeContextValue {
@@ -16,11 +16,21 @@ export interface SafeContextValue {
   piRoot?: string;
   /** What the current user may change; views go read-only when a capability is missing. */
   can?: Capabilities;
+  /** Runs the permission checks again (after one could not be answered). Absent outside the shell. */
+  recheckPermissions?: () => void;
 }
 
 /** Capabilities with the "everything allowed" default used outside the shell (tests, previews). */
 export function useCan(): Capabilities {
   return useSafe().can ?? ALL_ALLOWED;
+}
+
+/**
+ * Capabilities for writes that go only to the Extension Data Service (objectives, risks,
+ * milestones, capacity, votes, reviews, config): an unverified permission means read-only.
+ */
+export function useDataCan(): Capabilities {
+  return dataCapabilities(useCan());
 }
 
 export const SafeContext = createContext<SafeContextValue | null>(null);

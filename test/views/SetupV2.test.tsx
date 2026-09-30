@@ -257,7 +257,7 @@ describe("Setup — member identity picker", () => {
     expect(within(group).getByText("grace@fabrikam.com")).toHaveClass("member-identity");
     expect(group.querySelector("img.member-avatar")).toHaveAttribute("src", "https://img/grace.png");
     expect(Array.from(picker.options).map((o) => o.value)).toEqual(["", "u-ada"]);
-    fireEvent.change(within(group).getByLabelText("Member 1 role"), { target: { value: "Scrum Master" } });
+    fireEvent.change(within(group).getByLabelText("Member 1 role"), { target: { value: "scrumMaster" } });
     fireEvent.change(picker, { target: { value: "u-ada" } });
     expect(picker.options[0].textContent).toBe("(no more team members)");
     // Unknown values are ignored.
@@ -265,7 +265,7 @@ describe("Setup — member identity picker", () => {
 
     let saved = await save(ctx);
     expect(findNode(saved.root, "n-red")!.members).toEqual([
-      { name: "Grace Hopper", role: "Scrum Master", id: "u-grace", uniqueName: "grace@fabrikam.com", imageUrl: "https://img/grace.png" },
+      { name: "Grace Hopper", role: "Scrum Master / Team Coach", safeRole: "scrumMaster", id: "u-grace", uniqueName: "grace@fabrikam.com", imageUrl: "https://img/grace.png" },
       { name: "Ada Lovelace", role: "", id: "u-ada", uniqueName: "ada@fabrikam.com" },
     ]);
 
@@ -316,7 +316,8 @@ describe("Setup — read-only", () => {
     const group = screen.getByRole("group", { name: "ART A members" });
     expect(within(group).getByLabelText("Member 1 name")).toBeDisabled();
     expect(within(group).queryByRole("button")).toBeNull();
-    expect(within(group).queryByRole("combobox")).toBeNull();
+    expect(within(group).getByLabelText("Member 1 role")).toBeDisabled();
+    expect(within(group).queryByRole("combobox", { name: /Add a team member/ })).toBeNull();
     // The checklist still navigates.
     expect(within(checklistPanel()).getAllByRole("button")[0]).toBeEnabled();
   });

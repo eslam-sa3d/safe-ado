@@ -23,7 +23,8 @@ import { localToday } from "../api/rules";
 import { F, OrgNode } from "../api/types";
 import { getStateCategories, isUnder, openNewWorkItem, openWorkItem, queryWorkItems } from "../api/wit";
 import { Empty, ErrorBar, Icon, Info, LevelPill, Spinner, useAsync } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useDataCan, useSafe } from "../components/context";
+import { PermissionNotice } from "../components/PermissionNotice";
 import { DecisionPill } from "./LeanBusinessCase";
 
 const EPIC_STATUS: Record<EpicCost["status"], string> = {
@@ -40,7 +41,8 @@ const EPIC_STATUS: Record<EpicCost["status"], string> = {
  */
 export function LeanPortfolioView() {
   const { config, node, pis, pi: shellPi } = useSafe();
-  const canPlan = useCan().plan;
+  // Canvas, settings and budgets live only in extension data: an unverified permission means read-only.
+  const canPlan = useDataCan().plan;
   const [piId, setPiId] = useState(shellPi?.identifier ?? "");
   const pi = pis.find((p) => p.identifier === piId) ?? shellPi;
   const [actionError, setActionError] = useState<string>();
@@ -165,6 +167,7 @@ export function LeanPortfolioView() {
         </button>
       </div>
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
+      <PermissionNotice needs="plan" />
       {!canPlan && <Info>You have read-only access: the Lean Portfolio can be viewed but not changed.</Info>}
 
       <section className="panel" aria-label="Portfolio canvas">

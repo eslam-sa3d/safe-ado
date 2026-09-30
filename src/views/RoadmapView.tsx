@@ -36,7 +36,8 @@ import {
 import { Criticality, F, Milestone, ProgramIncrement, WorkItem, WorkItemMeta } from "../api/types";
 import { getFieldNames, getProgramIncrements, getStateCategories, getWorkItems, openWorkItem, queryWorkItems, setFields } from "../api/wit";
 import { CATEGORY_COLOR, Empty, ErrorBar, Field, Info, Modal, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useCan, useDataCan, useSafe } from "../components/context";
+import { PermissionNotice } from "../components/PermissionNotice";
 import { FilterBar } from "../components/FilterBar";
 
 type Layout = "compact" | "extended";
@@ -102,6 +103,8 @@ function Roadmap() {
   const { config, node, pis, piRoot } = useSafe();
   const can = useCan();
   const readOnly = !can.plan;
+  // Milestones live only in extension data: an unverified permission locks them (fail closed).
+  const milestonesReadOnly = readOnly || !useDataCan().plan;
   const type = boardType(config, node.level);
   const areas = scopeAreas(node);
   const [prefs, setPrefsState] = useState<Prefs>(readPrefs);
@@ -476,7 +479,7 @@ function Roadmap() {
             ))}
           </div>
         </details>
-        {!readOnly && (
+        {!milestonesReadOnly && (
           <button className="btn" onClick={() => setMilestoneEdit({ id: "", nodeId: node.id, title: "", date: today, description: "" })}>
             <Icon name="Add" /> New milestone
           </button>
@@ -487,6 +490,7 @@ function Roadmap() {
       </div>
       <FilterBar value={filter} onChange={setFilter} options={facetOptions(items)} />
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
+      <PermissionNotice needs="plan" />
       {readOnly && <Info>You have read-only access to this area: planned dates, lanes and milestones can't be changed here.</Info>}
       {filterActive && !readOnly && <Info>Filters are active: cards can be resized but not moved. Clear the filters to move cards.</Info>}
       {items.length === 0 && !loading && (
@@ -583,9 +587,9 @@ function Roadmap() {
                   className={"rm-milestone" + (m.nodeId !== node.id ? " inherited" : "")}
                   style={{ left: x(m.date) }}
                   aria-label={`Milestone ${m.title}`}
-                  aria-disabled={readOnly}
+                  aria-disabled={milestonesReadOnly}
                   title={`${m.title} · ${shortDate(m.date)}${m.description ? `\n${m.description}` : ""}`}
-                  onClick={() => !readOnly && setMilestoneEdit(m)}
+                  onClick={() => !milestonesReadOnly && setMilestoneEdit(m)}
                 >
                   <span className="rm-diamond" aria-hidden="true" />
                   <span className="rm-milestone-label">{m.title}</span>

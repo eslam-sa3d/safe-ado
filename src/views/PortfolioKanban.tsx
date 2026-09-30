@@ -6,7 +6,7 @@ import { baseFields, scopeQuery } from "../api/queries";
 import { F, WorkItem } from "../api/types";
 import { getFieldNames, getStates, openNewWorkItem, openWorkItem, queryWorkItems, setFields, WitState } from "../api/wit";
 import { Empty, ErrorBar, Info, Spinner, useAsync, Icon, Modal } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useCan, useDataCan, useSafe } from "../components/context";
 import { wsjfOf } from "../api/rules";
 import { DecisionPill, LeanCaseDialog } from "./LeanBusinessCase";
 
@@ -29,6 +29,8 @@ export function PortfolioKanban() {
   const rroeField = config.rroeField ?? RROE_FIELD;
   const wsjf = wsjfWith(rroeField);
   const canPlan = useCan().plan;
+  // Business cases and column settings live only in extension data (fail closed).
+  const canEditLean = useDataCan().plan;
   const epic = config.types.epic;
   const areas = scopeAreas(node);
   const [sortByWsjf, setSortByWsjf] = useState(false);
@@ -103,7 +105,7 @@ export function PortfolioKanban() {
         <label className="check">
           <input type="checkbox" checked={sortByWsjf} onChange={(e) => setSortByWsjf(e.target.checked)} /> Sort by WSJF
         </label>
-        {canPlan && (
+        {canEditLean && (
           <button className="btn" onClick={() => setConfiguring(true)} disabled={!data}>
             <Icon name="Settings" /> Columns & WIP
           </button>
@@ -209,7 +211,7 @@ export function PortfolioKanban() {
           title={`#${editing.id} ${editing.fields[F.title]}`}
           workItemId={editing.id}
           initial={data.cases.get(editing.id)}
-          readOnly={!canPlan}
+          readOnly={!canEditLean}
           onCancel={() => setEditing(undefined)}
           onSaved={(saved) => {
             setData({ ...data, cases: new Map(data.cases).set(saved.workItemId, saved) });

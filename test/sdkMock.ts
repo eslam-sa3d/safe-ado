@@ -23,7 +23,8 @@ export const notifyLoadFailed = vi.fn();
 export const getAccessToken = vi.fn(async () => "test-token");
 export const getWebContext = vi.fn(() => ({ project: { id: fake.projectId, name: fake.projectName } }));
 export const getHost = vi.fn(() => ({ id: "coll-0000-test", name: "fabrikam", isHosted: true }));
-export const getUser = vi.fn(() => ({ id: "u-ada", name: "ada@fabrikam.com", displayName: "Ada Lovelace" }));
+/** The signed-in user (fake.user); tests switch users by changing it. */
+export const getUser = vi.fn(() => ({ ...fake.user, descriptor: `aad.${fake.user.id}`, imageUrl: "" }));
 export const getExtensionContext = vi.fn(() => ({ id: "SAFeADO.safe-ado", publisherId: "SAFeADO", extensionId: "safe-ado" }));
 
 export const getService = vi.fn(async (id: string) => {

@@ -82,7 +82,8 @@ describe("Lean Portfolio view", () => {
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.blur(input);
     await waitFor(() => expect(doc("budgets", id)).toBeUndefined());
-    expect(dataManager.setDocument).toHaveBeenCalledTimes(2);
+    // Two budget writes (the audit log adds its own entries to another collection).
+    expect(dataManager.setDocument.mock.calls.filter(([c]) => String(c).startsWith("budgets-"))).toHaveLength(2);
     // Clearing a budget that does not exist is a no-op.
     const b = screen.getByLabelText("Budget of ART A");
     fireEvent.change(b, { target: { value: "x" } });

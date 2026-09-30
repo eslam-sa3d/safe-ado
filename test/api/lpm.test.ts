@@ -124,7 +124,7 @@ describe("Lean Business Case", () => {
     await portfolioSettingsStore.save(emptySettings("n-root"));
     await budgetsStore.save({ id: budgetId("n-root", "pi"), nodeId: "n-root", piId: "pi", piPath: "P\\PI", amount: 1 });
     expect(dataManager.setDocument).toHaveBeenCalledWith(`leancases-${fake.projectId}`, expect.objectContaining({ id: "5" }), expect.anything());
-    expect(dataManager.setDocument).toHaveBeenCalledWith(`lpmsettings-${fake.projectId}`, { id: "n-root", nodeId: "n-root" }, expect.anything());
+    expect(dataManager.setDocument).toHaveBeenCalledWith(`lpmsettings-${fake.projectId}`, expect.objectContaining({ id: "n-root", nodeId: "n-root" }), expect.anything());
     expect(dataManager.setDocument).toHaveBeenCalledWith(`budgets-${fake.projectId}`, expect.objectContaining({ id: "n-root|pi" }), expect.anything());
     expect(await leanCasesStore.get("5")).toMatchObject({ workItemId: 5 });
   });

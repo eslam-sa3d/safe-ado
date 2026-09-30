@@ -16,13 +16,13 @@ The feature set follows Agile Hive for Jira. [docs/AGILE_HIVE_PARITY.md](docs/AG
 | **Team Planning Board** | Team | Sprint columns with feature swimlanes and an Independent lane. Load vs. capacity per sprint. Team and ART backlogs. Drag to set sprint and parent. Create items in a cell. Read-only sibling teams. EXTERNAL dependency lanes |
 | **Portfolio Kanban** | Portfolio | SAFe columns (Funnel, Reviewing, Analyzing, Ready, Implementing, Done) mapped onto the Epic states, with WIP limits per column and an over-limit warning. Drag to move; leaving Analyzing without a Lean Business Case and a Go decision asks for confirmation. Edit each Epic's Lean Business Case from its card. Sort by WSJF |
 | **Lean Portfolio** | Portfolio | Portfolio canvas (vision, strategic themes). Value stream budgets per PI for the portfolio, solutions and ARTs, with forecast and actual spend and a guardrail warning when the forecast exceeds the budget. Epic cost vs. the MVP and full estimates of its Lean Business Case |
-| **PI Objectives** | Solution / ART / Team | Committed and uncommitted objectives, planned and actual BV, predictability |
-| **Risks (ROAM)** | All | ROAM board; probability and impact, with residual values and the exposure matrix |
+| **PI Objectives** | Solution / ART / Team | Committed and uncommitted objectives, planned and actual BV (entered by the unit's Business Owners when it has any), predictability, change history |
+| **Risks (ROAM)** | All | ROAM board; probability and impact, with residual values and the exposure matrix; who raised and changed each risk, and its history |
 | **Work Item List** | All | Inline edit of title, priority, assignee and parent. Level-specific columns (owning team, involved teams, assigned PIs, PI involvement). Sort, filter, CSV export |
 | **Work Item Hierarchy** | All | Epic → Capability → Feature → Story tree with story-point roll-ups |
 | **My Organization** | Global | Canvas with one band per layer. Add, re-parent by drag, detach or remove units |
 | **PIs & Iterations** | Global | Create, edit and delete PIs and iterations, including an IP iteration. Overlap checks and a maximum of 10 iterations. Sprint mapping per team |
-| **Setup** | Global | Type mapping, PI root iteration, capacity source, hierarchy editor with members, generate the hierarchy from area paths |
+| **Setup** | Global | Type mapping, PI root iteration, capacity source, hierarchy editor with members and their SAFe roles, generate the hierarchy from area paths, backup / restore of all SAFe data, audit log |
 | **SAFe panel** on the work item form | — | Shows the item's unit, PI, parent and children. Edits owning team, assigned PIs and planned dates. For Epics, shows and edits the Lean Business Case |
 
 Every board and list has the shared filter bar: text search, Type / State / Assignee / Tags facets, an advanced WIQL clause, Copy WIQL, and Clear. Units can be starred in the sidebar.
@@ -36,8 +36,9 @@ Every board and list has the shared filter bar: text search, Type / State / Assi
 | PI | A child iteration of the configured *PI root iteration* |
 | Iteration / IP iteration | Children of the PI iteration |
 | Dependency | `Successor` / `Predecessor` link between work items |
-| PI Objective, ROAM risk | Extension Data Service documents (per project) |
+| PI Objective, ROAM risk | Extension Data Service documents (per project), stamped and logged in the audit log |
 | Lean Business Case, value stream budget, portfolio canvas | Extension Data Service documents: `leancases` (per Epic), `budgets` (per unit and PI), `lpmsettings` (per unit: Kanban mapping, WIP limits, currency, rates, vision, themes) |
+| SAFe roles (RTE, Product Owner, Business Owner, …) | Members of hierarchy nodes, linked to Azure DevOps identities |
 | Hierarchy / settings | Extension Data Service value (per project) |
 | Team capacity | Manual story points (Extension Data Service), or derived from the Azure DevOps team capacity (see below) |
 
@@ -52,6 +53,16 @@ Setup → **Capacity** decides where team capacity comes from. Every place that 
 | **Hybrid** | The derived value by default; a value entered on the Team Planning Board overrides it, and clearing it restores the derived value |
 
 With a derived or hybrid source, capacity values carry a small marker (*manual*, *derived*, *override*, *mixed* or *not set*). Its tooltip explains the calculation, including the person-days and the points per member. When a team has no capacity in Azure DevOps (nothing entered, the iteration is not selected for the team, or no team is linked to the unit), the value shows as *not set* with a link to the team's capacity page. Capacity is read with `_apis/work/teamsettings` (working days), `.../iterations/{id}/capacities` and `.../iterations/{id}/teamdaysoff`, all at api-version 7.0; both the `{ teamMembers }` shape of Azure DevOps Services and the plain list shape are accepted.
+
+## Data governance and permissions
+
+SAFe Ado's own data (PI objectives, ROAM risks, milestones, capacity, planning metadata, confidence votes, plan reviews, improvements and the configuration) lives in the **Extension Data Service**. Azure DevOps keeps no history of it and has no permissions for it: **any project member can write it through the REST API, and it cannot be ACL-protected server-side.** SAFe Ado therefore:
+
+- **Hides edit controls** from users without the matching Azure DevOps permission (planning rights in the unit's area; project administrator for the configuration). This is a UX guard, not an access control.
+- **Fails closed for extension data.** If a permission check cannot be answered (an error rather than "denied"), objectives, risks, milestones, capacity, votes, reviews and the configuration are read-only, with a message explaining why and a **Retry**. Work item edits stay available, because Azure DevOps enforces those itself.
+- **Keeps an audit log, which is the control.** Every write through SAFe Ado is stamped (`createdBy`/`createdAt`, `modifiedBy`/`modifiedAt`) and appended to a per-project change log (`audit-<projectId>`) with the changed fields. Objectives and risks have a **History** dialog; **Setup → Audit log** shows every change, filterable by data and user. The log keeps the latest 2000 changes of the last 180 days. Writes made outside SAFe Ado (directly through the REST API) are not logged.
+- **Lets Business Owners own Actual BV.** When a unit or one of its ancestors has members with the *Business Owner* role, only those people (matched by their Azure DevOps identity, so pick them from the team) can enter Actual BV on PI objectives. Who entered it and when is shown.
+- **Backs up and restores.** Azure DevOps deletes extension data when the extension is uninstalled. **Setup → Export SAFe data** downloads one JSON file with the configuration and every document collection (with a schema version); **Import** (administrators) validates it, shows a summary, and merges or overwrites. Export before uninstalling or moving to another collection.
 
 ## Compatibility notes (Server 2022.1)
 

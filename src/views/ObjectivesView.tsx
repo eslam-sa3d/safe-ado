@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { currentUser, stampText } from "../api/audit";
 import { newId, objectivesStore } from "../api/data";
 import { flatten, LEVEL_COLOR, parentOf, subtreeIds } from "../api/org";
+import { canRateBusinessValue } from "../api/roles";
 import { LEVEL_LABEL, OrgNode, PiObjective } from "../api/types";
 import { openWorkItem } from "../api/wit";
 import { ErrorBar, Info, Progress, Spinner, useAsync, Icon } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useDataCan, useSafe } from "../components/context";
+import { HistoryButton } from "../components/History";
+import { PermissionNotice } from "../components/PermissionNotice";
 
 /** SAFe predictability: actual BV of all objectives / planned BV of committed objectives. */
 export function predictability(objectives: PiObjective[]): { planned: number; actual: number; pct: number | null } {
@@ -15,7 +19,9 @@ export function predictability(objectives: PiObjective[]): { planned: number; ac
 
 export function ObjectivesView() {
   const { node, pi, config } = useSafe();
-  const canPlan = useCan().plan;
+  // Objectives live only in extension data: an unverified permission means read-only.
+  const canPlan = useDataCan().plan;
+  const user = useMemo(() => currentUser(), []);
   const [error, setError] = useState<string>();
   const { data, loading, error: loadError, setData } = useAsync(() => objectivesStore.list(), []);
 
@@ -26,8 +32,19 @@ export function ObjectivesView() {
   const nodes = new Map(flatten(config.root).map((n) => [n.id, n]));
 
   const save = async (o: PiObjective) => {
+    const prev = (data ?? []).find((x) => x.id === o.id);
+    let next: PiObjective = { ...o, piId: pi.identifier, piPath: pi.path };
+    if ((prev?.actualBV ?? null) !== (o.actualBV ?? null)) {
+      // Actual BV is the Business Owners' call when the unit has any: record who entered it.
+      next = canRateBusinessValue(config.root, o.nodeId, user).allowed
+        ? { ...next, actualBVBy: user, actualBVAt: new Date().toISOString() }
+        : { ...next, actualBV: prev?.actualBV ?? null };
+    } else if (prev?.actualBVBy) {
+      // Rows edit a local draft that may predate the last Actual BV entry: keep its stamp.
+      next = { ...next, actualBVBy: prev.actualBVBy, actualBVAt: prev.actualBVAt };
+    }
     try {
-      const saved = await objectivesStore.save({ ...o, piId: pi.identifier, piPath: pi.path });
+      const saved = await objectivesStore.save(next);
       setData((prev) => [...(prev ?? []).filter((x) => x.id !== saved.id), saved]);
     } catch (e: any) {
       setError(`Could not save objective: ${e.message}`);
@@ -51,6 +68,7 @@ export function ObjectivesView() {
   return (
     <div className="objectives-view">
       <ErrorBar message={loadError ?? error} onClose={() => setError(undefined)} />
+      <PermissionNotice needs="plan" />
       {!canPlan && <Info>You have read-only access: objectives can be viewed but not changed.</Info>}
       <div className="summary-cards">
         <Stat label="Planned BV (committed)" value={total.planned} />
@@ -69,6 +87,7 @@ export function ObjectivesView() {
           all={all}
           nodes={nodes}
           parentOf={(nodeId) => parentOf(config.root, nodeId)}
+          canRateBV={(nodeId) => canRateBusinessValue(config.root, nodeId, user)}
           onSave={save}
           onRemove={remove}
           onAdd={() =>
@@ -113,6 +132,8 @@ function ObjectiveGroup(props: {
   all: PiObjective[];
   nodes: Map<string, OrgNode>;
   parentOf: (nodeId: string) => OrgNode | undefined;
+  /** Whether the current user may enter Actual BV for a unit's objectives (Business Owners). */
+  canRateBV: (nodeId: string) => { allowed: boolean; owners: { name: string }[] };
   onSave: (o: PiObjective) => void;
   onRemove: (o: PiObjective) => void;
   onAdd: () => void;
@@ -164,6 +185,7 @@ function ObjectiveGroup(props: {
                 parentOptions={parentUnit ? props.all.filter((x) => x.nodeId === parentUnit.id) : []}
                 childCount={showChildren ? props.all.filter((x) => x.parentId === o.id).length : undefined}
                 readOnly={o.nodeId !== props.editableNodeId}
+                bvOwners={props.canRateBV(o.nodeId)}
                 onSave={props.onSave}
                 onRemove={props.onRemove}
               />
@@ -182,6 +204,7 @@ function ObjectiveRow({
   parentOptions,
   childCount,
   readOnly,
+  bvOwners,
   onSave,
   onRemove,
 }: {
@@ -191,9 +214,14 @@ function ObjectiveRow({
   /** Number of child objectives linked to this one (ART / Solution objectives only). */
   childCount?: number;
   readOnly: boolean;
+  bvOwners: { allowed: boolean; owners: { name: string }[] };
   onSave: (o: PiObjective) => void;
   onRemove: (o: PiObjective) => void;
 }) {
+  const bvLocked = !readOnly && !bvOwners.allowed;
+  const bvHint = bvLocked
+    ? `Only this unit's Business Owners can enter Actual BV: ${bvOwners.owners.map((o) => o.name).join(", ")}`
+    : "Business value achieved at the end of the PI";
   const [draft, setDraft] = useState(objective);
   const commit = (patch: Partial<PiObjective>) => {
     // Always write against the latest etag from the store, not the one captured in the draft.
@@ -250,10 +278,18 @@ function ObjectiveRow({
           className="cell-input num"
           value={draft.actualBV ?? ""}
           placeholder="—"
-          disabled={readOnly}
+          aria-label="Actual BV"
+          title={bvHint}
+          disabled={readOnly || bvLocked}
           onChange={(e) => setDraft({ ...draft, actualBV: bv(e.target.value) })}
           onBlur={() => commit({})}
         />
+        {bvLocked && <div className="muted small bv-hint">Business Owners only</div>}
+        {objective.actualBVBy && (
+          <div className="muted small bv-by" title={`Actual BV entered by ${stampText(objective.actualBVBy, objective.actualBVAt)}`}>
+            by {stampText(objective.actualBVBy, objective.actualBVAt)}
+          </div>
+        )}
       </td>
       <td>
         <input
@@ -303,7 +339,8 @@ function ObjectiveRow({
           <span className="muted">—</span>
         )}
       </td>
-      <td>
+      <td className="nowrap">
+        <HistoryButton collection="objectives" docId={objective.id} title={objective.title} />
         {!readOnly && (
           <button className="link danger" onClick={() => onRemove(objective)} aria-label="Delete objective">
             Delete

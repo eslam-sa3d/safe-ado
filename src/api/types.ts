@@ -96,7 +96,15 @@ export interface PiObjective {
   committed: boolean;
   plannedBV: number;
   actualBV: number | null;
+  /** Who entered the Actual BV, and when (Business Owner accountability). */
+  actualBVBy?: import("./audit").AuditUser;
+  actualBVAt?: string;
   featureIds: number[];
+  /** Audit stamps, added by the document store on every write. */
+  createdBy?: import("./audit").AuditUser;
+  createdAt?: string;
+  modifiedBy?: import("./audit").AuditUser;
+  modifiedAt?: string;
   __etag?: number;
 }
 
@@ -123,6 +131,10 @@ export interface Risk {
   impactLevel?: import("./risk").ImpactLevel;
   residualProbability?: import("./risk").Probability;
   residualImpact?: import("./risk").ImpactLevel;
+  /** Audit stamps, added by the document store on every write (createdAt above is kept). */
+  createdBy?: import("./audit").AuditUser;
+  modifiedBy?: import("./audit").AuditUser;
+  modifiedAt?: string;
   __etag?: number;
 }
 
@@ -172,7 +184,10 @@ export const LINK = {
 
 export interface Member {
   name: string;
+  /** Display label of the role (free text in older configurations; the custom label for "Other"). */
   role: string;
+  /** SAFe role picked in Setup (see api/roles.ts); older members are parsed from `role`. */
+  safeRole?: import("./roles").SafeRole;
   /** Azure DevOps identity when picked from the team (enables avatars / profile links). */
   id?: string;
   uniqueName?: string;

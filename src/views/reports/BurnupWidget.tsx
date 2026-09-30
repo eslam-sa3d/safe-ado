@@ -1,6 +1,6 @@
 import { Burnup, BurnupDay, piStatus } from "../../api/reports";
 import { fmtDate } from "../../components/common";
-import { useCan, useSafe } from "../../components/context";
+import { useDataCan, useSafe } from "../../components/context";
 import { ReportData } from "./data";
 import { NoSnapshotNote, RecordSnapshotButton, SelectPi, SnapshotNote, Widget } from "./Widget";
 
@@ -21,7 +21,7 @@ const SERIES: { key: keyof Pick<BurnupDay, "scope" | "burned" | "ideal" | "forec
  */
 export function BurnupWidget({ data, today, onRecorded }: { data: ReportData; today: number; onRecorded?: () => void }) {
   const { pi } = useSafe();
-  const can = useCan();
+  const can = useDataCan();
   const snap = data.snapshot?.burnup ? data.snapshot : undefined;
   const chart = snap?.burnup ?? data.burnup;
   const record =

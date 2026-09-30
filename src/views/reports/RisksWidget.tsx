@@ -4,7 +4,7 @@ import { findNode, subtreeIds } from "../../api/org";
 import { EXPOSURE_COLOR, Exposure } from "../../api/risk";
 import { inPi, riskRows } from "../../api/reports";
 import { Risk } from "../../api/types";
-import { useCan, useSafe } from "../../components/context";
+import { useDataCan, useSafe } from "../../components/context";
 import { RiskDialog } from "./CreateDialogs";
 import { ReportData } from "./data";
 import { AddButton, SelectPi, Widget } from "./Widget";
@@ -20,7 +20,7 @@ export function ExposureChip({ value }: { value: Exposure }) {
 /** PI Risks with ROAM status, exposure and residual exposure, highest exposure first. */
 export function RisksWidget({ data }: { data: ReportData }) {
   const { config, node, pi } = useSafe();
-  const can = useCan();
+  const can = useDataCan();
   const [created, setCreated] = useState<Risk[]>([]);
   const [adding, setAdding] = useState(false);
   if (!pi)

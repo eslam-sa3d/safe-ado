@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProject, onThrottled } from "../api/client";
 import { defaultConfig, loadConfig, saveConfig as persistConfig } from "../api/data";
 import { effectivePiRoot, findNode, pathTo, scopeAreas } from "../api/org";
-import { canPlanIn, Capabilities, loadCapabilities, UNCONFIRMED } from "../api/permissions";
+import { Capabilities, checkPlanIn, loadCapabilities, UNCONFIRMED } from "../api/permissions";
 import { indexTree, reconcileConfig, reconcileDocs } from "../api/reconcile";
 import { localToday } from "../api/rules";
 import { setTelemetryOptIn, TelemetryEvents, track } from "../api/telemetry";
@@ -91,7 +91,8 @@ export function App() {
   const [piPath, setPiPath] = useState(getPrefs().piPath);
   // Project-level capabilities; "plan" is refined per selected unit (see planByArea).
   const [baseCan, setBaseCan] = useState<Capabilities>(UNCONFIRMED);
-  const [planByArea, setPlanByArea] = useState<Record<string, boolean>>({});
+  // undefined = the check could not be answered (see Capabilities.unverified).
+  const [planByArea, setPlanByArea] = useState<Record<string, boolean | undefined>>({});
   const configRef = useRef<SafeConfig | null>(null);
   useEffect(() => {
     configRef.current = config;
@@ -148,12 +149,31 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Loads permissions and repairs keys of renamed areas / iterations (see api/reconcile.ts). */
-  const heal = async (saved: SafeConfig) => {
+  /** Loads the project-level permissions; when even the trees can't be read, every check is unverified. */
+  const checkPermissions = useCallback(async () => {
     try {
       const [areaTree, iterationTree] = await Promise.all([getAreaTree(), getIterationTree()]);
       const caps = await loadCapabilities(areaTree.identifier, iterationTree.identifier);
       setBaseCan(caps);
+      return { caps, areaTree, iterationTree };
+    } catch {
+      setBaseCan({ admin: true, managePis: true, plan: true, known: true, unverified: ["admin", "managePis", "plan"] });
+      return undefined;
+    }
+  }, []);
+
+  /** Retry after a failed permission check (the "Retry" of the unverified-permissions notice). */
+  const recheckPermissions = useCallback(() => {
+    setPlanByArea({});
+    void checkPermissions();
+  }, [checkPermissions]);
+
+  /** Loads permissions and repairs keys of renamed areas / iterations (see api/reconcile.ts). */
+  const heal = async (saved: SafeConfig) => {
+    try {
+      const checked = await checkPermissions();
+      if (!checked) return;
+      const { caps, areaTree, iterationTree } = checked;
       const iterations = indexTree(iterationTree);
       const fixedConfig = reconcileConfig(saved, indexTree(areaTree), iterations);
       // Only apply the repair if the user hasn't changed the configuration meanwhile.
@@ -163,7 +183,8 @@ export function App() {
       }
       // Repair stored records only when the iteration tree changed since this user last did.
       const signature = treeSignature(iterations.byId);
-      const canWrite = await canPlanIn(saved.root.areaPath ?? "", saved.types.story || saved.types.feature);
+      // The repair writes extension data only: skip it unless the permission is confirmed.
+      const canWrite = (await checkPlanIn(saved.root.areaPath ?? "", saved.types.story || saved.types.feature)) === true && !caps.unverified;
       if (canWrite && (await getUserValue("reconciledTree", "")) !== signature) {
         const fixed = await reconcileDocs(iterations);
         await setUserValue("reconciledTree", signature).catch(() => undefined);
@@ -206,15 +227,20 @@ export function App() {
   useEffect(() => {
     if (!planArea || planArea in planByArea) return;
     let live = true;
-    void canPlanIn(planArea, planType).then((ok) => live && setPlanByArea((m) => ({ ...m, [planArea]: ok })));
+    void checkPlanIn(planArea, planType).then((ok) => live && setPlanByArea((m) => ({ ...m, [planArea]: ok })));
     return () => {
       live = false;
     };
   }, [planArea, planType, planByArea]);
+  // The unit-level answer replaces the project-level one for "plan", including whether it is verified.
+  const areaChecked = !!planArea && planArea in planByArea;
+  const unverified = (baseCan.unverified ?? []).filter((k) => k !== "plan" || !areaChecked);
+  if (areaChecked && planByArea[planArea] === undefined) unverified.push("plan");
   const can: Capabilities = {
     ...baseCan,
-    plan: planArea && planArea in planByArea ? planByArea[planArea] : baseCan.plan,
-    known: !!baseCan.known && (!planArea || planArea in planByArea),
+    plan: areaChecked ? planByArea[planArea] ?? true : baseCan.plan,
+    known: !!baseCan.known && (!planArea || areaChecked),
+    unverified: unverified.length ? unverified : undefined,
   };
   useNewItemShortcut({ config: config!, node: shortcutNode!, pi, enabled: !!config && can.plan });
 
@@ -242,6 +268,7 @@ export function App() {
     openView: (v) => setView(v as ViewKey),
     piRoot,
     can,
+    recheckPermissions,
   };
 
   const needsPi = NEEDS_PI.includes(activeView);
