@@ -110,7 +110,7 @@ export function ReportsView() {
   const can = useCan();
   const [depSource, setDepSource] = useDepSource(node.level);
   const { data, loading, error, reload } = useAsync(
-    () => loadReportData(config, node, pi, { today, persist: can.plan, pis }),
+    () => loadReportData(config, node, pi, { today, persist: can.plan && can.known !== false, pis }),
     [config, node.id, pi?.path, can.plan, pis.map((p) => p.path).join("|")]
   );
   const shared: Shared = { depSource, setDepSource, reload: () => reload(true) };
