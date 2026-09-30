@@ -14,6 +14,8 @@ const url = (id: number) => `${fake.baseUrl}/_apis/wit/workItems/${id}`;
 
 const cell = (name: string) => screen.getByRole("group", { name });
 const card = (title: string) => screen.getByText(title).closest(".card") as HTMLElement;
+const mainBar = () => within(document.querySelector(".tb-main .filterbar") as HTMLElement);
+const sideSearch = () => within(screen.getByRole("tabpanel")).getByRole("textbox", { name: "Filter text" });
 
 function addItem(id: number, type: string, title: string, area: string, iteration: string, state: string, extra: Record<string, unknown> = {}, rels: [string, number][] = []) {
   const item: WorkItem = {
@@ -372,26 +374,27 @@ describe("Team Planning Board", () => {
     expect(cell("Payment API / PI 2 Sprint 1")).toBeInTheDocument();
   });
 
-  it("loads sibling teams lazily, read-only, with their critical dependency count", async () => {
+  it("loads sibling lanes lazily, read-only; the critical dependency count shows without expanding", async () => {
     // Blue's Wallet story needs Red's Refund card (Sprint 2) in Sprint 1 → critical
     fake.workItems.get(102)!.relations = [{ rel: "System.LinkTypes.Dependency-Reverse", url: url(101), attributes: {} }];
     await renderBoard();
     const blueQueries = () => callsTo(/wiql/).filter((c) => c.body.query.includes(`UNDER '${BLUE}'`));
-    expect(blueQueries()).toHaveLength(0);
+    // A light count query runs with the board; the lanes are not loaded yet
+    expect(await screen.findByTitle("Unresolved critical dependencies")).toHaveTextContent("1 critical");
+    expect(blueQueries()).toHaveLength(1);
     expect(screen.queryByText("Add wallet")).toBeNull();
-    expect(screen.queryByText(/critical$/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand team Team Blue" }));
     expect(screen.getByText("Loading Team Blue…")).toBeInTheDocument();
     await screen.findByText("Add wallet");
-    expect(blueQueries()).toHaveLength(1);
+    expect(blueQueries()).toHaveLength(2);
     expect(screen.getByText("Cart page")).toBeInTheDocument();
     expect(screen.getByTitle("Unresolved critical dependencies")).toHaveTextContent("1 critical");
     // Read-only: no drop zones, create buttons or menus for Blue lanes
     expect(screen.queryByRole("group", { name: "Wallet / PI 2 Sprint 1" })).toBeNull();
     const wallet = card("Add wallet");
     expect(wallet).toHaveAttribute("draggable", "false");
-    expect(within(wallet).queryByRole("button")).toBeNull();
+    expect(within(wallet).queryByRole("button", { name: /Actions/ })).toBeNull();
     fireEvent.click(wallet);
     await waitFor(() => expect(sdk.workItemForm.openWorkItem).toHaveBeenCalledWith(102));
     // Sibling swimlanes collapse too
@@ -404,7 +407,7 @@ describe("Team Planning Board", () => {
     fireEvent.click(screen.getByRole("button", { name: "Collapse team Team Blue" }));
     expect(screen.queryByText("Add wallet")).toBeNull();
     expect(screen.getByText("1 critical")).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("textbox", { name: "Filter text" }), { target: { value: "nothing matches" } });
+    fireEvent.change(mainBar().getByRole("textbox", { name: "Filter text" }), { target: { value: "nothing matches" } });
     fireEvent.click(screen.getByRole("button", { name: "Expand team Team Blue" }));
     expect(await screen.findByText("No stories of Team Blue in PI 2.")).toBeInTheDocument();
   });
@@ -460,10 +463,10 @@ describe("Team Planning Board", () => {
   it("filters cards by text/facets, swimlanes and a server-side WIQL clause", async () => {
     addItem(106, "User Story", "Loose story", RED, PI2_IP, "New");
     await renderBoard();
-    fireEvent.change(screen.getByRole("textbox", { name: "Filter text" }), { target: { value: "refund" } });
+    fireEvent.change(mainBar().getByRole("textbox", { name: "Filter text" }), { target: { value: "refund" } });
     expect(screen.queryByText("Charge card")).toBeNull();
     expect(screen.getByText("Refund card")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    fireEvent.click(mainBar().getByRole("button", { name: "Clear filters" }));
 
     const menu = screen.getByRole("group", { name: "Swimlane filter" });
     expect(within(menu).getAllByRole("checkbox").map((c) => c.parentElement!.textContent!.trim())).toEqual(["#10 Payment API", "Independent"]);
@@ -496,15 +499,15 @@ describe("Team Planning Board", () => {
     expect(titles()).toEqual(["Beta", "Alpha", "Gamma"]);
     fireEvent.change(sort, { target: { value: "id" } });
     expect(titles()).toEqual(["Alpha", "Beta", "Gamma"]);
-    fireEvent.change(screen.getByRole("textbox", { name: "Search unplanned" }), { target: { value: "#107" } });
+    fireEvent.change(sideSearch(), { target: { value: "#107" } });
     expect(titles()).toEqual(["Beta"]);
-    fireEvent.change(screen.getByRole("textbox", { name: "Search unplanned" }), { target: { value: "zzz" } });
+    fireEvent.change(sideSearch(), { target: { value: "zzz" } });
     expect(screen.getByText("No matches")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "ART" }));
     await within(screen.getByRole("tabpanel", { name: "ART backlog" })).findByText("Payment API");
     // Search box is reset per tab
-    expect(screen.getByRole("textbox", { name: "Search unplanned" })).toHaveValue("");
+    expect(sideSearch()).toHaveValue("");
 
     fireEvent.click(within(screen.getByRole("tabpanel")).getByText("Wallet"));
     await waitFor(() => expect(sdk.workItemForm.openWorkItem).toHaveBeenCalledWith(14));
