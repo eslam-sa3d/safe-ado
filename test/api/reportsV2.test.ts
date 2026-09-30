@@ -234,3 +234,12 @@ describe("buildSnapshot", () => {
     expect(typeof train.createdAt).toBe("string");
   });
 });
+
+describe("event days use the local calendar", () => {
+  it("counts a timestamp on the user's local day", async () => {
+    const { eventDay, toDay } = await import("../../src/api/reports");
+    const local = new Date(2026, 8, 29, 23, 30); // 29 Sep, 23:30 local time
+    expect(eventDay(local.toISOString())).toBe(toDay("2026-09-29"));
+    expect(eventDay(new Date(2026, 8, 30, 0, 15).toISOString())).toBe(toDay("2026-09-30"));
+  });
+});

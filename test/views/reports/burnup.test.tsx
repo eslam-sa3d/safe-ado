@@ -6,6 +6,12 @@ import { getProgramIncrements } from "../../../src/api/wit";
 import { fail, fake, GREEN, PI1_S1 } from "../../fakeAdo";
 import { isoDay, renderReports, widget } from "./helpers";
 
+/** Noon on a calendar date in the local time zone, as an ISO timestamp (stays on that date in every zone). */
+const localNoon = (date: string) => {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d, 12).toISOString();
+};
+
 const points = (w: HTMLElement, series: string) => w.querySelector(`polyline[data-series="${series}"]`)!.getAttribute("points")!.split(" ").filter(Boolean);
 const tooltip = (w: HTMLElement, offset: number) => w.querySelector(`rect[data-date="${isoDay(offset)}"] title`)!.textContent;
 
@@ -16,7 +22,7 @@ const localTip = (w: HTMLElement, offset: number) => w.querySelector(`rect[data-
 
 /** A revision of a seeded item: its current fields with `patch`, changed `daysAgo` local days ago. */
 function rev(id: number, n: number, daysAgo: number, patch: Record<string, unknown> = {}) {
-  return { rev: n, fields: { ...fake.workItems.get(id)!.fields, ...patch, "System.ChangedDate": `${dayIso(TODAY() - daysAgo)}T12:00:00Z`, "System.Rev": n } };
+  return { rev: n, fields: { ...fake.workItems.get(id)!.fields, ...patch, "System.ChangedDate": localNoon(dayIso(TODAY() - daysAgo)), "System.Rev": n } };
 }
 
 describe("Burnup", () => {

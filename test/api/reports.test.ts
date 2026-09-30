@@ -35,6 +35,12 @@ import { Milestone, OrgNode, PiObjective, ProgramIncrement, Risk, WorkItemMeta }
 
 const SP = "Microsoft.VSTS.Scheduling.StoryPoints";
 const d = (iso: string) => `${iso}T00:00:00Z`;
+/** Noon on a calendar date in the local time zone, as an ISO timestamp (stays on that date in every zone). */
+const localNoon = (date: string) => {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d, 12).toISOString();
+};
+
 const day = (iso: string) => toDay(iso);
 
 const PI_PATH = "P\\PIs\\PI 5";
@@ -145,7 +151,7 @@ describe("normalize", () => {
           "System.IterationPath": "I",
           "System.AreaPath": "A",
           "System.AssignedTo": { displayName: "Ada" },
-          "Microsoft.VSTS.Common.ClosedDate": "2026-03-02T10:00:00Z",
+          "Microsoft.VSTS.Common.ClosedDate": localNoon("2026-03-02"),
           "Microsoft.VSTS.Common.BusinessValue": 8,
           "Microsoft.VSTS.Common.TimeCriticality": "5",
           "Microsoft.VSTS.Scheduling.Effort": 13,
@@ -171,7 +177,7 @@ describe("normalize", () => {
       parentId: 1,
       childIds: [8],
       assignedTo: "Ada",
-      closedDate: "2026-03-02T10:00:00Z",
+      closedDate: localNoon("2026-03-02"),
       businessValue: 8,
       timeCriticality: 5,
       effort: 13,
@@ -343,9 +349,9 @@ describe("dependencies", () => {
 describe("burnup", () => {
   const paths = PI5.sprints.map((s) => s.path);
   const stories = [
-    done({ sp: 4, iteration: paths[0], closedDate: "2026-03-03T12:00:00Z" }),
-    done({ sp: 3, iteration: paths[0], closedDate: "2026-03-07T12:00:00Z" }),
-    done({ sp: 2, iteration: paths[1], closedDate: "2026-03-09T08:00:00Z" }),
+    done({ sp: 4, iteration: paths[0], closedDate: localNoon("2026-03-03") }),
+    done({ sp: 3, iteration: paths[0], closedDate: localNoon("2026-03-07") }),
+    done({ sp: 2, iteration: paths[1], closedDate: localNoon("2026-03-09") }),
     done({ sp: 1, iteration: paths[1] }), // no closed date -> counted today
     item({ sp: 10, iteration: paths[2] }),
     item({ sp: 50, category: "Removed" }),

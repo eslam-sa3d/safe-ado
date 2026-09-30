@@ -2,7 +2,7 @@ import { calculatedSprintIndex, criticalityByDates, criticalityByIteration, Depe
 import { EXPOSURE_RANK, exposure, Exposure } from "./risk";
 import { Criticality, F, IterationCapacity, LINK, Milestone, OrgNode, PiObjective, ProgramIncrement, Risk, Sprint, WorkItem, WorkItemMeta } from "./types";
 import { isUnder, relationTargetId } from "./wit";
-import { DEFAULT_RROE_FIELD, isIpIteration, wsjfScore } from "./rules";
+import { DEFAULT_RROE_FIELD, isIpIteration, localToday, wsjfScore } from "./rules";
 
 /**
  * Pure calculations behind the Reports dashboard (Agile Hive widget formulas).
@@ -16,6 +16,15 @@ export const DAY_MS = 86_400_000;
 export function toDay(value: string | Date): number {
   const t = value instanceof Date ? value.getTime() : Date.parse(value);
   return Math.floor(t / DAY_MS);
+}
+
+/**
+ * Day number of an event timestamp (Closed / Changed / Activated date) on the user's local
+ * calendar. Iteration dates are calendar days, so an item closed at 20:00 local time must count
+ * on that local day even when it is already the next day in UTC.
+ */
+export function eventDay(timestamp: string): number {
+  return toDay(localToday(new Date(timestamp)));
 }
 
 /** YYYY-MM-DD of a day number. */
@@ -427,7 +436,7 @@ export function burnup(pi: ProgramIncrement, stories: RItem[], today: number): B
   const end = Math.max(toDay(pi.start), toDay(pi.finish));
   const live = stories.filter(isLive);
   const scope = live.reduce((a, s) => a + points(s), 0);
-  const closeDay = (s: RItem) => (s.closedDate ? toDay(s.closedDate) : Math.min(today, end));
+  const closeDay = (s: RItem) => (s.closedDate ? eventDay(s.closedDate) : Math.min(today, end));
   const done = live.filter(isDone).map((s) => ({ day: closeDay(s), sp: points(s) }));
   return buildBurnup(
     pi,
@@ -478,7 +487,7 @@ export function burnupFromHistory(pi: ProgramIncrement, revisions: RevisionLike[
       f[F.type] === opts.storyType && isUnder(f[F.iteration], pi.path) && opts.areas.some((a) => isUnder(f[F.area], a)) && category !== "Removed";
     const sp = counts ? num(f[opts.spField]) ?? 0 : 0;
     const list = byId.get(r.id) ?? [];
-    list.push({ day: toDay(f[F.changedDate]), rev: r.rev, scope: sp, done: category === "Completed" ? sp : 0 });
+    list.push({ day: eventDay(f[F.changedDate]), rev: r.rev, scope: sp, done: category === "Completed" ? sp : 0 });
     byId.set(r.id, list);
   }
   const timelines = Array.from(byId.values()).map((l) => l.sort((a, b) => a.day - b.day || a.rev - b.rev));
@@ -796,7 +805,7 @@ export interface FlowMetrics {
   distribution: { type: string; count: number; pct: number }[];
 }
 
-const within = (iso: string | undefined, s: Sprint) => !!iso && !!s.start && !!s.finish && toDay(iso) >= toDay(s.start) && toDay(iso) <= toDay(s.finish);
+const within = (iso: string | undefined, s: Sprint) => !!iso && !!s.start && !!s.finish && eventDay(iso) >= toDay(s.start) && eventDay(iso) <= toDay(s.finish);
 
 /** Whether a done item was completed in `s`: by closed date when both are dated, else by iteration path. */
 function completedIn(i: RItem, s: Sprint): boolean {
@@ -823,7 +832,7 @@ export function flowMetrics(items: RItem[], pi: ProgramIncrement, firstActive: M
   for (const i of done) {
     const start = i.activatedDate ?? firstActive.get(i.id);
     if (!start || !i.closedDate) missing++;
-    else durations.push(Math.max(0, toDay(i.closedDate) - toDay(start)));
+    else durations.push(Math.max(0, eventDay(i.closedDate) - eventDay(start)));
   }
   const byType = new Map<string, number>();
   for (const i of done) byType.set(i.type, (byType.get(i.type) ?? 0) + 1);
