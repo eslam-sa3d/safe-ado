@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { capacityTotal, defaultIterationIndex, iterationSummary } from "../../api/reports";
 import { CATEGORY_COLOR, fmtDate, Progress } from "../../components/common";
 import { useSafe } from "../../components/context";
+import { scopeAreas } from "../../api/org";
 import { ReportData } from "./data";
 import { ItemRef, OpenInQuery, SelectPi, Widget } from "./Widget";
 
 /** Iteration Overview (team): page through the PI's iterations and their planned items. */
 export function IterationOverviewWidget({ data, today }: { data: ReportData; today: number }) {
-  const { node, pi } = useSafe();
+  const { config, node, pi } = useSafe();
   const [index, setIndex] = useState(() => (pi ? defaultIterationIndex(pi, today) : 0));
   useEffect(() => setIndex(pi ? defaultIterationIndex(pi, today) : 0), [pi?.path]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -45,7 +46,10 @@ export function IterationOverviewWidget({ data, today }: { data: ReportData; tod
       <button className="btn" aria-label="Next iteration" disabled={index >= pi.sprints.length - 1} onClick={() => setIndex(index + 1)}>
         ›
       </button>
-      <OpenInQuery ids={s.groups.flatMap((g) => g.items.map((i) => i.id))} />
+      <OpenInQuery
+        ids={s.groups.flatMap((g) => g.items.map((i) => i.id))}
+        scope={{ types: [config.types.story], areas: scopeAreas(node), iterationPath: sprint.path }}
+      />
     </span>
   );
 

@@ -1,7 +1,7 @@
 import { teamVelocity, trainVelocity } from "../../api/reports";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { SelectPi, SnapshotNote, Widget } from "./Widget";
+import { SelectPi, SnapshotInfo, Widget } from "./Widget";
 
 /** Velocity: per-iteration average for teams, per-PI totals for ARTs and solutions. */
 export function VelocityWidget({ data, today }: { data: ReportData; today: number }) {
@@ -22,20 +22,16 @@ export function VelocityWidget({ data, today }: { data: ReportData; today: numbe
         <div className="muted small">
           SP {team ? "per iteration" : "per PI"} · {v.basis}
         </div>
-        {snap && (
-          <>
-            {team && snap.sprintVelocity.length > 0 && (
-              <ul className="snapshot-sprints small" aria-label="Velocity per iteration">
-                {snap.sprintVelocity.map((s) => (
-                  <li key={s.path}>
-                    <span>{s.name}</span> <strong>{s.done}</strong>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <SnapshotNote createdAt={snap.createdAt} />
-          </>
+        {snap && team && snap.sprintVelocity.length > 0 && (
+          <ul className="snapshot-sprints small" aria-label="Velocity per iteration">
+            {snap.sprintVelocity.map((s) => (
+              <li key={s.path}>
+                <span>{s.name}</span> <strong>{s.done}</strong>
+              </li>
+            ))}
+          </ul>
         )}
+        <SnapshotInfo snapshot={snap} missing={data.snapshotMissing} />
       </div>
     </Widget>
   );

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { newId, objectivesStore } from "../../api/data";
 import { subtreeIds } from "../../api/org";
-import { businessValue, teamProgress } from "../../api/reports";
+import { businessValue, inPi, teamProgress } from "../../api/reports";
 import { PiObjective } from "../../api/types";
 import { Progress } from "../../components/common";
 import { useCan, useSafe } from "../../components/context";
@@ -63,12 +63,12 @@ export function ObjectivesWidget({ data }: { data: ReportData }) {
       </Widget>
     );
   const all = [...data.objectives.filter((o) => !created.some((c) => c.id === o.id)), ...created];
-  const inPi = all.filter((o) => o.piPath === pi.path);
+  const piObjectives = all.filter((o) => inPi(o, pi));
   const actions = <AddButton label="Add PI objective" canPlan={can.plan} onClick={() => setAdding(true)} />;
-  const own = inPi.filter((o) => o.nodeId === node.id).sort((a, b) => b.plannedBV - a.plannedBV || a.title.localeCompare(b.title));
+  const own = piObjectives.filter((o) => o.nodeId === node.id).sort((a, b) => b.plannedBV - a.plannedBV || a.title.localeCompare(b.title));
   const bv = businessValue(own);
   const showTeams = node.level === "art" || node.level === "solution";
-  const progress = showTeams ? teamProgress(node.children, inPi, subtreeIds) : null;
+  const progress = showTeams ? teamProgress(node.children, piObjectives, subtreeIds) : null;
 
   return (
     <Widget title="PI Objectives" size="medium" actions={actions}>

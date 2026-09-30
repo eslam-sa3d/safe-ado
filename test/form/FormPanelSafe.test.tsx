@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getProgramIncrements } from "../../src/api/wit";
+import { fmtDate } from "../../src/components/common";
 import { SafeContext } from "../../src/components/context";
 import { FormPanel, notifyFormChange, WORK_ITEM_FORM_SERVICE } from "../../src/form/FormPanel";
 import { PI_LIMIT_MESSAGE } from "../../src/form/planning";
@@ -70,7 +71,9 @@ describe("form panel: SAFe details", () => {
     const finish = pis[1].sprints.find((s) => s.name === "PI 2 Sprint 2")!.finish!.slice(0, 10);
     await renderPanel();
     expect(row("PI involvement")).toHaveTextContent(/^PI involvementPI 2$/);
-    expect(row("Estimated completion")).toHaveTextContent(finish);
+    // Shown like every other date, with the full date as a tooltip.
+    expect(row("Estimated completion")).toHaveTextContent(fmtDate(finish));
+    expect(within(row("Estimated completion")).getByTitle(finish)).toBeInTheDocument();
   });
 
   it("says when no child is planned", async () => {

@@ -52,7 +52,8 @@ export function ObjectiveDialog({ piName, onClose, onSave }: { piName: string; o
   const [plannedBV, setPlannedBV] = useState("");
   const { error, busy, submit } = useSubmit(onSave, "objective");
   const bv = Number(plannedBV);
-  const valid = !!title.trim() && plannedBV !== "" && Number.isFinite(bv) && bv >= 0;
+  const bvValid = plannedBV !== "" && Number.isFinite(bv) && bv >= 0 && bv <= 10;
+  const valid = !!title.trim() && bvValid;
   return (
     <Modal
       title={`New PI objective · ${piName}`}
@@ -64,8 +65,20 @@ export function ObjectiveDialog({ piName, onClose, onSave }: { piName: string; o
         <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
       <Field label="Planned business value">
-        <input type="number" min={0} max={10} value={plannedBV} onChange={(e) => setPlannedBV(e.target.value)} />
+        <input
+          type="number"
+          min={0}
+          max={10}
+          value={plannedBV}
+          aria-invalid={plannedBV !== "" && !bvValid}
+          onChange={(e) => setPlannedBV(e.target.value)}
+        />
       </Field>
+      {plannedBV !== "" && !bvValid && (
+        <div className="small bad-text" role="alert">
+          Planned business value must be between 0 and 10.
+        </div>
+      )}
       <label className="check">
         <input type="checkbox" checked={committed} onChange={(e) => setCommitted(e.target.checked)} />
         Committed

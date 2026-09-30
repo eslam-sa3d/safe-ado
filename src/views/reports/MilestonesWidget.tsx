@@ -4,9 +4,9 @@ import { findNode, pathTo } from "../../api/org";
 import { dayIso, milestonesInWindow, relativeDays, toDay } from "../../api/reports";
 import { Milestone } from "../../api/types";
 import { ErrorBar, Field, fmtDate, Modal, Icon } from "../../components/common";
-import { useSafe } from "../../components/context";
+import { useCan, useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { SelectPi, Widget } from "./Widget";
+import { AddButton, SelectPi, Widget } from "./Widget";
 
 const PREF = "milestonesIncludeParents";
 
@@ -16,6 +16,7 @@ const PREF = "milestonesIncludeParents";
  */
 export function MilestonesWidget({ data, today }: { data: ReportData; today: number }) {
   const { config, node, pi } = useSafe();
+  const can = useCan();
   const [includeParents, setIncludeParents] = useState(false);
   const [created, setCreated] = useState<Milestone[]>([]);
   const [adding, setAdding] = useState(false);
@@ -52,9 +53,7 @@ export function MilestonesWidget({ data, today }: { data: ReportData; today: num
         <input type="checkbox" checked={includeParents} onChange={(e) => toggle(e.target.checked)} />
         Include parent levels
       </label>
-      <button className="btn" aria-label="Add milestone" onClick={() => setAdding(true)}>
-        +
-      </button>
+      <AddButton label="Add milestone" canPlan={can.plan} onClick={() => setAdding(true)} />
     </>
   );
 

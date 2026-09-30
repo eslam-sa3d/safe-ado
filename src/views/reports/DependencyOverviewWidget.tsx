@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getUserValue, setUserValue } from "../../api/data";
 import { CRITICALITY_COLOR, CRITICALITY_LABEL } from "../../api/dependencies";
 import { DEP_SOURCE_LABEL, DepRow, DepSource, RItem } from "../../api/reports";
-import { Criticality } from "../../api/types";
+import { Criticality, Level } from "../../api/types";
 import { lastSegment } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData, reportDependencies } from "./data";
@@ -72,17 +72,21 @@ function Group({ title, rows }: { title: string; rows: DepRow[] }) {
   );
 }
 
-/**
- * Dependency Overview: provider → consumer, internal (both in this unit) and external,
- * with a criticality filter. ARTs and solutions choose the planning source; the portfolio
- * uses roadmap dates; teams use their iteration planning.
- */
-export function DependencyOverviewWidget({ data }: { data: ReportData }) {
-  const { node, pi, pis } = useSafe();
-  const canChoose = node.level === "art" || node.level === "solution";
-  const [source, setSource] = useState<DepSource>("combined");
-  const [shown, setShown] = useState<Set<Criticality>>(new Set(FILTERS));
+/** ARTs and solutions choose the dependency source; the other layers have a fixed one. */
+export const canChooseDepSource = (level: Level) => level === "art" || level === "solution";
 
+/** The source a layer uses: roadmap dates on the portfolio, iterations on teams, else the choice. */
+export function effectiveDepSource(level: Level, chosen: DepSource): DepSource {
+  return level === "portfolio" ? "roadmap" : canChooseDepSource(level) ? chosen : "team";
+}
+
+/**
+ * The user's saved dependency source (team / roadmap / combined), shared by the Dependency
+ * Overview and the Critical Dependencies widget so both count the same way.
+ */
+export function useDepSource(level: Level): [DepSource, (v: DepSource) => void] {
+  const canChoose = canChooseDepSource(level);
+  const [source, setSource] = useState<DepSource>("combined");
   useEffect(() => {
     if (!canChoose) return;
     let live = true;
@@ -93,13 +97,25 @@ export function DependencyOverviewWidget({ data }: { data: ReportData }) {
       live = false;
     };
   }, [canChoose]);
-
   const choose = (v: DepSource) => {
     setSource(v);
     setUserValue("depSource", v).catch(() => undefined);
   };
+  return [source, choose];
+}
 
-  const effective: DepSource = node.level === "portfolio" ? "roadmap" : canChoose ? source : "team";
+/**
+ * Dependency Overview: provider → consumer, internal (both in this unit) and external,
+ * with a criticality filter. ARTs and solutions choose the planning source; the portfolio
+ * uses roadmap dates; teams use their iteration planning.
+ */
+export function DependencyOverviewWidget({ data, source, onSource }: { data: ReportData; source: DepSource; onSource: (v: DepSource) => void }) {
+  const { node, pi, pis } = useSafe();
+  const canChoose = canChooseDepSource(node.level);
+  const [shown, setShown] = useState<Set<Criticality>>(new Set(FILTERS));
+  const choose = onSource;
+
+  const effective = effectiveDepSource(node.level, source);
   const needsPi = node.level !== "portfolio" && !pi;
   const rows = needsPi ? [] : reportDependencies(data, pis, effective).filter((r) => shown.has(r.criticality));
 

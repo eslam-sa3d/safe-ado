@@ -1,4 +1,5 @@
 import { subtreeIds } from "../../api/org";
+import { inPi } from "../../api/reports";
 import { useSafe } from "../../components/context";
 import { predictability } from "../ObjectivesView";
 import { ReportData } from "./data";
@@ -17,7 +18,7 @@ export function PredictabilityWidget({ data }: { data: ReportData }) {
           <h4>By PI — {node.name}</h4>
           <BarChart
             rows={pis.map((p) => {
-              const r = predictability(inScope.filter((o) => o.piPath === p.path));
+              const r = predictability(inScope.filter((o) => inPi(o, p)));
               return { label: p.name, value: r.pct, detail: `${r.actual}/${r.planned} BV` };
             })}
           />
@@ -30,7 +31,7 @@ export function PredictabilityWidget({ data }: { data: ReportData }) {
             <BarChart
               rows={node.children.map((c) => {
                 const ids = subtreeIds(c);
-                const r = predictability(inScope.filter((o) => o.piPath === pi.path && ids.has(o.nodeId)));
+                const r = predictability(inScope.filter((o) => inPi(o, pi) && ids.has(o.nodeId)));
                 return { label: c.name, value: r.pct, detail: `${r.actual}/${r.planned} BV` };
               })}
             />

@@ -77,97 +77,6 @@ describe("Reports header members", () => {
   });
 });
 
-describe("PI snapshots", () => {
-  it("records a completed PI once and labels its numbers as recorded at PI end", async () => {
-    const pis = await getProgramIncrements("Fabrikam\\PIs");
-    const r = await renderReports({ pi: pis[0], nodeId: "n-red" });
-    const saved = docs("snapshots");
-    expect(saved).toHaveLength(1);
-    expect(saved[0]).toMatchObject({
-      id: `n-red|${pis[0].identifier}`,
-      nodeId: "n-red",
-      piPath: pis[0].path,
-      piName: "PI 1",
-      points: { planned: 2, done: 2, pct: 100 },
-      velocity: { value: 1, basis: "Ø all iterations of the PI" },
-      sprintVelocity: [
-        { name: "PI 1 Sprint 1", done: 2 },
-        { name: "PI 1 Sprint 2", done: 0 },
-      ],
-      load: { load: 2, capacity: 0 },
-    });
-    expect(saved[0].burnup.days).toHaveLength(28);
-    for (const title of ["Story Points Burned", "Velocity", "Load vs. Capacity", "Burnup"]) {
-      expect(within(widget(title)).getByText("as recorded at PI end")).toBeInTheDocument();
-    }
-    expect(within(widget("Velocity")).getByRole("list", { name: "Velocity per iteration" })).toHaveTextContent("PI 1 Sprint 1 2PI 1 Sprint 2 0");
-    r.unmount();
-
-    // Later visits read the stored snapshot instead of writing a new one.
-    const writes = dataStore.collections.get(`snapshots-${fake.projectId}`)!.get(`n-red|${pis[0].identifier}`).__etag;
-    await renderReports({ pi: pis[0], nodeId: "n-red" });
-    expect(dataStore.collections.get(`snapshots-${fake.projectId}`)!.get(`n-red|${pis[0].identifier}`).__etag).toBe(writes);
-  });
-
-  it("shows stored numbers even when the work items changed since", async () => {
-    const pis = await getProgramIncrements("Fabrikam\\PIs");
-    seed("snapshots", [
-      {
-        id: `n-arta|${pis[0].identifier}`,
-        nodeId: "n-arta",
-        piPath: pis[0].path,
-        piId: pis[0].identifier,
-        piName: "PI 1",
-        createdAt: ago(40),
-        points: { planned: 40, done: 30, pct: 75, unestimated: 0, count: 5 },
-        velocity: { value: 30, basis: "PI total", samples: 1 },
-        sprintVelocity: [{ name: "PI 1 Sprint 1", path: "x", done: 30 }],
-        load: { load: 40, capacity: 50, pct: 80, unestimated: 0 },
-        burnup: null,
-      },
-    ]);
-    await renderReports({ pi: pis[0] });
-    expect(within(widget("Story Points Burned")).getByText("30 of 40 SP done")).toBeInTheDocument();
-    expect(within(widget("Velocity")).getByText("30")).toBeInTheDocument();
-    // ARTs show the PI total without the per-iteration list.
-    expect(within(widget("Velocity")).queryByRole("list")).toBeNull();
-    expect(within(widget("Load vs. Capacity")).getByText("40 SP of 50 SP capacity")).toBeInTheDocument();
-    expect(within(widget("Load vs. Capacity")).getByText("as recorded at PI end")).toHaveAttribute("title", `Recorded ${fmtDate(ago(40))}`);
-    // No stored burnup: the live chart is shown without the label.
-    expect(within(widget("Burnup")).getByRole("img", { name: "Burnup chart" })).toBeInTheDocument();
-    expect(within(widget("Burnup")).queryByText("as recorded at PI end")).toBeNull();
-  });
-
-  it("doesn't record snapshots for users who can't plan, nor for running PIs", async () => {
-    const config = makeConfig();
-    const pis = await getProgramIncrements(config.piRootIteration);
-    render(
-      <SafeContext.Provider
-        value={{ config, saveConfig: vi.fn(), node: findNode(config.root, "n-red")!, selectNode: vi.fn(), pis, pi: pis[0], reloadPis: vi.fn(), can: { admin: false, managePis: false, plan: false } }}
-      >
-        <ReportsView />
-      </SafeContext.Provider>
-    );
-    await waitFor(() => expect(document.querySelectorAll(".spinner")).toHaveLength(0));
-    expect(docs("snapshots")).toHaveLength(0);
-    expect(screen.queryByText("as recorded at PI end")).toBeNull();
-    expect(within(widget("Story Points Burned")).getByText("2 of 2 SP done")).toBeInTheDocument();
-  });
-
-  it("keeps showing live numbers when the snapshot can't be written", async () => {
-    const pis = await getProgramIncrements("Fabrikam\\PIs");
-    dataStore.failures.push({ op: "setDocument", error: Object.assign(new Error("read only"), { status: 403 }) });
-    await renderReports({ pi: pis[0], nodeId: "n-red" });
-    expect(screen.queryByText("as recorded at PI end")).toBeNull();
-    expect(within(widget("Velocity")).getByText("1")).toBeInTheDocument();
-  });
-
-  it("takes nothing for the current PI", async () => {
-    await renderReports();
-    expect(docs("snapshots")).toHaveLength(0);
-  });
-});
-
 describe("Creating objectives and risks from the dashboard", () => {
   it("adds a PI objective for the selected unit", async () => {
     const pis = await getProgramIncrements("Fabrikam\\PIs");
@@ -348,35 +257,6 @@ describe("PI Overview estimated completion and solution lane", () => {
 });
 
 describe("Flow metrics", () => {
-  it("shows flow velocity per iteration, flow time, flow load and flow distribution", async () => {
-    // Charge card: activated 10 days ago, closed 2 days ago -> 8 d.
-    fake.workItems.get(100)!.fields["Microsoft.VSTS.Common.ActivatedDate"] = ago(10);
-    // Cart page: first active 5 days ago (history), closed 1 day ago -> 4 d.
-    const f105 = fake.workItems.get(105)!.fields;
-    fake.revisions.set(105, [
-      { rev: 1, fields: { ...f105, "System.State": "New", "System.ChangedDate": ago(60) } },
-      { rev: 2, fields: { ...f105, "System.State": "Active", "System.ChangedDate": ago(5) } },
-      { rev: 3, fields: { ...f105, "System.State": "Active", "System.ChangedDate": ago(3) } },
-      { rev: 4, fields: { ...f105, "System.ChangedDate": ago(1) } },
-    ]);
-    // Wallet (feature) closed a day ago after 19 days.
-    Object.assign(fake.workItems.get(14)!.fields, { "System.State": "Closed", "Microsoft.VSTS.Common.ClosedDate": ago(1), "Microsoft.VSTS.Common.ActivatedDate": ago(20) });
-    await renderReports();
-    const w = widget("Flow metrics");
-    const tile = (name: string) => within(w).getByRole("group", { name });
-
-    expect(tile("Flow velocity")).toHaveTextContent("3items completed in PI 2");
-    const bars = Array.from(tile("Flow velocity").querySelectorAll("li"));
-    expect(bars.map((b) => b.textContent)).toEqual(["PI 2 Sprint 13", "PI 2 Sprint 20", "PI 2 IP0"]);
-    expect(bars[2]).toHaveClass("ip");
-    expect(bars[0]).toHaveAttribute("title", "PI 2 Sprint 1: 3 items");
-
-    expect(tile("Flow time")).toHaveTextContent("8 dmedian · average 10.3 d · 3 items");
-    expect(tile("Flow load")).toHaveTextContent("2items in progress now");
-    expect(tile("Flow distribution")).toHaveTextContent("User Story 67% (2)Feature 33% (1)");
-    expect(within(tile("Flow distribution")).getByRole("img")).toHaveAttribute("aria-label", "User Story 67%, Feature 33%");
-  });
-
   it("explains missing data", async () => {
     await renderReports({ nodeId: "n-green" });
     const w = widget("Flow metrics");

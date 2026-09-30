@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { toDay } from "../api/reports";
+import { DepSource, toDay } from "../api/reports";
 import { Level } from "../api/types";
 import { ErrorBar, Spinner, useAsync } from "../components/common";
 import { useCan, useSafe } from "../components/context";
@@ -8,7 +8,7 @@ import { BurnupWidget } from "./reports/BurnupWidget";
 import { BusinessValueWidget } from "./reports/BusinessValueWidget";
 import { CriticalDependenciesWidget } from "./reports/CriticalDependenciesWidget";
 import { loadReportData, ReportData } from "./reports/data";
-import { DependencyOverviewWidget } from "./reports/DependencyOverviewWidget";
+import { DependencyOverviewWidget, useDepSource } from "./reports/DependencyOverviewWidget";
 import { HeaderWidget } from "./reports/HeaderWidget";
 import { IterationOverviewWidget } from "./reports/IterationOverviewWidget";
 import { LoadCapacityWidget } from "./reports/LoadCapacityWidget";
@@ -61,7 +61,14 @@ export const LEVEL_WIDGETS: Record<Level, WidgetKey[]> = {
   team: [...PI_WIDGETS, "iterations", "predictability", "flow"],
 };
 
-function render(key: WidgetKey, data: ReportData, today: number) {
+/** State the dashboard shares between widgets. */
+interface Shared {
+  depSource: DepSource;
+  setDepSource: (v: DepSource) => void;
+  reload: () => void;
+}
+
+function render(key: WidgetKey, data: ReportData, today: number, shared: Shared) {
   switch (key) {
     case "piProgress":
       return <PiProgressWidget key={key} today={today} />;
@@ -74,11 +81,11 @@ function render(key: WidgetKey, data: ReportData, today: number) {
     case "velocity":
       return <VelocityWidget key={key} data={data} today={today} />;
     case "critical":
-      return <CriticalDependenciesWidget key={key} data={data} />;
+      return <CriticalDependenciesWidget key={key} data={data} source={shared.depSource} />;
     case "dependencies":
-      return <DependencyOverviewWidget key={key} data={data} />;
+      return <DependencyOverviewWidget key={key} data={data} source={shared.depSource} onSource={shared.setDepSource} />;
     case "burnup":
-      return <BurnupWidget key={key} data={data} />;
+      return <BurnupWidget key={key} data={data} today={today} onRecorded={shared.reload} />;
     case "milestones":
       return <MilestonesWidget key={key} data={data} today={today} />;
     case "objectives":
@@ -98,13 +105,15 @@ function render(key: WidgetKey, data: ReportData, today: number) {
 
 /** Reports: Agile Hive's landing dashboard, composed per SAFe layer. */
 export function ReportsView() {
-  const { config, node, pi } = useSafe();
+  const { config, node, pi, pis } = useSafe();
   const today = useMemo(() => toDay(localToday()), []);
   const can = useCan();
+  const [depSource, setDepSource] = useDepSource(node.level);
   const { data, loading, error, reload } = useAsync(
-    () => loadReportData(config, node, pi, { today, persist: can.plan }),
-    [config, node.id, pi?.path, can.plan]
+    () => loadReportData(config, node, pi, { today, persist: can.plan, pis }),
+    [config, node.id, pi?.path, can.plan, pis.map((p) => p.path).join("|")]
   );
+  const shared: Shared = { depSource, setDepSource, reload: () => reload(true) };
 
   return (
     <div className="reports-dashboard">
@@ -122,7 +131,7 @@ export function ReportsView() {
             <Spinner label="Loading reports…" />
           </div>
         ) : (
-          LEVEL_WIDGETS[node.level].map((k) => render(k, data, today))
+          LEVEL_WIDGETS[node.level].map((k) => render(k, data, today, shared))
         )}
       </div>
     </div>

@@ -110,8 +110,9 @@ describe("Epic Overview", () => {
     expect(epicInOverview(e("InProgress"), today)).toBe(true);
     expect(epicInOverview(e("Resolved"), today)).toBe(true);
     expect(epicInOverview(e("Proposed"), today)).toBe(false);
-    expect(epicInOverview(e("Completed", "2026-03-01"), today)).toBe(true);
-    expect(epicInOverview(e("Completed", "2026-02-28"), today)).toBe(false);
+    // Closed dates are timestamps counted on the local calendar (local noon stays on its date).
+    expect(epicInOverview(e("Completed", new Date(2026, 2, 1, 12).toISOString()), today)).toBe(true);
+    expect(epicInOverview(e("Completed", new Date(2026, 1, 28, 12).toISOString()), today)).toBe(false);
     expect(epicInOverview(e("Completed"), today)).toBe(false);
   });
 });

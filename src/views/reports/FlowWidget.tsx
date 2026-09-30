@@ -1,14 +1,25 @@
-import { flowMetrics, isLive, RItem } from "../../api/reports";
-import { SafeConfig } from "../../api/types";
-import { typeColor } from "../../components/common";
+import { FlowKind, flowMetrics, isLive, RItem } from "../../api/reports";
+import { Level, SafeConfig } from "../../api/types";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
 import { plural, SelectPi, Widget } from "./Widget";
 
-/** Work item types that count as flow items: everything below the epic. */
-export function flowTypes(config: SafeConfig): string[] {
-  const { capability, feature, story, enabler } = config.types;
-  return [story, feature, capability, enabler].filter((t): t is string => !!t);
+/** Colours of the flow distribution's kinds of work. */
+export const KIND_COLOR: Record<FlowKind, string> = {
+  Feature: "#009ccc",
+  Enabler: "#773b93",
+  Defect: "#cc293d",
+  Debt: "#e0a800",
+};
+
+/**
+ * Work item types that count as flow items, one backlog level per layer: team stories (and
+ * bugs, when the process has them) for a team; features and enablers for an ART or solution.
+ */
+export function flowTypes(config: SafeConfig, level: Level, bug?: string): string[] {
+  const { feature, story, enabler } = config.types;
+  const types = level === "team" ? [story, bug] : [feature, enabler];
+  return types.filter((t): t is string => !!t);
 }
 
 /** The unit's flow items among the loaded work items. */
@@ -17,18 +28,20 @@ export function flowItems(data: ReportData, types: string[]): RItem[] {
 }
 
 /**
- * Flow metrics (SAFe flow data): flow velocity per iteration, flow time from activation to
- * closing, flow load (work in progress now) and flow distribution by work item type.
+ * Flow metrics (SAFe flow data) over one backlog level: flow velocity per iteration, flow
+ * time from activation to closing, flow load (work of the selected PI in progress now) and
+ * flow distribution by kind of work (Feature, Enabler, Defect, Debt).
  */
 export function FlowWidget({ data }: { data: ReportData }) {
-  const { config, pi } = useSafe();
+  const { config, node, pi } = useSafe();
   if (!pi)
     return (
       <Widget title="Flow metrics" size="wide">
         <SelectPi />
       </Widget>
     );
-  const m = flowMetrics(flowItems(data, flowTypes(config)), pi, data.firstActive);
+  const m = flowMetrics(flowItems(data, flowTypes(config, node.level, data.kinds.bug)), pi, data.firstActive, data.kinds);
+  const level = node.level === "team" ? "stories" : "features and enablers";
   const maxVelocity = Math.max(1, ...m.velocity.map((v) => v.count));
 
   return (
@@ -37,7 +50,9 @@ export function FlowWidget({ data }: { data: ReportData }) {
         <div className="flow-tile" role="group" aria-label="Flow velocity">
           <h4>Flow velocity</h4>
           <div className="kpi-value">{m.completed}</div>
-          <div className="muted small">items completed in {pi.name}</div>
+          <div className="muted small">
+            {level} completed in {pi.name}
+          </div>
           {m.velocity.length > 0 && (
             <ul className="flow-bars">
               {m.velocity.map((v) => (
@@ -63,7 +78,9 @@ export function FlowWidget({ data }: { data: ReportData }) {
         <div className="flow-tile" role="group" aria-label="Flow load">
           <h4>Flow load</h4>
           <div className="kpi-value">{m.load}</div>
-          <div className="muted small">items in progress now</div>
+          <div className="muted small">
+            {level} of {pi.name} in progress now
+          </div>
         </div>
         <div className="flow-tile" role="group" aria-label="Flow distribution">
           <h4>Flow distribution</h4>
@@ -71,16 +88,16 @@ export function FlowWidget({ data }: { data: ReportData }) {
             <p className="muted small">No completed items.</p>
           ) : (
             <>
-              <div className="flow-dist" role="img" aria-label={m.distribution.map((d) => `${d.type} ${d.pct}%`).join(", ")}>
+              <div className="flow-dist" role="img" aria-label={m.distribution.map((d) => `${d.kind} ${d.pct}%`).join(", ")}>
                 {m.distribution.map((d) => (
-                  <span key={d.type} style={{ width: `${d.pct}%`, background: typeColor(d.type) }} title={`${d.type}: ${d.count}`} />
+                  <span key={d.kind} style={{ width: `${d.pct}%`, background: KIND_COLOR[d.kind] }} title={`${d.kind}: ${d.count}`} />
                 ))}
               </div>
               <ul className="flow-legend small">
                 {m.distribution.map((d) => (
-                  <li key={d.type}>
-                    <span className="swatch" style={{ background: typeColor(d.type) }} />
-                    {d.type} <strong>{d.pct}%</strong> <span className="muted">({d.count})</span>
+                  <li key={d.kind}>
+                    <span className="swatch" style={{ background: KIND_COLOR[d.kind] }} />
+                    {d.kind} <strong>{d.pct}%</strong> <span className="muted">({d.count})</span>
                   </li>
                 ))}
               </ul>

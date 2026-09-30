@@ -1,9 +1,9 @@
 import { pointsSummary } from "../../api/reports";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { Ratio, SelectPi, SnapshotNote, Widget } from "./Widget";
+import { Ratio, SelectPi, SnapshotInfo, Widget } from "./Widget";
 
-/** Story Points Burned: done ÷ planned story points of the PI's team stories (as recorded at PI end when stored). */
+/** Story Points Burned: done ÷ planned story points of the PI's team stories (from the PI snapshot when stored). */
 export function PointsBurnedWidget({ data }: { data: ReportData }) {
   const { pi } = useSafe();
   const p = data.snapshot?.points ?? pointsSummary(data.piStories);
@@ -13,7 +13,7 @@ export function PointsBurnedWidget({ data }: { data: ReportData }) {
         <SelectPi />
       ) : (
         <Ratio pct={p.pct} caption={`${p.done} of ${p.planned} SP done`}>
-          {data.snapshot && <SnapshotNote createdAt={data.snapshot.createdAt} />}
+          <SnapshotInfo snapshot={data.snapshot} missing={data.snapshotMissing} />
         </Ratio>
       )}
     </Widget>

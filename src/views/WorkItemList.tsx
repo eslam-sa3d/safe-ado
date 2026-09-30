@@ -16,7 +16,7 @@ import {
   removeLink,
   setFields,
 } from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, Info, lastSegment, Spinner, typeColor, useAsync } from "../components/common";
+import { CATEGORY_COLOR, Empty, ErrorBar, fmtDate, Info, lastSegment, Spinner, typeColor, useAsync } from "../components/common";
 import { useCan, useSafe } from "../components/context";
 import { FilterBar } from "../components/FilterBar";
 import {
@@ -526,6 +526,11 @@ export function WorkItemList() {
         return <span title={f[F.iteration]}>{lastSegment(f[F.iteration])}</span>;
       case "area":
         return <span title={f[F.area]}>{lastSegment(f[F.area])}</span>;
+      case "completion": {
+        // Sorted and exported as YYYY-MM-DD; shown like every other date.
+        const iso = cellText(row, key) as string;
+        return iso ? <span title={iso}>{fmtDate(iso)}</span> : "";
+      }
     }
     if (readOnly) return cellText(row, key);
     switch (key) {

@@ -1,5 +1,5 @@
 import { subtreeIds } from "../../api/org";
-import { businessValue } from "../../api/reports";
+import { businessValue, inPi } from "../../api/reports";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
 import { plural, Ratio, SelectPi, Warning, Widget } from "./Widget";
@@ -16,7 +16,7 @@ export function BusinessValueWidget({ data }: { data: ReportData }) {
       </Widget>
     );
   const scope = subtreeIds(node);
-  const bv = businessValue(data.objectives.filter((o) => o.piPath === pi.path && scope.has(o.nodeId)));
+  const bv = businessValue(data.objectives.filter((o) => inPi(o, pi) && scope.has(o.nodeId)));
   return (
     <Widget title="Business Value">
       <Ratio pct={bv.pct} tone={bvTone(bv.pct)} caption={`${bv.actual} of ${bv.planned} BV (committed)`}>

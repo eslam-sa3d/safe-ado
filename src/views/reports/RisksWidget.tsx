@@ -2,7 +2,7 @@ import { useState } from "react";
 import { newId, risksStore } from "../../api/data";
 import { findNode, subtreeIds } from "../../api/org";
 import { EXPOSURE_COLOR, Exposure } from "../../api/risk";
-import { riskRows } from "../../api/reports";
+import { inPi, riskRows } from "../../api/reports";
 import { Risk } from "../../api/types";
 import { useCan, useSafe } from "../../components/context";
 import { RiskDialog } from "./CreateDialogs";
@@ -31,7 +31,7 @@ export function RisksWidget({ data }: { data: ReportData }) {
     );
   const scope = subtreeIds(node);
   const all = [...data.risks.filter((r) => !created.some((c) => c.id === r.id)), ...created];
-  const rows = riskRows(all.filter((r) => r.piPath === pi.path && scope.has(r.nodeId)));
+  const rows = riskRows(all.filter((r) => inPi(r, pi) && scope.has(r.nodeId)));
   const actions = <AddButton label="Add risk" canPlan={can.plan} onClick={() => setAdding(true)} />;
   return (
     <Widget title="PI Risks" size="medium" actions={actions}>
