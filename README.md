@@ -37,6 +37,16 @@ Every board and list has the shared filter bar: text search, Type / State / Assi
 | Dependency | `Successor` / `Predecessor` link between work items |
 | PI Objective, ROAM risk | Extension Data Service documents (per project) |
 | Hierarchy / settings | Extension Data Service value (per project) |
+| Units in other projects | A unit may point to an area path and team in **another project of the same collection** (pick the project first in Setup or My Organization). The configuration stays in the host project |
+
+### Cross-project portfolios
+
+Large enterprises often keep ARTs or solutions in separate projects. A portfolio configured in one project (the *host*) can include units from other projects of the same collection:
+
+- **Queries.** A scope inside the host project works exactly as before (`[System.TeamProject] = @project`). A scope that spans projects lists them (`[System.TeamProject] IN (...)`, plus the area clauses) and runs WIQL at collection level. Work items are always read by id at collection level.
+- **PIs.** The host project's PI root (or the unit's cadence in the host project) defines the PIs. Each project has its own iteration tree, so a unit in another project names its **PI root in that project** (inherited by its children; by default the cadence's path in that project, e.g. `Contoso\PIs`). Its PIs and sprints are matched to the cadence **by name, else by identical dates**. Boards, reports and lists show foreign items in the matched cadence sprint; iterations with no match are listed in a note at the top of the hub.
+- **Writes.** Re-planning a foreign item (drag, create in a cell, remove from board) writes that project's matching iteration; new items are created in the area's project. Moving an item between projects is refused (use *Move to team project* in Azure Boards).
+- **Limitations.** Team iteration subscriptions (sprint mapping and "Assign to teams" in PIs & Iterations) are not available for teams of other projects; a note says so. All projects should use the same work item types (states are read from the host project's process). Objectives, risks and other SAFe data stay in the host project. The SAFe panel on the work item form of a foreign item uses that project's own configuration. There is no collection-level hub; open the hub in the host project.
 
 ## Compatibility notes (Server 2022.1)
 
@@ -106,7 +116,6 @@ src/
 ```
 
 ## Roadmap ideas
-- Collection-level hub for portfolios that span several projects
 - Work item form group showing PI, ART and objective links
 - PI planning mode (team breakouts, confidence vote)
 - Dashboard widgets for predictability and the program board

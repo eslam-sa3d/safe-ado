@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { effectivePiRoot, flatten, pathTo } from "../api/org";
+import { isForeignNode, nodeProject } from "../api/projects";
 import { localToday } from "../api/rules";
 import {
   addDays,
@@ -63,9 +64,13 @@ export function PiManagementView() {
   const cadenceLabel =
     cadenceOwner && cadenceOwner.piRootIteration === piRoot ? `PIs of ${cadenceOwner.name}'s cadence` : "PIs of the project cadence";
   // Teams that plan in this cadence: every unit (incl. detached) whose effective PI root is this one.
-  const teams = [config.root, ...(config.detached ?? [])]
+  const cadenceTeams = [config.root, ...(config.detached ?? [])]
     .flatMap(flatten)
     .filter((n) => n.teamId && effectivePiRoot(config, n.id) === piRoot);
+  // Team iteration subscriptions only work with the host project's iterations: teams of other
+  // projects are left out of sprint mapping and assignment (with a note).
+  const teams = cadenceTeams.filter((n) => !isForeignNode(n));
+  const foreignTeams = cadenceTeams.filter(isForeignNode);
 
   const [name, setName] = useState(suggestName(pis));
   const [start, setStart] = useState(nextStart(pis));
@@ -179,6 +184,13 @@ export function PiManagementView() {
         <div className="msg msg-info readonly-banner" role="note">
           Read-only: you can view PIs and iterations, but changing them needs the “Create child nodes” permission on the iteration
           root.
+        </div>
+      )}
+      {foreignTeams.length > 0 && (
+        <div className="msg msg-info cross-project-teams" role="note">
+          Teams in other projects ({foreignTeams.map((t) => `${t.name} (${nodeProject(t).name})`).join(", ")}) can't be assigned these
+          iterations from here: each project has its own iteration tree. Create the matching PI and sprints in their project (same name
+          or dates) and map the team's sprints there; SAFe Ado matches them to this cadence.
         </div>
       )}
       <div className="two-col">

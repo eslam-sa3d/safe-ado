@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { getProject } from "../api/client";
 import { newId } from "../api/data";
 import { DEFAULT_DEPENDENCY_LINK } from "../api/dependencies";
 import { childLevels, flatten } from "../api/org";
+import { getProjects, isForeignNode, ProjectRef } from "../api/projects";
 import { DEFAULT_RROE_FIELD } from "../api/rules";
 import { Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
 import {
@@ -9,6 +11,7 @@ import {
   getAreaPaths,
   getAreaTree,
   getFieldNames,
+  getIterationPaths,
   getIterationTree,
   getRelationTypes,
   getTeamDefaultArea,
@@ -55,6 +58,18 @@ interface CheckItem {
 
 const SECTION = { types: "setup-types", pis: "setup-pis", hierarchy: "setup-hierarchy", dependencies: "setup-dependencies" };
 
+/** Areas, iterations and teams of another project (for units of cross-project portfolios). */
+export interface ProjectMeta {
+  areas: string[];
+  iterations: string[];
+  teams: { id: string; name: string }[];
+}
+
+async function loadProjectMeta(projectId: string): Promise<ProjectMeta> {
+  const [areas, iterations, teams] = await Promise.all([getAreaPaths(projectId), getIterationPaths(projectId), getTeams(projectId)]);
+  return { areas, iterations, teams };
+}
+
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
 }
@@ -67,9 +82,21 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>();
   const [generateMode, setGenerateMode] = useState<"art" | "solution">("art");
+  // Other projects' metadata, loaded once per project while this view is open.
+  const projectMeta = useMemo(() => {
+    const cache = new Map<string, Promise<ProjectMeta>>();
+    return (projectId: string) => {
+      if (!cache.has(projectId)) {
+        const request = loadProjectMeta(projectId);
+        request.catch(() => cache.delete(projectId));
+        cache.set(projectId, request);
+      }
+      return cache.get(projectId)!;
+    };
+  }, []);
 
   const meta = useAsync(async () => {
-    const [types, fields, iterationTree, areas, teams, relationTypes] = await Promise.all([
+    const [types, fields, iterationTree, areas, teams, relationTypes, projects] = await Promise.all([
       getWorkItemTypes(),
       getFieldNames(),
       getIterationTree(),
@@ -77,6 +104,8 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
       getTeams(),
       // Optional: without link types the dependency setting keeps its current value.
       getRelationTypes().catch(() => [] as RelationType[]),
+      // Optional: without the project list, units stay in this project.
+      getProjects().catch(() => [] as ProjectRef[]),
     ]);
     const iterations: string[] = [];
     const childCount = new Map<string, number>();
@@ -95,6 +124,7 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
       areas,
       teams,
       relationTypes,
+      projects,
     };
   }, []);
 
@@ -336,6 +366,8 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
         </div>
         <p className="muted small pad-x">
           Area Paths scope every view: a node sees work items under its area path. Link Teams so PIs can be assigned to their sprint lists.
+          {(m?.projects.length ?? 0) > 1 &&
+            " A unit can live in another project of this collection: pick its project first, then its area path, team and (optionally) the PI root in that project. Its PIs are matched to this cadence by name, else by dates."}
         </p>
         <ul className="node-editor">
           <NodeEditor
@@ -345,6 +377,8 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
             areas={m?.areas ?? []}
             iterations={m?.iterations ?? []}
             teams={m?.teams ?? []}
+            projects={m?.projects ?? []}
+            projectMeta={projectMeta}
             // Functional updates: the team lookup resolves later and must not overwrite newer edits.
             onChange={(id, fn) => setDraft((d) => ({ ...d, root: updateNode(d.root, id, fn) }))}
             onRemove={(id) => setDraft((d) => ({ ...d, root: removeNode(d.root, id) }))}
@@ -432,15 +466,28 @@ function NodeEditor(props: {
   areas: string[];
   iterations: string[];
   teams: { id: string; name: string }[];
+  /** Projects of the collection; the project picker shows when there is more than one. */
+  projects: ProjectRef[];
+  projectMeta: (projectId: string) => Promise<ProjectMeta>;
   onChange: (id: string, fn: (n: OrgNode) => OrgNode) => void;
   onRemove: (id: string) => void;
 }) {
   const { node, onChange, readOnly } = props;
   const [showMembers, setShowMembers] = useState(false);
   const members = node.members ?? [];
+  // A unit of another project picks its area, team and PI root from that project.
+  const foreign = isForeignNode(node);
+  const foreignProject = foreign ? node.projectId : undefined;
+  const projectMeta = useAsync(
+    () => (foreignProject ? props.projectMeta(foreignProject) : Promise.resolve(undefined)),
+    [foreignProject]
+  );
+  const areas = foreign ? projectMeta.data?.areas ?? [] : props.areas;
+  const teams = foreign ? projectMeta.data?.teams ?? [] : props.teams;
+  const iterations = foreign ? projectMeta.data?.iterations ?? [] : props.iterations;
   const teamMembers = useAsync(
-    () => (showMembers && node.teamId && !readOnly ? getTeamMembers(node.teamId) : Promise.resolve([])),
-    [showMembers, node.teamId, readOnly]
+    () => (showMembers && node.teamId && !readOnly ? getTeamMembers(node.teamId, foreignProject) : Promise.resolve([])),
+    [showMembers, node.teamId, readOnly, foreignProject]
   );
   const set = (patch: Partial<OrgNode>) => onChange(node.id, (n) => ({ ...n, ...patch }));
   // An empty list is stored as "no members" so adding and removing leaves the config unchanged.
@@ -458,8 +505,26 @@ function NodeEditor(props: {
   const add = (level: Level) =>
     onChange(node.id, (n) => ({
       ...n,
-      children: [...n.children, { id: newId(), name: `New ${LEVEL_LABEL[level]}`, level, areaPath: n.areaPath, children: [] }],
+      children: [
+        ...n.children,
+        {
+          id: newId(),
+          name: `New ${LEVEL_LABEL[level]}`,
+          level,
+          areaPath: n.areaPath,
+          // A child starts in its parent's project.
+          ...(isForeignNode(n) ? { projectId: n.projectId, projectName: n.projectName } : {}),
+          children: [],
+        },
+      ],
     }));
+  /** Moves the unit to another project: its area, team and PI root belong to the old one and are cleared. */
+  const setProject = (projectId: string) =>
+    onChange(node.id, (n) => {
+      const { projectId: _p, projectName: _n, areaPath: _a, areaId: _i, teamId: _t, piRootIteration: _r, piRootId: _ri, ...rest } = n;
+      if (projectId === getProject().id) return rest;
+      return { ...rest, projectId, projectName: props.projects.find((p) => p.id === projectId)?.name ?? projectId };
+    });
   const pickable = (teamMembers.data ?? []).filter((t) => !members.some((m) => m.id === t.id));
   const addIdentity = (id: string) => {
     const t = pickable.find((p) => p.id === id);
@@ -470,7 +535,7 @@ function NodeEditor(props: {
   const onTeam = async (teamId: string) => {
     set({ teamId: teamId || undefined });
     if (teamId && !node.areaPath) {
-      const area = await getTeamDefaultArea(teamId).catch(() => undefined);
+      const area = await getTeamDefaultArea(teamId, foreignProject).catch(() => undefined);
       if (area) onChange(node.id, (n) => ({ ...n, areaPath: area }));
     }
   };
@@ -483,6 +548,25 @@ function NodeEditor(props: {
       <div className="node-row">
         <LevelPill level={node.level} />
         <input className="node-name" value={node.name} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} aria-label="Name" />
+        {(props.projects.length > 1 || foreign) && (
+          <select
+            value={foreign ? node.projectId : getProject().id}
+            disabled={readOnly}
+            onChange={(e) => setProject(e.target.value)}
+            aria-label="Project"
+            title="Azure DevOps project of this unit's area path and team"
+          >
+            {foreign && !props.projects.some((p) => p.id === node.projectId) && (
+              <option value={node.projectId}>{node.projectName ?? node.projectId}</option>
+            )}
+            {!props.projects.some((p) => p.id === getProject().id) && <option value={getProject().id}>{getProject().name}</option>}
+            {props.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={node.areaPath ?? ""}
           disabled={readOnly}
@@ -490,21 +574,46 @@ function NodeEditor(props: {
           aria-label="Area path"
         >
           <option value="">(no area path)</option>
-          {props.areas.map((a) => (
+          {foreign && node.areaPath && !areas.includes(node.areaPath) && <option>{node.areaPath}</option>}
+          {areas.map((a) => (
             <option key={a}>{a}</option>
           ))}
         </select>
         {node.level !== "portfolio" && (
           <select value={node.teamId ?? ""} disabled={readOnly} onChange={(e) => onTeam(e.target.value)} aria-label="Azure DevOps team">
             <option value="">(no team)</option>
-            {props.teams.map((t) => (
+            {foreign && node.teamId && !teams.some((t) => t.id === node.teamId) && <option value={node.teamId}>{node.teamId}</option>}
+            {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
           </select>
         )}
-        {hasCadence && (
+        {foreign && (
+          <select
+            value={node.piRootIteration ?? ""}
+            disabled={readOnly}
+            onChange={(e) => set({ piRootIteration: e.target.value || undefined, piRootId: undefined })}
+            aria-label="PI root in project"
+            title={`Where this unit's PIs live in ${node.projectName ?? "its project"}; they are matched to the cadence by name, else by dates`}
+          >
+            <option value="">PIs at the cadence's path</option>
+            {node.piRootIteration && !iterations.includes(node.piRootIteration) && <option>{node.piRootIteration}</option>}
+            {iterations.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        )}
+        {foreign && projectMeta.error && (
+          <span className="danger small">
+            Could not load {node.projectName ?? node.projectId}: {projectMeta.error}
+          </span>
+        )}
+        {hasCadence && !foreign && (
+
           <select
             value={node.piRootIteration ?? ""}
             disabled={readOnly}

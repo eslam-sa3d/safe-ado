@@ -21,6 +21,14 @@ export interface OrgNode {
   /** Own PI cadence (e.g. a Solution Train or an ART with its own PIs); inherited when unset. */
   piRootIteration?: string;
   piRootId?: string;
+  /**
+   * Azure DevOps project of this unit's area path and team, when it is not the project hosting
+   * the SAFe configuration (cross-project portfolios). Absent = the host project. For such a unit,
+   * `piRootIteration` is where its PIs live in its own project; they are matched to the host
+   * cadence by name and dates (see api/projects.ts).
+   */
+  projectId?: string;
+  projectName?: string;
   /** People and their SAFe roles (RTE, PO, ...), shown in the Reports header. */
   members?: Member[];
   children: OrgNode[];

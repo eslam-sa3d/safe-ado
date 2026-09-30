@@ -3,6 +3,7 @@ import { emptyMeta, metaStore } from "../api/data";
 import { EMPTY_FILTER, ExtraFacet, facetOptions, ItemFilter, matchesFilter, wiqlSuffix, withWiqlFilter } from "../api/filters";
 import { changeParent } from "../api/teamboard";
 import { boardType, findNode, flatten, scopeAreas } from "../api/org";
+import { isForeignNode } from "../api/projects";
 import { scopeQuery, typeChain } from "../api/queries";
 import { F, LINK, OrgNode, ProgramIncrement, SafeConfig, WorkItem, WorkItemMeta } from "../api/types";
 import {
@@ -133,8 +134,11 @@ export function mergePeople(members: Person[], assigned: Person[]): Person[] {
 
 /** Members of every Azure DevOps team backing a unit in `node`'s subtree (a failing team is skipped). */
 export async function loadMembers(node: OrgNode): Promise<Person[]> {
-  const teamIds = Array.from(new Set(flatten(node).map((n) => n.teamId).filter((t): t is string => !!t)));
-  const lists = await Promise.all(teamIds.map((id) => getTeamMembers(id).catch(() => [])));
+  // Teams of other projects (cross-project units) are read from their own project.
+  const teams = new Map<string, string | undefined>();
+  for (const n of flatten(node)) if (n.teamId && !teams.has(n.teamId)) teams.set(n.teamId, isForeignNode(n) ? n.projectId : undefined);
+  const lists = await Promise.all(Array.from(teams).map(([id, project]) => getTeamMembers(id, project).catch(() => [])));
+
   return lists.flat().map((i) => ({ displayName: i.displayName, uniqueName: i.uniqueName }));
 }
 

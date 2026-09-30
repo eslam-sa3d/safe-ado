@@ -209,6 +209,37 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | FORM-02 | "Open children in query" opens the item's children in Azure Boards | As described | Auto: `form/FormPanel.test.tsx` |
 | MAN-DND | Mouse and touchpad dragging on the Roadmap and boards in a real browser | Smooth; no text selection glitches | **Manual** |
 
+## 11b. Cross-project portfolios
+
+The configuration lives in the host project; units may point to an area path and team in another project of the same collection. The fake backend models a second project, *Contoso* (`seedCrossProject`, `makeCrossConfig` in `test/fakeAdo.ts`), whose PI 2 matches the host's PI 2 by name, its first sprint by dates and its second sprint by name, and which has no IP iteration and no PI 1.
+
+| ID | Scenario | Expected | Verified by |
+|---|---|---|---|
+| XP-01 | Old configuration without `projectId` | Queries, routes and writes are exactly as before (`@project`, project-scoped WIQL); no cross-project note | Auto: `api/crossProject.test.ts`, `views/CrossProject.test.tsx` |
+| XP-02 | Setup: pick another project for a unit, then its area path, team and PI root in that project | Saved as `projectId` / `projectName`; switching back to the host project clears area, team and PI root; children start in the parent's project; an unreadable project shows an error on its row | Auto: `views/CrossProject.test.tsx` |
+| XP-03 | My Organization: add a unit in another project | The dialog lists the collection's projects and that project's area paths; the card shows the project | Auto: `views/CrossProject.test.tsx` |
+| XP-04 | A scope spanning projects | WIQL uses `[System.TeamProject] IN (...)` plus area clauses and runs at collection level (no project in the URL, no `@project`); the PI clause includes the matched iteration of each project; a scope inside the host project keeps `@project` | Auto: `api/crossProject.test.ts` |
+| XP-05 | PI matching | The host cadence defines the PIs; each foreign PI root (the unit's own, a same-project ancestor's, else the cadence path in that project) is matched by name, else by identical dates; iterations without a match are listed in a note | Auto: `api/crossProject.test.ts`, `views/CrossProject.test.tsx` |
+| XP-06 | Program board, reports, work item list and team board with items from two projects | Foreign items appear in the cadence's sprint columns and counts | Auto: `views/CrossProject.test.tsx` |
+| XP-07 | Re-plan a foreign item (drag, create in a cell, remove from board) | The write uses the item's own project's iteration; creating posts to that project | Auto: `api/crossProject.test.ts`, `views/CrossProject.test.tsx` |
+| XP-08 | Move a foreign item to a row of another project, or into a sprint with no match | Refused with a clear message; nothing is written | Auto: `api/crossProject.test.ts`, `views/CrossProject.test.tsx` |
+| XP-09 | Foreign teams in PIs & Iterations | Left out of sprint mapping and "Assign to teams", with a visible note | Auto: `views/CrossProject.test.tsx` |
+| XP-10 | Another project's PIs can't be loaded | The hub still renders; a note names the missing PI root | Auto: `views/CrossProject.test.tsx` |
+| XP-11 | "New item" in a foreign unit's area | Opens that project's new-work-item page in a new tab with area and mapped iteration | Auto: `api/crossProject.test.ts` |
+
+**Manual checklist (run on Azure DevOps Services and on Server 2022.1):**
+
+1. Create two projects in one collection (for example *Fabrikam* and *Contoso*) with the same process. In Contoso create areas `ART C\Team Orange`, a team with that default area, and iterations `Cadence\PI 2\Sprint 1..n` with the same names or dates as the host's PI 2.
+2. In Fabrikam's Setup, add an ART, choose project *Contoso*, pick `Contoso\ART C`, the PI root `Contoso\Cadence` and the team. Save. Reload the hub: the unit keeps its project; no errors in the console (check that `_apis/projects` and Contoso's classification nodes load with `api-version=7.0`).
+3. Select the Contoso ART: the ART Planning Board, Reports, Work Item List and Hierarchy show Contoso items in the host PI's sprints. In the network tab, cross-project WIQL posts go to `{collection}/_apis/wit/wiql` (no project segment) and succeed.
+4. Select a Large Solution or portfolio containing units from both projects: items of both appear together.
+5. In *Feature iteration* mode drag a Contoso feature to another sprint: it lands in Contoso's matching sprint (check the item in Azure Boards). Drag it to a Fabrikam row: a message explains that items can't move between projects.
+6. On the Contoso team's Team Planning Board, create an item in a cell: it is created in Contoso with Contoso's sprint.
+7. Delete or rename a Contoso sprint so it no longer matches: a note lists the unmatched iteration; dragging into it is refused with a message.
+8. Open PIs & Iterations: the note says the Contoso team can't be mapped from here; sprint mapping lists host teams only.
+9. As a user without access to Contoso: the hub still loads; Contoso units show nothing and a note / error explains why.
+10. Server 2022.1 only: repeat steps 2, 3 and 5 on `https://{server}/tfs/{Collection}` and confirm collection-level WIQL and `workitemsbatch` work without a project in the URL.
+
 ## 12. Security and permissions (manual)
 
 | ID | Scenario | Expected |

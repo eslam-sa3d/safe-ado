@@ -1,8 +1,8 @@
 import { calculatedSprintIndex, criticalityByDates, criticalityByIteration, Dependency } from "./dependencies";
 import { EXPOSURE_RANK, exposure, Exposure } from "./risk";
 import { Criticality, F, IterationCapacity, LINK, Milestone, OrgNode, PiObjective, ProgramIncrement, Risk, Sprint, WorkItem, WorkItemMeta } from "./types";
-import { isUnder, relationTargetId, typeIn, underAny } from "./wit";
-import { wiqlString } from "./client";
+import { projectClause } from "./projects";
+import { isUnder, iterationUnder, relationTargetId, typeIn, underAny } from "./wit";
 import { DEFAULT_RROE_FIELD, isIpIteration, localToday, wsjfScore } from "./rules";
 
 /**
@@ -845,8 +845,8 @@ export interface QueryScope {
 export function scopeWiql(scope: QueryScope): string {
   return (
     `SELECT [${F.id}], [${F.type}], [${F.title}], [${F.state}], [${F.area}], [${F.iteration}] FROM WorkItems ` +
-    `WHERE [System.TeamProject] = @project AND ${typeIn(scope.types)} AND ${underAny(`[${F.area}]`, scope.areas)}` +
-    (scope.iterationPath ? ` AND [${F.iteration}] UNDER ${wiqlString(scope.iterationPath)}` : "") +
+    `WHERE ${projectClause(scope.areas)} AND ${typeIn(scope.types)} AND ${underAny(`[${F.area}]`, scope.areas)}` +
+    (scope.iterationPath ? ` AND ${iterationUnder(`[${F.iteration}]`, scope.iterationPath)}` : "") +
     ` ORDER BY [${F.id}] ASC`
   );
 }

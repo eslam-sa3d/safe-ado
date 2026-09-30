@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { ReactElement, useState } from "react";
 import { vi } from "vitest";
+import { prepareCrossProject } from "../src/api/crossProject";
 import { findNode } from "../src/api/org";
 import { ALL_ALLOWED, Capabilities } from "../src/api/permissions";
 import { ProgramIncrement, SafeConfig } from "../src/api/types";
@@ -41,6 +42,8 @@ export async function renderView(
   } = {}
 ) {
   const initial = opts.config ?? makeConfig();
+  // Like the App: install the other projects' PI mirrors before the view queries.
+  await prepareCrossProject(initial);
   const pis = opts.pis ?? (await getProgramIncrements(initial.piRootIteration));
   const ctx = {
     saveConfig: vi.fn(async (_c: SafeConfig) => undefined),

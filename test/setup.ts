@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { beforeEach, vi } from "vitest";
 import { retryPolicy } from "../src/api/client";
+import { resetCrossProject } from "../src/api/projects";
 import { dataManager, fetchMock, resetFake } from "./fakeAdo";
 
 // Retry throttled requests immediately in tests.
@@ -35,6 +36,7 @@ vi.stubGlobal("fetch", fetchMock);
 
 beforeEach(() => {
   resetFake();
+  resetCrossProject();
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("confirm", vi.fn(() => true));
   try {

@@ -2,6 +2,7 @@ import { chunk } from "./client";
 import { metaStore, milestonesStore } from "./data";
 import { calculatedSprintIndex, CRITICALITY_LABEL, dependenciesOf, DependencyLinkTypes, sprintIndex } from "./dependencies";
 import { ItemFilter, withWiqlFilter } from "./filters";
+import { projectClause } from "./projects";
 import { scopeQuery } from "./queries";
 import { Criticality, F, LINK, Milestone, OrgNode, ProgramIncrement, SafeConfig, Sprint, WorkItem, WorkItemMeta } from "./types";
 import { getStateCategories, getWorkItems, isUnder, queryWorkItems, relationTargetId, typeIn, underAny } from "./wit";
@@ -139,7 +140,7 @@ export function isPiAssigned(
 /** Flat query for specific ids, limited to `types` inside `areas`. */
 export function idsQuery(ids: number[], types: string[], areas: string[]): string {
   return [
-    `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project`,
+    `SELECT [System.Id] FROM WorkItems WHERE ${projectClause(areas)}`,
     `AND [System.Id] IN (${ids.join(", ")})`,
     `AND ${typeIn(types)}`,
     `AND ${underAny("[System.AreaPath]", areas)}`,

@@ -1,6 +1,8 @@
 import { DragEvent, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { newId } from "../api/data";
 import { childLevels, findNode, flatten, LEVEL_COLOR, parentOf, pathTo, effectivePiRoot } from "../api/org";
+import { getProject } from "../api/client";
+import { getProjects, isForeignNode, nodeProject, ProjectRef } from "../api/projects";
 import { Level, LEVEL_LABEL, OrgNode, SafeConfig } from "../api/types";
 import { getAreaPaths } from "../api/wit";
 import { ErrorBar, Field, Info, Modal, Spinner, useAsync, Icon, LevelPill } from "../components/common";
@@ -199,8 +201,10 @@ export function OrganizationView() {
     return persist({ root: removeNode(root, n.id) }, `Removed "${n.name}".`);
   };
 
-  const add = async (level: Level, parentId: string, name: string, areaPath: string) => {
+  const add = async (level: Level, parentId: string, name: string, areaPath: string, project?: ProjectRef) => {
     const created: OrgNode = { id: newId(), name, level, areaPath: areaPath || undefined, children: [] };
+    // Absent project = the host project, as in older configurations.
+    if (project && project.id !== getProject().id) Object.assign(created, { projectId: project.id, projectName: project.name });
     const ok = await persist(
       { root: updateNode(root, parentId, (p) => ({ ...p, children: [...p.children, created] })) },
       `Added "${name}".`
@@ -343,6 +347,11 @@ export function OrganizationView() {
                       <button className="org-node-name" onClick={() => selectNode(n.id)} title={n.areaPath ?? "No area path"}>
                         {n.name}
                       </button>
+                      {isForeignNode(n) && (
+                        <span className="pill project-pill" title={`In project ${nodeProject(n).name}`}>
+                          {nodeProject(n).name}
+                        </span>
+                      )}
                       {!readOnly && (
                         <button
                           className="org-menu-btn"
@@ -470,7 +479,7 @@ export function OrganizationView() {
           parents={all.filter((n) => childLevels(n.level).includes(adding.level))}
           initialParentId={adding.parentId}
           onClose={() => setAdding(undefined)}
-          onSave={(parentId, name, area) => add(adding.level, parentId, name, area)}
+          onSave={(parentId, name, area, project) => add(adding.level, parentId, name, area, project)}
         />
       )}
       {attaching && (
@@ -557,18 +566,24 @@ function AddUnitDialog({
   parents: OrgNode[];
   initialParentId?: string;
   onClose: () => void;
-  onSave: (parentId: string, name: string, areaPath: string) => Promise<void>;
+  onSave: (parentId: string, name: string, areaPath: string, project?: ProjectRef) => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
   const [parentId, setParentId] = useState(initialParentId ?? parents[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
-  const areas = useAsync(() => getAreaPaths(), []);
+  // Cross-project portfolios: the unit may live in another project of the collection.
+  const projects = useAsync(() => getProjects().catch(() => [] as ProjectRef[]), []);
+  const host = getProject();
+  const parent = parents.find((p) => p.id === parentId);
+  const [projectId, setProjectId] = useState(parent && isForeignNode(parent) ? parent.projectId! : host.id);
+  const project = (projects.data ?? []).find((p) => p.id === projectId) ?? (projectId === host.id ? host : parent && nodeProject(parent));
+  const areas = useAsync(() => getAreaPaths(projectId === host.id ? undefined : projectId), [projectId]);
 
   const submit = async () => {
     setSaving(true);
     try {
-      await onSave(parentId, name.trim(), area);
+      await onSave(parentId, name.trim(), area, project);
     } finally {
       setSaving(false);
     }
@@ -593,8 +608,26 @@ function AddUnitDialog({
       <Field label="Name">
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
+      {(projects.data?.length ?? 0) > 1 && (
+        <Field label="Project">
+          <select
+            value={projectId}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              setArea("");
+            }}
+          >
+            {projects.data!.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field label="Area path">
         {areas.loading ? (
+
           <Spinner label="Loading area paths…" />
         ) : (
           <select value={area} onChange={(e) => setArea(e.target.value)}>

@@ -1,4 +1,5 @@
 import { capacityStore, metaStore, objectivesStore, risksStore } from "./data";
+import { isForeignNode } from "./projects";
 import { OrgNode, SafeConfig } from "./types";
 import { ClassificationNode, nodePathToFieldPath } from "./wit";
 
@@ -38,6 +39,8 @@ export function resolveKey(path: string | undefined, id: string | undefined, ind
 export function reconcileConfig(config: SafeConfig, areas: NodeIndex, iterations: NodeIndex): SafeConfig | null {
   let changed = false;
   const fixNode = (n: OrgNode): OrgNode => {
+    // Units of other projects are keyed against their own project's trees, which aren't loaded here.
+    if (isForeignNode(n)) return { ...n, children: n.children.map(fixNode) };
     const area = n.areaPath || n.areaId ? resolveKey(n.areaPath, n.areaId, areas) : {};
     const cadence = n.piRootIteration || n.piRootId ? resolveKey(n.piRootIteration, n.piRootId, iterations) : {};
     const next: OrgNode = { ...n, children: n.children.map(fixNode) };

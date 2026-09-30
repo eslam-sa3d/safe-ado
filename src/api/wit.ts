@@ -1,9 +1,30 @@
 import * as SDK from "azure-devops-extension-sdk";
 import type { IWorkItemFormNavigationService } from "azure-devops-extension-api/WorkItemTracking/WorkItemTrackingServices";
 import { api, chunk, getBaseUrl, getProject, mapLimit, ServiceIds, wiqlString } from "./client";
-import { ProgramIncrement, Sprint, WorkItem } from "./types";
+import {
+  crossProjectActive,
+  expandIteration,
+  foreignProjectOf,
+  isHostProjectName,
+  mapNewItemFields,
+  mapWriteOps,
+  needsHome,
+  normalizeItems,
+  projectOfPath,
+  projectRoute,
+} from "./projects";
+import { F, ProgramIncrement, Sprint, WorkItem } from "./types";
 
 const p = () => encodeURIComponent(getProject().id);
+
+/**
+ * WIQL runs in the host project while the query uses `@project` (single-project scopes, the
+ * behaviour of older configurations). Queries without it (cross-project scopes list their
+ * projects explicitly) run at collection level, where `@project` is not available.
+ */
+function wiqlRoute(query: string): string {
+  return /@project\b/i.test(query) ? `${p()}/_apis/wit/wiql` : `_apis/wit/wiql`;
+}
 
 // ---------------------------------------------------------------------------------------------
 // WIQL + work items
@@ -42,7 +63,7 @@ function insertBeforeOrderBy(query: string, clause: string): string {
 
 export async function queryIds(wiql: string): Promise<number[]> {
   const size = wiqlPaging.pageSize;
-  const first = await api<WiqlFlatResult>(`${p()}/_apis/wit/wiql?$top=${size}`, { method: "POST", body: { query: wiql } });
+  const first = await api<WiqlFlatResult>(`${wiqlRoute(wiql)}?$top=${size}`, { method: "POST", body: { query: wiql } });
   if (first.workItems.length < size) return first.workItems.map((w) => w.id);
 
   // A full page may be truncated. The first page follows the query's own ORDER BY, so we can't
@@ -52,7 +73,7 @@ export async function queryIds(wiql: string): Promise<number[]> {
   const ids: number[] = [];
   let last = 0;
   for (;;) {
-    const page = await api<WiqlFlatResult>(`${p()}/_apis/wit/wiql?$top=${size}`, {
+    const page = await api<WiqlFlatResult>(`${wiqlRoute(wiql)}?$top=${size}`, {
       method: "POST",
       body: { query: `${insertBeforeOrderBy(unordered, `AND [System.Id] > ${last}`)} ORDER BY [System.Id] ASC` },
     });
@@ -66,26 +87,28 @@ export async function queryIds(wiql: string): Promise<number[]> {
 
 /** Runs a WorkItemLinks query and returns parent -> child edges (roots have parent null). */
 export async function queryLinks(wiql: string): Promise<{ parent: number | null; child: number }[]> {
-  const res = await api<WiqlLinkResult>(`${p()}/_apis/wit/wiql`, { method: "POST", body: { query: wiql } });
+  const res = await api<WiqlLinkResult>(wiqlRoute(wiql), { method: "POST", body: { query: wiql } });
   return res.workItemRelations.map((r) => ({ parent: r.source?.id ?? null, child: r.target.id }));
 }
 
 /**
  * Fetches work items in batches of 200 (the REST limit). The batch API rejects `fields`
- * together with `$expand`, so relations mode returns all fields.
+ * together with `$expand`, so relations mode returns all fields. The batch runs at collection
+ * level so items of every project in a cross-project scope come back; foreign iterations are
+ * mapped onto the cadence (see api/projects.ts).
  */
 export async function getWorkItems(ids: number[], fields?: string[], withRelations = false): Promise<WorkItem[]> {
   const unique = Array.from(new Set(ids));
   // At most 4 batch requests in flight, to stay clear of Azure DevOps throttling.
   const batches = await mapLimit(chunk(unique, 200), 4, (batch) =>
-      api<{ value: WorkItem[] }>(`${p()}/_apis/wit/workitemsbatch`, {
+      api<{ value: WorkItem[] }>(`_apis/wit/workitemsbatch`, {
         method: "POST",
         body: withRelations
           ? { ids: batch, $expand: "Relations", errorPolicy: "Omit" }
           : { ids: batch, fields, errorPolicy: "Omit" },
       })
   );
-  return batches.flatMap((b) => b.value).filter(Boolean);
+  return normalizeItems(batches.flatMap((b) => b.value).filter(Boolean));
 }
 
 export async function queryWorkItems(wiql: string, fields: string[], withRelations = false): Promise<WorkItem[]> {
@@ -99,12 +122,15 @@ export async function queryWorkItems(wiql: string, fields: string[], withRelatio
 
 type PatchOp = { op: "add" | "replace" | "remove" | "test"; path: string; value?: unknown };
 
-export function updateWorkItem(id: number, ops: PatchOp[]): Promise<WorkItem> {
-  return api<WorkItem>(`_apis/wit/workitems/${id}`, {
+/** Patches a work item. Iteration writes to items of other projects use that project's paths. */
+export async function updateWorkItem(id: number, ops: PatchOp[]): Promise<WorkItem> {
+  if (needsHome(id, ops.map((o) => o.path))) await getWorkItems([id], [F.id, F.area, "System.TeamProject"]);
+  const updated = await api<WorkItem>(`_apis/wit/workitems/${id}`, {
     method: "PATCH",
-    body: ops,
+    body: mapWriteOps(id, ops),
     contentType: "application/json-patch+json",
   });
+  return updated && normalizeItems([updated])[0];
 }
 
 export async function setFields(id: number, fields: Record<string, unknown>): Promise<WorkItem> {
@@ -142,7 +168,21 @@ export async function openWorkItem(id: number): Promise<void> {
   await nav.openWorkItem(id);
 }
 
+/**
+ * Opens the new work item dialog. The dialog belongs to the host project, so an item in another
+ * project's area opens that project's "new work item" page in a new tab instead.
+ */
 export async function openNewWorkItem(type: string, fields: Record<string, string | number>): Promise<void> {
+  const project = foreignProjectOf(String(fields[F.area] ?? ""));
+  if (project) {
+    const query = Object.entries(mapNewItemFields(fields))
+      .map(([k, v]) => `${encodeURIComponent(`[${k}]`)}=${encodeURIComponent(String(v))}`)
+      .join("&");
+    const url = `${await getBaseUrl()}${encodeURIComponent(project)}/_workitems/create/${encodeURIComponent(type)}?${query}`;
+    const host = await SDK.getService<{ openNewWindow: (url: string, features: string) => void }>(ServiceIds.hostNavigation);
+    host.openNewWindow(url, "");
+    return;
+  }
   const nav = await SDK.getService<IWorkItemFormNavigationService>(ServiceIds.workItemForm);
   await nav.openNewWorkItem(type, fields);
 }
@@ -221,13 +261,14 @@ export function nodePathToFieldPath(nodePath: string): string {
   return parts.join("\\");
 }
 
-async function getNodeTree(structure: "Areas" | "Iterations"): Promise<ClassificationNode> {
-  return api<ClassificationNode>(`${p()}/_apis/wit/classificationnodes/${structure}?$depth=10`);
+/** `project` (id or name) selects another project of the collection; the host project when omitted. */
+async function getNodeTree(structure: "Areas" | "Iterations", project?: string): Promise<ClassificationNode> {
+  return api<ClassificationNode>(`${projectRoute(project)}/_apis/wit/classificationnodes/${structure}?$depth=10`);
 }
 
 /** Flattened list of area paths in field form. */
-export async function getAreaPaths(): Promise<string[]> {
-  const root = await getNodeTree("Areas");
+export async function getAreaPaths(project?: string): Promise<string[]> {
+  const root = await getNodeTree("Areas", project);
   const out: string[] = [];
   const walk = (n: ClassificationNode) => {
     out.push(nodePathToFieldPath(n.path));
@@ -237,16 +278,16 @@ export async function getAreaPaths(): Promise<string[]> {
   return out;
 }
 
-export async function getAreaTree(): Promise<ClassificationNode> {
-  return getNodeTree("Areas");
+export async function getAreaTree(project?: string): Promise<ClassificationNode> {
+  return getNodeTree("Areas", project);
 }
 
-export async function getIterationTree(): Promise<ClassificationNode> {
-  return getNodeTree("Iterations");
+export async function getIterationTree(project?: string): Promise<ClassificationNode> {
+  return getNodeTree("Iterations", project);
 }
 
-export async function getIterationPaths(): Promise<string[]> {
-  const root = await getIterationTree();
+export async function getIterationPaths(project?: string): Promise<string[]> {
+  const root = await getIterationTree(project);
   const out: string[] = [];
   const walk = (n: ClassificationNode) => {
     out.push(nodePathToFieldPath(n.path));
@@ -275,11 +316,15 @@ function findNode(root: ClassificationNode, fieldPath: string): ClassificationNo
   return undefined;
 }
 
-/** PIs are the direct children of the PI root iteration; their children are the sprints. */
+/**
+ * PIs are the direct children of the PI root iteration; their children are the sprints. A root in
+ * another project (its first path segment) is read from that project's iteration tree.
+ */
 export class PiRootNotFoundError extends Error {}
 
 export async function getProgramIncrements(piRoot: string): Promise<ProgramIncrement[]> {
-  const tree = await getIterationTree();
+  const project = projectOfPath(piRoot);
+  const tree = await getIterationTree(isHostProjectName(project) ? undefined : project);
   const root = findNode(tree, piRoot);
   // Never fall back silently to the whole project: that would turn every iteration into a "PI".
   if (!root) throw new PiRootNotFoundError(`The PI root iteration "${piRoot}" was not found. It may have been renamed or deleted; choose it again in Setup.`);
@@ -314,14 +359,15 @@ export interface Team {
   name: string;
 }
 
-export async function getTeams(): Promise<Team[]> {
-  const res = await api<{ value: Team[] }>(`_apis/projects/${p()}/teams?$top=1000`);
+/** Teams of the host project, or of `project` (id or name) in the same collection. */
+export async function getTeams(project?: string): Promise<Team[]> {
+  const res = await api<{ value: Team[] }>(`_apis/projects/${projectRoute(project)}/teams?$top=1000`);
   return res.value.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function getTeamDefaultArea(teamId: string): Promise<string | undefined> {
+export async function getTeamDefaultArea(teamId: string, project?: string): Promise<string | undefined> {
   const res = await api<{ defaultValue?: string; field?: { referenceName: string } }>(
-    `${p()}/${encodeURIComponent(teamId)}/_apis/work/teamsettings/teamfieldvalues`
+    `${projectRoute(project)}/${encodeURIComponent(teamId)}/_apis/work/teamsettings/teamfieldvalues`
   );
   return res.field?.referenceName === "System.AreaPath" ? res.defaultValue : undefined;
 }
@@ -347,6 +393,12 @@ export function underAny(field: string, paths: string[]): string {
   return "(" + paths.map((a) => `${field} UNDER ${wiqlString(a)}`).join(" OR ") + ")";
 }
 
+/** `field UNDER path` for a cadence iteration, widened to its counterparts in other projects. */
+export function iterationUnder(field: string, path: string): string {
+  const paths = expandIteration(path);
+  return paths.length === 1 ? `${field} UNDER ${wiqlString(path)}` : underAny(field, paths);
+}
+
 /** An empty type list (e.g. a level the process doesn't have) matches nothing rather than producing invalid WIQL. */
 export function typeIn(types: string[], field = "[System.WorkItemType]"): string {
   const list = Array.from(new Set(types.filter(Boolean))).map(wiqlString).join(", ");
@@ -364,13 +416,19 @@ export function isUnder(path: string | undefined, parent: string): boolean {
 // Create / iteration maintenance
 // ---------------------------------------------------------------------------------------------
 
-/** Creates a work item of `type` with the given fields (POST json-patch). */
+/**
+ * Creates a work item of `type` with the given fields (POST json-patch). An area in another
+ * project creates the item there, with the cadence iteration mapped to that project.
+ */
 export async function createWorkItem(type: string, fields: Record<string, unknown>): Promise<WorkItem> {
-  return api<WorkItem>(`${p()}/_apis/wit/workitems/$${encodeURIComponent(type)}`, {
+  const project = foreignProjectOf(fields[F.area] as string | undefined);
+  const route = project ? projectRoute(project) : p();
+  const created = await api<WorkItem>(`${route}/_apis/wit/workitems/$${encodeURIComponent(type)}`, {
     method: "POST",
-    body: Object.entries(fields).map(([k, v]) => ({ op: "add", path: `/fields/${k}`, value: v })),
+    body: Object.entries(mapNewItemFields(fields)).map(([k, v]) => ({ op: "add", path: `/fields/${k}`, value: v })),
     contentType: "application/json-patch+json",
   });
+  return created && normalizeItems([created])[0];
 }
 
 function iterationUrl(fieldPath: string): string {
@@ -443,9 +501,11 @@ export interface Identity {
   imageUrl?: string;
 }
 
-/** Members of an Azure DevOps team (for assignee and member pickers). */
-export async function getTeamMembers(teamId: string): Promise<Identity[]> {
-  const res = await api<{ value: { identity: Identity }[] }>(`_apis/projects/${p()}/teams/${encodeURIComponent(teamId)}/members?$top=500`);
+/** Members of an Azure DevOps team (for assignee and member pickers); `project` for teams of other projects. */
+export async function getTeamMembers(teamId: string, project?: string): Promise<Identity[]> {
+  const res = await api<{ value: { identity: Identity }[] }>(
+    `_apis/projects/${projectRoute(project)}/teams/${encodeURIComponent(teamId)}/members?$top=500`
+  );
   return res.value.map((m) => m.identity);
 }
 
@@ -485,11 +545,13 @@ export async function getRevisions(types: string[], fields: string[], startDateT
       break;
     }
     const qs = [token ? `continuationToken=${encodeURIComponent(token)}` : "", startDateTime ? `startDateTime=${encodeURIComponent(startDateTime)}` : ""].filter(Boolean).join("&");
+    // Cross-project scopes read the whole collection's revisions (callers filter by area).
+    const route = crossProjectActive() ? "_apis" : `${p()}/_apis`;
     const res = await api<{ values: Revision[]; isLastBatch?: boolean; continuationToken?: string }>(
-      `${p()}/_apis/wit/reporting/workitemrevisions${qs ? `?${qs}` : ""}`,
+      `${route}/wit/reporting/workitemrevisions${qs ? `?${qs}` : ""}`,
       { method: "POST", body: { types: types.filter(Boolean), fields } }
     );
-    out.push(...res.values);
+    out.push(...normalizeItems(res.values, false));
     if (res.isLastBatch !== false || !res.continuationToken) break;
     token = res.continuationToken;
   }
