@@ -233,12 +233,16 @@ describe("Work Item List: parent validation", () => {
     fake.states.Capability = fake.states.Epic;
     const config = makeConfig({ types: { epic: "Epic", capability: "Capability", feature: "Feature", story: "User Story" } });
     await renderList("n-arta", config);
-    fireEvent.change(screen.getByLabelText("Parent of #15"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Parent of #15"), { target: { value: "100" } });
     fireEvent.blur(screen.getByLabelText("Parent of #15"));
     expect(await screen.findByRole("alert")).toHaveTextContent("must be of type Capability");
-    fireEvent.change(screen.getByLabelText("Parent of #15"), { target: { value: "30" } });
+    // Agile Hive lets a Feature skip the Large Solution level and sit under an Epic.
+    fireEvent.change(screen.getByLabelText("Parent of #15"), { target: { value: "1" } });
     fireEvent.blur(screen.getByLabelText("Parent of #15"));
     await waitFor(() => expect(patches(15)).toHaveLength(1));
+    fireEvent.change(screen.getByLabelText("Parent of #15"), { target: { value: "30" } });
+    fireEvent.blur(screen.getByLabelText("Parent of #15"));
+    await waitFor(() => expect(patches(15)).toHaveLength(2));
   });
 
   it("knows the level above each type", () => {

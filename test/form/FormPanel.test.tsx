@@ -64,11 +64,13 @@ describe("work item form SAFe panel", () => {
     expect(within(row("SAFe unit")).getByText("Team")).toHaveClass("level-badge");
     expect(row("PI")).toHaveTextContent("PI 2 · PI 2 Sprint 1");
     expect(within(row("Parent")).getByRole("button")).toHaveTextContent("Epic #1: Checkout revamp");
-    const children = within(row("Children")).getAllByRole("button").map((b) => b.textContent);
+    const children = within(row("Children")).getAllByRole("button", { name: /#/ }).map((b) => b.textContent);
     expect(children).toEqual(["User Story #100: Charge card", "User Story #101: Refund card", "User Story #104: Removed story"]);
     fireEvent.click(within(row("Children")).getByRole("button", { name: /#101/ }));
     await waitFor(() => expect(sdk.workItemForm.openWorkItem).toHaveBeenCalledWith(101));
     expect(within(row("Children")).getByRole("button", { name: /#101/ })).toHaveAttribute("title", "User Story · Active");
+    fireEvent.click(within(row("Children")).getByRole("button", { name: "Open children in query" }));
+    await waitFor(() => expect(sdk.hostNavigation.openNewWindow).toHaveBeenCalledWith(expect.stringContaining(encodeURIComponent("[System.Id] IN (100, 101, 104)")), ""));
   });
 
   it("uses the deepest unit and handles items without links or sprint", async () => {
@@ -80,7 +82,7 @@ describe("work item form SAFe panel", () => {
     expect(row("PI")).toHaveTextContent(/^PIPI 2$/);
     expect(row("Parent")).toHaveTextContent("None");
     // #15 has one child story (#103).
-    expect(within(row("Children")).getAllByRole("button")).toHaveLength(1);
+    expect(within(row("Children")).getAllByRole("button", { name: /#/ })).toHaveLength(1);
   });
 
   it("shows the parent found through the reverse link", async () => {
@@ -98,7 +100,7 @@ describe("work item form SAFe panel", () => {
     await renderPanel();
     expect(row("PI")).toHaveTextContent("Not planned in a PI");
     expect(row("Parent")).toHaveTextContent("None");
-    expect(within(row("Children")).getAllByRole("button")).toHaveLength(3);
+    expect(within(row("Children")).getAllByRole("button", { name: /#/ })).toHaveLength(3);
   });
 
   it("copes with a work item the REST API does not return", async () => {

@@ -35,9 +35,13 @@ describe("planning helpers", () => {
 
   it("toggles assigned units", () => {
     const one = toggleAssignedNode(emptyMeta(1), "n1");
-    expect(one.assignedNodeIds).toEqual(["n1"]);
-    expect(toggleAssignedNode(one, "n1").assignedNodeIds).toEqual([]);
-    expect(toggleAssignedNode({ ...emptyMeta(1), assignedNodeIds: undefined as any }, "n2").assignedNodeIds).toEqual(["n2"]);
+    expect(one!.assignedNodeIds).toEqual(["n1"]);
+    expect(toggleAssignedNode(one!, "n1")!.assignedNodeIds).toEqual([]);
+    expect(toggleAssignedNode({ ...emptyMeta(1), assignedNodeIds: undefined as any }, "n2")!.assignedNodeIds).toEqual(["n2"]);
+    // At most 30 Assigned Units, like Agile Hive; removing still works when full.
+    const full = { ...emptyMeta(1), assignedNodeIds: Array.from({ length: 30 }, (_, i) => `u${i}`) };
+    expect(toggleAssignedNode(full, "n31")).toBeNull();
+    expect(toggleAssignedNode(full, "u0")!.assignedNodeIds).toHaveLength(29);
   });
 
   it("derives PI involvement and the estimated completion from iterations", () => {

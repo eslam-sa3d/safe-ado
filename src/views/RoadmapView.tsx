@@ -179,8 +179,10 @@ function Roadmap() {
   const unplanned = useMemo(() => {
     const order = new Map(items.map((i, n) => [i.id, n]));
     const rank = (i: WorkItem) => {
-      const r = Number(i.fields[F.stackRank]);
-      return Number.isFinite(r) && i.fields[F.stackRank] !== undefined ? r : Number.POSITIVE_INFINITY;
+      // Agile/CMMI rank by Stack Rank, Scrum by Backlog Priority.
+      const raw = i.fields[F.stackRank] ?? i.fields["Microsoft.VSTS.Common.BacklogPriority"];
+      const r = Number(raw);
+      return raw !== undefined && Number.isFinite(r) ? r : Number.POSITIVE_INFINITY;
     };
     // Agile Hive: finished (Completed) and Removed items are never offered for planning.
     const open = (i: WorkItem) => !["Completed", "Removed"].includes(data!.category(i.fields[F.type], i.fields[F.state]));

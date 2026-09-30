@@ -161,6 +161,17 @@ describe("My Organization", () => {
       expect(box("ART B")).not.toHaveClass("drop-over");
     });
 
+    it("warns when the move changes the unit's PI cadence", async () => {
+      const config = makeConfig();
+      config.root.children[1].piRootIteration = "Fabrikam\\ART B PIs";
+      await renderView(<OrganizationView />, { config });
+      const dt = dataTransfer();
+      fireEvent.dragStart(box("Team Blue"), { dataTransfer: dt });
+      fireEvent.dragOver(box("ART B"), { dataTransfer: dt });
+      fireEvent.drop(box("ART B"), { dataTransfer: dt });
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Its PI cadence changes from Fabrikam\\PIs to Fabrikam\\ART B PIs."));
+    });
+
     it("rejects invalid adjacency and moves into the unit's own subtree", async () => {
       const { ctx } = await renderView(<OrganizationView />);
       fireEvent.dragStart(box("Team Red"), { dataTransfer: dataTransfer() });

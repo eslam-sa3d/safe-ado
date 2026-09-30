@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getProject } from "../api/client";
+import { getProject, onThrottled } from "../api/client";
 import { defaultConfig, loadConfig, saveConfig as persistConfig } from "../api/data";
 import { effectivePiRoot, findNode, pathTo, scopeAreas } from "../api/org";
 import { canPlanIn, Capabilities, loadCapabilities, UNCONFIRMED } from "../api/permissions";
@@ -95,6 +95,21 @@ export function App() {
   const [tick, setTick] = useState(0);
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
   const [tourKey, setTourKey] = useState(0);
+  const [throttledUntil, setThrottledUntil] = useState(0);
+  const [, setClock] = useState(0);
+  // Re-render every 30 s so "Updated X ago" stays current.
+  useEffect(() => {
+    const t = setInterval(() => setClock((c) => c + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(
+    () =>
+      onThrottled((ms) => {
+        setThrottledUntil(Date.now() + ms);
+        setTimeout(() => setThrottledUntil((u) => (u <= Date.now() ? 0 : u)), ms + 50);
+      }),
+    []
+  );
   const urlReady = useRef(false);
 
   const refresh = useCallback(() => {
@@ -248,23 +263,33 @@ export function App() {
               <OpenInBoardsButton config={config} node={node} />
               <HelpMenu onRestartTour={() => setTourKey((k) => k + 1)} />
               <span className="muted small updated" title={updatedAt.toLocaleString()}>
-                Updated {updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                Updated {relativeTime(updatedAt)}
               </span>
               <button className="btn subtle" onClick={refresh} title="Reload all data">
                 <Icon name="Refresh" /> Refresh all
               </button>
-              <label htmlFor="pi-select">PI</label>
-              <select id="pi-select" value={pi?.path ?? ""} onChange={(e) => setPiPath(pis.find((p) => p.path === e.target.value)?.identifier ?? e.target.value)} disabled={!pis.length}>
-                {!pis.length && <option value="">No PIs yet</option>}
-                {pis.map((p) => (
-                  <option key={p.path} value={p.path}>
-                    {p.name}
-                    {p.start ? ` (${fmtDate(p.start)} – ${fmtDate(p.finish)})` : ""}
-                  </option>
-                ))}
-              </select>
+              {/* The portfolio plans across PIs (Agile Hive shows no PI picker there). */}
+              {node.level !== "portfolio" && (
+                <>
+                  <label htmlFor="pi-select">PI</label>
+                  <select id="pi-select" value={pi?.path ?? ""} onChange={(e) => setPiPath(pis.find((p) => p.path === e.target.value)?.identifier ?? e.target.value)} disabled={!pis.length}>
+                    {!pis.length && <option value="">No PIs yet</option>}
+                    {pis.map((p) => (
+                      <option key={p.path} value={p.path}>
+                        {p.name}
+                        {p.start ? ` (${fmtDate(p.start)} – ${fmtDate(p.finish)})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
             </div>
           </header>
+          {throttledUntil > 0 && (
+            <div className="throttle-notice" role="status">
+              <Icon name="Clock" /> Azure DevOps is rate-limiting requests. Waiting before retrying; data may load slowly.
+            </div>
+          )}
 
           <div className="tabs" role="tablist">
             {levelViews.map((v) => (
@@ -355,4 +380,13 @@ function treeSignature(byId: Map<string, string>): string {
   let h = 5381;
   for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
   return `${byId.size}:${(h >>> 0).toString(36)}`;
+}
+
+/** "just now", "5 min ago", "2 h ago", else the time of day. */
+export function relativeTime(at: Date, now = new Date()): string {
+  const s = Math.max(0, Math.round((now.getTime() - at.getTime()) / 1000));
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return at.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 }

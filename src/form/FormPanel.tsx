@@ -2,7 +2,7 @@ import * as SDK from "azure-devops-extension-sdk";
 import type { IWorkItemFormService } from "azure-devops-extension-api/WorkItemTracking/WorkItemTrackingServices";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyMeta, loadConfig, metaStore } from "../api/data";
-import { hubUrl } from "../api/links";
+import { hubUrl, queryUrl } from "../api/links";
 import { effectivePiRoot, flatten, pathTo } from "../api/org";
 import { F, LINK, OrgNode, ProgramIncrement, SafeConfig, Sprint, WorkItem, WorkItemMeta } from "../api/types";
 import { openInNewTab } from "../api/urlState";
@@ -16,7 +16,12 @@ import {
   piInvolvement,
   toggleAssignedNode,
   toggleAssignedPi,
+  UNIT_LIMIT_MESSAGE,
 } from "./planning";
+
+/** WIQL listing the given children, for Azure Boards' query editor. */
+export const childrenQuery = (ids: number[]) =>
+  `SELECT [System.Id], [System.WorkItemType], [System.Title], [System.State] FROM WorkItems WHERE [System.Id] IN (${ids.join(", ")})`;
 
 /** Runtime id of the work item form service (the api package ships AMD, so only its types are imported). */
 export const WORK_ITEM_FORM_SERVICE = "ms.vss-work-web.work-item-form";
@@ -375,6 +380,11 @@ export function FormPanel() {
         <span className="field-label">Children</span>
         <span className="safe-form-children">
           {data.children.length ? data.children.map((c) => <LinkedItem key={c.id} item={c} />) : <span className="muted">None</span>}
+          {data.children.length > 0 && (
+            <button className="link small" onClick={async () => openInNewTab(await queryUrl(childrenQuery(data.children.map((c) => c.id))))}>
+              Open children in query
+            </button>
+          )}
         </span>
       </div>
 
@@ -403,7 +413,11 @@ export function FormPanel() {
                     <input
                       type="checkbox"
                       checked={(meta.assignedNodeIds ?? []).includes(c.id)}
-                      onChange={() => saveMeta(toggleAssignedNode(meta, c.id))}
+                      onChange={() => {
+                        const next = toggleAssignedNode(meta, c.id);
+                        if (next) saveMeta(next);
+                        else setSaveError(UNIT_LIMIT_MESSAGE);
+                      }}
                     />{" "}
                     {c.name}
                   </label>

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { App } from "../../src/components/App";
+import { App, relativeTime } from "../../src/components/App";
+import { api, retryPolicy } from "../../src/api/client";
 import { useSafe } from "../../src/components/context";
 import { callsTo, dataManager, dataStore, fake, makeConfig, PI1, PI2 } from "../fakeAdo";
 import * as sdk from "../sdkMock";
@@ -336,5 +337,34 @@ describe("App shell: help, tour, shortcuts, read-only", () => {
     await waitFor(() => expect(callsTo(/_apis\/permissions/).length).toBe(3));
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByText("Read-only", { selector: ".readonly-pill" })).toBeNull();
+  });
+
+  it("hides the PI picker on the portfolio, which plans across PIs", async () => {
+    await renderApp({ nodeId: "n-root", view: "roadmap" });
+    expect(screen.queryByLabelText("PI")).not.toBeInTheDocument();
+    fireEvent.click(within(document.querySelector(".sidebar") as HTMLElement).getByText("ART A"));
+    expect(await screen.findByLabelText("PI")).toBeInTheDocument();
+  });
+
+  it("tells the user when Azure DevOps throttles requests", async () => {
+    await renderApp({ nodeId: "n-red", view: "objectives" });
+    const base = retryPolicy.baseDelayMs;
+    retryPolicy.baseDelayMs = 400;
+    (globalThis.fetch as any).mockImplementationOnce(async () => new Response("{}", { status: 429 }));
+    const pending = api(`${fake.projectId}/_apis/wit/fields`);
+    expect(await screen.findByText(/rate-limiting/)).toBeInTheDocument();
+    await act(() => pending);
+    retryPolicy.baseDelayMs = base;
+    await waitFor(() => expect(screen.queryByText(/rate-limiting/)).not.toBeInTheDocument());
+  });
+});
+
+describe("relative time", () => {
+  it("describes how long ago the data was loaded", () => {
+    const now = new Date(2026, 5, 1, 12, 0, 0);
+    expect(relativeTime(new Date(2026, 5, 1, 11, 59, 30), now)).toBe("just now");
+    expect(relativeTime(new Date(2026, 5, 1, 11, 55), now)).toBe("5 min ago");
+    expect(relativeTime(new Date(2026, 5, 1, 9, 0), now)).toBe("3 h ago");
+    expect(relativeTime(new Date(2026, 4, 30, 9, 0), now)).toMatch(/\d/);
   });
 });

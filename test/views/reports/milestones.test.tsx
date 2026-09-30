@@ -35,12 +35,12 @@ describe("Milestone Overview", () => {
     fireEvent.click(within(widget("Milestone Overview")).getByRole("checkbox", { name: "Include parent levels" }));
     expect(titles()).toEqual(["ART sync", "Team demo", "Portfolio review"]);
     expect(within(widget("Milestone Overview")).getByText("ART A", { selector: ".pill" })).toBeInTheDocument();
-    await waitFor(() => expect(userValue("milestonesIncludeParents")).toBe(true));
+    await waitFor(() => expect(userValue("milestonesIncludeParents-team")).toBe(true));
   });
 
   it("restores the saved preference and survives preference errors", async () => {
     seed("milestones", [m("art", "n-arta", 1, "ART sync")]);
-    dataStore.values.set(`milestonesIncludeParents-${fake.projectId}`, true);
+    dataStore.values.set(`milestonesIncludeParents-team-${fake.projectId}`, true);
     const { unmount } = await renderReports({ nodeId: "n-red" });
     await waitFor(() => expect(titles()).toEqual(["ART sync"]));
     unmount();
@@ -50,6 +50,13 @@ describe("Milestone Overview", () => {
     dataStore.failures.push({ op: "setValue", error: new Error("prefs down") });
     fireEvent.click(within(widget("Milestone Overview")).getByRole("checkbox", { name: "Include parent levels" }));
     expect(titles()).toEqual(["ART sync"]);
+  });
+
+  it("remembers the choice per SAFe level", async () => {
+    seed("milestones", [m("root", "n-root", 3, "Portfolio review")]);
+    dataStore.values.set(`milestonesIncludeParents-team-${fake.projectId}`, true);
+    await renderReports({ nodeId: "n-arta" });
+    await waitFor(() => expect(within(widget("Milestone Overview")).getByRole("checkbox", { name: "Include parent levels" })).not.toBeChecked());
   });
 
   it("shows 30 days back to 5 years ahead on the portfolio", async () => {

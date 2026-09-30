@@ -23,7 +23,7 @@ export function MilestonesWidget({ data, today }: { data: ReportData; today: num
 
   useEffect(() => {
     let live = true;
-    getUserValue<boolean>(PREF, false)
+    getUserValue<boolean>(`${PREF}-${node.level}`, false)
       .then((v) => live && setIncludeParents(!!v))
       .catch(() => undefined);
     return () => {
@@ -33,7 +33,7 @@ export function MilestonesWidget({ data, today }: { data: ReportData; today: num
 
   const toggle = (v: boolean) => {
     setIncludeParents(v);
-    setUserValue(PREF, v).catch(() => undefined);
+    setUserValue(`${PREF}-${node.level}`, v).catch(() => undefined);
   };
 
   const portfolio = node.level === "portfolio";

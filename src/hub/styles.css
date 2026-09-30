@@ -708,6 +708,7 @@ tr.dep-resolved td { opacity: 0.5; }
 .safe-form-open { margin-left: 8px; font-size: 12px; }
 /* ---------- shell / help / a11y ---------- */
 .readonly-pill { background: var(--warning-bg); color: var(--warn); font-weight: 600; margin-left: 8px; }
+.throttle-notice { display: flex; align-items: center; gap: 8px; padding: 6px 16px; background: var(--warning-bg); color: var(--warn); font-size: 12px; }
 .help-wrap { position: relative; }
 .help-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 220px; background: var(--bg-callout); border-radius: var(--radius); box-shadow: var(--shadow-16); padding: 4px 0; display: grid; }
 .help-menu button { display: flex; align-items: center; gap: 8px; background: none; border: 0; text-align: left; padding: 6px 12px; color: var(--text); cursor: pointer; }

@@ -199,6 +199,14 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | RSK-08 | Risk probability and impact, residual values, exposure chips, sort by exposure | Follows the Agile Hive matrix | Auto: `views/RisksView.test.tsx`, `api/risk.test.ts` |
 | MEM-01 | Members per unit in Setup (maximum 25), shown in the Reports header | As described | Auto: `views/SetupMembers.test.tsx`, `views/ReportsView.test.tsx` |
 | FLT-01 | Shared filter bar: facets, WIQL clause, Copy WIQL, Clear | As described | Auto: `components/FilterBar.test.tsx`, `api/foundation.test.ts` |
+| SHL-10 | The header says how long ago data was loaded ("just now", "5 min ago") and hides the PI picker on the portfolio | As described | Auto: `components/App.test.tsx` |
+| SHL-11 | Azure DevOps throttles a request (429): a rate-limiting notice shows while the client waits, then disappears | As described | Auto: `components/App.test.tsx`, `api/robustness.test.ts` |
+| WIL-02 | A Feature may have a Capability or an Epic parent; any other parent type is rejected | As described | Auto: `views/WorkItemListSafe.test.tsx` |
+| META-02 | At most 30 Assigned Units; removing still works when the limit is reached | As described | Auto: `form/planning.test.ts` |
+| ORG-02 | Moving a unit under a parent with another PI cadence says so in the confirmation | As described | Auto: `views/OrganizationView.test.tsx` |
+| RM-20 | Roadmap sidebar ranks by Backlog Priority on Scrum projects | As described | Auto: `views/RoadmapView.test.tsx` |
+| REP-02 | Milestone Overview remembers "Include parent levels" per SAFe layer | As described | Auto: `views/reports/milestones.test.tsx` |
+| FORM-02 | "Open children in query" opens the item's children in Azure Boards | As described | Auto: `form/FormPanel.test.tsx` |
 | MAN-DND | Mouse and touchpad dragging on the Roadmap and boards in a real browser | Smooth; no text selection glitches | **Manual** |
 
 ## 12. Security and permissions (manual)

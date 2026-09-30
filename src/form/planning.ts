@@ -40,8 +40,14 @@ export function toggleAssignedPi(meta: WorkItemMeta, pi: ProgramIncrement): Work
   return { ...meta, assignedPiPaths: paths, assignedPiIds: ids };
 }
 
-export function toggleAssignedNode(meta: WorkItemMeta, nodeId: string): WorkItemMeta {
+/** Agile Hive allows at most 30 Assigned Units. */
+export const MAX_ASSIGNED_UNITS = 30;
+export const UNIT_LIMIT_MESSAGE = `A work item can be assigned to at most ${MAX_ASSIGNED_UNITS} units.`;
+
+/** Adds or removes an Assigned Unit; null when adding would pass the limit. */
+export function toggleAssignedNode(meta: WorkItemMeta, nodeId: string): WorkItemMeta | null {
   const current = meta.assignedNodeIds ?? [];
+  if (!current.includes(nodeId) && current.length >= MAX_ASSIGNED_UNITS) return null;
   return {
     ...meta,
     assignedNodeIds: current.includes(nodeId) ? current.filter((n) => n !== nodeId) : [...current, nodeId],

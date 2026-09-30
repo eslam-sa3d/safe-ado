@@ -25,6 +25,7 @@ import {
   piInvolvement,
   toggleAssignedNode,
   toggleAssignedPi,
+  UNIT_LIMIT_MESSAGE,
 } from "../form/planning";
 
 /** A work item row plus the SAFe data derived for it. */
@@ -436,7 +437,9 @@ export function WorkItemList() {
         return;
       }
       const parentType = parent.fields[F.type];
-      if (parentType !== expected) {
+      // Agile Hive lets ART items link straight to Portfolio items (skipping Large Solution).
+      const skipAllowed = type === config.types.feature && !!config.types.capability && parentType === config.types.epic;
+      if (parentType !== expected && !skipAllowed) {
         setError(`Work item #${next} is of type ${parentType}; the parent of #${row.item.id} (${type}) must be of type ${expected}.`);
         return;
       }
@@ -480,7 +483,14 @@ export function WorkItemList() {
     return saveMeta(row, next, "the assigned PIs");
   };
 
-  const toggleTeam = (row: Row, nodeId: string) => saveMeta(row, toggleAssignedNode(baseMeta(row), nodeId), "the assigned teams");
+  const toggleTeam = (row: Row, nodeId: string) => {
+    const next = toggleAssignedNode(baseMeta(row), nodeId);
+    if (!next) {
+      setError(UNIT_LIMIT_MESSAGE);
+      return;
+    }
+    return saveMeta(row, next, "the assigned teams");
+  };
 
   const exportCsv = () => {
     const csv = toCsv(

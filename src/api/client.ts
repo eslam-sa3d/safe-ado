@@ -61,6 +61,15 @@ export const retryPolicy = { retries: 3, baseDelayMs: 1000, maxDelayMs: 30000 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+type ThrottleListener = (delayMs: number) => void;
+const throttleListeners = new Set<ThrottleListener>();
+
+/** Notified each time Azure DevOps throttles a request and we wait before retrying. Returns an unsubscribe. */
+export function onThrottled(listener: ThrottleListener): () => void {
+  throttleListeners.add(listener);
+  return () => throttleListeners.delete(listener);
+}
+
 function retryDelay(response: Response, attempt: number): number {
   const header = Number(response.headers.get("Retry-After"));
   const ms = Number.isFinite(header) && header >= 0 && response.headers.has("Retry-After") ? header * 1000 : retryPolicy.baseDelayMs * 2 ** attempt;
@@ -91,7 +100,9 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     const method = options.method ?? "GET";
     const throttled = response.status === 429 || (response.status === 503 && method === "GET");
     if (!throttled || attempt >= retryPolicy.retries) break;
-    await sleep(retryDelay(response, attempt));
+    const delay = retryDelay(response, attempt);
+    throttleListeners.forEach((l) => l(delay));
+    await sleep(delay);
   }
 
   if (!response.ok) {

@@ -332,6 +332,14 @@ describe("Roadmap", () => {
     await screen.findByRole("button", { name: "#11 Checkout UI" });
   });
 
+  it("ranks the sidebar by Backlog Priority on Scrum projects", async () => {
+    Object.assign(fake.workItems.get(12)!.fields, { "Microsoft.VSTS.Common.BacklogPriority": 2 });
+    Object.assign(fake.workItems.get(11)!.fields, { "Microsoft.VSTS.Common.BacklogPriority": 1 });
+    await renderRoadmap();
+    const sidebar = screen.getByRole("complementary", { name: "Unplanned items" });
+    expect(within(sidebar).getAllByRole("listitem").map((li) => li.textContent!.match(/#(\d+)/)![1]).slice(0, 2)).toEqual(["11", "12"]);
+  });
+
   it("creates, edits and deletes milestones; shows ancestors' milestones only", async () => {
     seedPlan();
     seed(msColl(), [

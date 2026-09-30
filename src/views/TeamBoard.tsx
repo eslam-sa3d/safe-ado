@@ -1381,7 +1381,7 @@ function BacklogList(props: SidebarProps & { tab: Tab }) {
 
   const items = data ?? [];
   const opts = facetOptions(items);
-  const facetOpts = { types: opts.types, states: opts.states } as unknown as FacetOptions;
+  const facetOpts = opts as unknown as FacetOptions;
   const shown = sortItems(searchItems(applyFilter(items, { ...filter, text: "" }), filter.text), sort, config.storyPointsField, config.rroeField);
   const kind = tab === "team" ? "story" : "feature";
 

@@ -1,6 +1,6 @@
 import { DragEvent, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { newId } from "../api/data";
-import { childLevels, findNode, flatten, LEVEL_COLOR, parentOf, pathTo } from "../api/org";
+import { childLevels, findNode, flatten, LEVEL_COLOR, parentOf, pathTo, effectivePiRoot } from "../api/org";
 import { Level, LEVEL_LABEL, OrgNode, SafeConfig } from "../api/types";
 import { getAreaPaths } from "../api/wit";
 import { ErrorBar, Field, Info, Modal, Spinner, useAsync, Icon, LevelPill } from "../components/common";
@@ -148,9 +148,12 @@ export function OrganizationView() {
       return;
     }
     if (parentOf(root, dragged.id)?.id === target.id) return;
+    const before = effectivePiRoot(config, dragged.id);
+    const after = effectivePiRoot({ ...config, root: moveNode(root, dragged.id, target.id) }, dragged.id);
+    const cadenceNote = before !== after ? ` Its PI cadence changes from ${before} to ${after}.` : "";
     if (
       !window.confirm(
-        `Move "${dragged.name}" under "${target.name}"? Re-linking units may invalidate existing work item hierarchy and PI assignments.`
+        `Move "${dragged.name}" under "${target.name}"? Re-linking units may invalidate existing work item hierarchy and PI assignments.${cadenceNote}`
       )
     )
       return;
