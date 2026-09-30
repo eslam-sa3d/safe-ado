@@ -53,6 +53,21 @@ export interface SafeConfig {
   dependencyLink?: { forward: string; reverse: string };
   /** Units removed from their parent but kept in the organization. */
   detached?: OrgNode[];
+  /** Where team capacity comes from (manual story points when unset). See api/capacity.ts. */
+  capacity?: CapacitySettings;
+}
+
+/**
+ * Capacity source: "manual" = story points entered in SAFe Ado (the original behaviour);
+ * "derived" = computed from Azure DevOps team capacity (SAFe normalized estimation);
+ * "hybrid" = derived by default, a manual value overrides it.
+ */
+export type CapacitySource = "manual" | "derived" | "hybrid";
+
+export interface CapacitySettings {
+  source: CapacitySource;
+  /** Story points per available person-day (SAFe normalized estimation: 8 SP per 10 days = 0.8). */
+  pointsPerPersonDay?: number;
 }
 
 export interface Sprint {

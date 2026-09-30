@@ -184,7 +184,7 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | RMP-03 | Plan an item by dragging it from the unplanned sidebar (or with the Plan button) | Default durations 60/30/21 days | Auto: `views/RoadmapView.test.tsx` |
 | RMP-04 | Date-based dependency criticality, filter and edge indicators | Healthy / At risk / Critical / Resolved | Auto: `views/RoadmapView.test.tsx` |
 | TPB-01 | Team board: sprint columns, feature swimlanes, Independent lane, completed sprints locked | As described | Auto: `views/TeamBoard.test.tsx`, `api/teamboard.test.ts` |
-| TPB-02 | Edit capacity; load vs. capacity with the overload highlight | Saved per team and sprint | Auto: `views/TeamBoard.test.tsx` |
+| TPB-02 | Edit capacity; load vs. capacity with the overload highlight | Saved per team and sprint (derived and hybrid capacity: see 11b) | Auto: `views/TeamBoard.test.tsx` |
 | TPB-03 | Drag a story to set its sprint and parent; drag a feature to create a swimlane; remove an empty swimlane | As described | Auto: `views/TeamBoard.test.tsx` |
 | TPB-04 | Create an item in a cell; remove an item from the board | As described | Auto: `views/TeamBoard.test.tsx` |
 | TPB-05 | Sibling teams load lazily and are read-only; EXTERNAL lanes; swimlane filter | As described | Auto: `views/TeamBoard.test.tsx` |
@@ -208,6 +208,20 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | REP-02 | Milestone Overview remembers "Include parent levels" per SAFe layer | As described | Auto: `views/reports/milestones.test.tsx` |
 | FORM-02 | "Open children in query" opens the item's children in Azure Boards | As described | Auto: `form/FormPanel.test.tsx` |
 | MAN-DND | Mouse and touchpad dragging on the Roadmap and boards in a real browser | Smooth; no text selection glitches | **Manual** |
+
+## 11b. Capacity source
+
+| ID | Scenario | Expected | Verified by |
+|---|---|---|---|
+| CAP-01 | Existing configs, or Setup → Capacity source = *Manual story points* | Today's behaviour: capacity is entered on the Team Planning Board; no source marker; no Azure DevOps capacity requests | Auto: `views/Capacity.test.tsx` |
+| CAP-02 | Setup: choose *Derived* or *Hybrid* and a points-per-person-day factor | Saved in the config (`capacity.source`, `capacity.pointsPerPersonDay`); an invalid factor falls back to 0.8; switching back to manual removes the setting | Auto: `views/Capacity.test.tsx` |
+| CAP-03 | Derived calculation (SAFe normalized estimation) | Per member with capacity per day > 0 in any activity: working days of the iteration (team working days, minus team and personal days off) × factor; a full-time member in a 2-week iteration yields 8 SP at 0.8; members with no capacity are not counted | Auto: `api/capacity.test.ts` |
+| CAP-04 | Capacities response shapes (`{ teamMembers }` on Services 7.x, `{ value }`, bare array); working days as names or numbers | All read the same way; requests use api-version 7.0 | Auto: `api/capacity.test.ts`, `views/Capacity.test.tsx` |
+| CAP-05 | Derived: Team Planning Board | The derived value is shown read-only with a "derived" marker; the tooltip lists person-days, factor and each member | Auto: `views/Capacity.test.tsx` |
+| CAP-06 | Hybrid: override on the Team Planning Board | Entering a value marks it "override"; clearing the value removes the override and shows the derived value | Auto: `views/Capacity.test.tsx` |
+| CAP-07 | No capacity in Azure DevOps (nothing set up, iteration not selected for the team, no team linked, request failed, undated iteration) | "not set" marker with the reason in the tooltip, and a *Set up capacity in Azure DevOps* link to the team's capacity page | Auto: `api/capacity.test.ts`, `views/Capacity.test.tsx` |
+| CAP-08 | Load vs. Capacity and Iteration Overview reports | Use the same effective value as the board; the marker shows the source (or "mixed") and how many team iterations are not set | Auto: `views/Capacity.test.tsx` |
+| CAP-09 | Real hosts: capacity, team days off and working days read on Services and Server 2022.1 | Values match the Azure DevOps capacity page; the setup link opens the right team and iteration | **Manual** |
 
 ## 12. Security and permissions (manual)
 

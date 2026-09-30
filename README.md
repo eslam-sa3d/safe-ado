@@ -21,7 +21,7 @@ The feature set follows Agile Hive for Jira. [docs/AGILE_HIVE_PARITY.md](docs/AG
 | **Work Item Hierarchy** | All | Epic → Capability → Feature → Story tree with story-point roll-ups |
 | **My Organization** | Global | Canvas with one band per layer. Add, re-parent by drag, detach or remove units |
 | **PIs & Iterations** | Global | Create, edit and delete PIs and iterations, including an IP iteration. Overlap checks and a maximum of 10 iterations. Sprint mapping per team |
-| **Setup** | Global | Type mapping, PI root iteration, hierarchy editor with members, generate the hierarchy from area paths |
+| **Setup** | Global | Type mapping, PI root iteration, capacity source, hierarchy editor with members, generate the hierarchy from area paths |
 | **SAFe panel** on the work item form | — | Shows the item's unit, PI, parent and children. Edits owning team, assigned PIs and planned dates |
 
 Every board and list has the shared filter bar: text search, Type / State / Assignee / Tags facets, an advanced WIQL clause, Copy WIQL, and Clear. Units can be starred in the sidebar.
@@ -37,6 +37,19 @@ Every board and list has the shared filter bar: text search, Type / State / Assi
 | Dependency | `Successor` / `Predecessor` link between work items |
 | PI Objective, ROAM risk | Extension Data Service documents (per project) |
 | Hierarchy / settings | Extension Data Service value (per project) |
+| Team capacity | Manual story points (Extension Data Service), or derived from the Azure DevOps team capacity (see below) |
+
+## Capacity source
+
+Setup → **Capacity** decides where team capacity comes from. Every place that shows capacity (Team Planning Board, Load vs. Capacity, Iteration Overview, PI snapshots) resolves it through one function (`resolveCapacity` in [src/api/capacity.ts](src/api/capacity.ts)), so the numbers always agree.
+
+| Source | Capacity per team and iteration |
+|---|---|
+| **Manual story points** (default; existing configurations keep it) | The story points entered on the Team Planning Board |
+| **Derived from Azure DevOps team capacity** | SAFe normalized estimation from the team's capacity page (Boards → Sprints → Capacity): each member with a capacity per day above 0 in any activity contributes one point factor per available working day. Working days follow the team's settings; team days off and the member's days off are excluded. The factor defaults to **0.8 SP per person-day**, so a full-time member in a 2-week iteration yields 8 SP. Hours per day and activities only decide whether a member counts. |
+| **Hybrid** | The derived value by default; a value entered on the Team Planning Board overrides it, and clearing it restores the derived value |
+
+With a derived or hybrid source, capacity values carry a small marker (*manual*, *derived*, *override*, *mixed* or *not set*). Its tooltip explains the calculation, including the person-days and the points per member. When a team has no capacity in Azure DevOps (nothing entered, the iteration is not selected for the team, or no team is linked to the unit), the value shows as *not set* with a link to the team's capacity page. Capacity is read with `_apis/work/teamsettings` (working days), `.../iterations/{id}/capacities` and `.../iterations/{id}/teamdaysoff`, all at api-version 7.0; both the `{ teamMembers }` shape of Azure DevOps Services and the plain list shape are accepted.
 
 ## Compatibility notes (Server 2022.1)
 

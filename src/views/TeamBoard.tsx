@@ -1,4 +1,5 @@
 import { FormEvent, Fragment, ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { capacitySettings, CAPACITY_SOURCE_LABEL, effectiveCapacity, EffectiveCapacity, loadDerivedCapacity } from "../api/capacity";
 import { capacityId, capacityStore, emptyMeta, findCapacity, metaStore } from "../api/data";
 import { CRITICALITY_COLOR, CRITICALITY_LABEL, dependencyLinkTypes, DependencyLinkTypes, sprintIndex } from "../api/dependencies";
 import { applyFilter, EMPTY_FILTER, ExtraFacet, facetOptions, isFilterActive, ItemFilter, wiqlSuffix, withWiqlFilter } from "../api/filters";
@@ -74,6 +75,7 @@ import {
   queryWorkItems,
   setFields,
 } from "../api/wit";
+import { CapacityBadge, CapacitySetupLink } from "../components/CapacityBadge";
 import { FilterBar } from "../components/FilterBar";
 import { CATEGORY_COLOR, ErrorBar, fmtDate, Icon, Info, lastSegment, RefreshContext, Spinner, storage, typeColor, useAsync } from "../components/common";
 import { useCan, useSafe } from "../components/context";
@@ -308,10 +310,12 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
 
   const { data, loading, error, reload, setData } = useAsync(async () => {
     const types = storyLevelTypes(config.types.story, (await getWorkItemTypes()).map((t) => t.name));
-    const [metaDocs, caps, category] = await Promise.all([
+    const [metaDocs, caps, category, derived] = await Promise.all([
       metaStore.list(),
       capacityStore.list(),
       getStateCategories([...types, config.types.feature]),
+      // Azure DevOps team capacity; no requests when the project uses manual capacity.
+      loadDerivedCapacity(config, [team], pi.sprints),
     ]);
     const metas = new Map(metaDocs.map((m) => [m.workItemId, m]));
     const ctx: Ctx = { config, pi, pis, types, category, metas, artAreas, link: dependencyLinkTypes(config) };
@@ -322,7 +326,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
           notRemoved(category)
         )
       : block.stories;
-    return { ctx, block, caps, all, key: `${tick}|${version}|${wiqlKey}` };
+    return { ctx, block, caps, derived, all, key: `${tick}|${version}|${wiqlKey}` };
   }, [team.id, pi.path, wiqlKey, version]);
 
   const block = data?.block;
@@ -466,8 +470,19 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
       await metaStore.save(assignPiMeta(emptyMeta(created.id), pi));
     });
 
-  const saveCapacity = async (sprint: Sprint, capacity: number) => {
+  const saveCapacity = async (sprint: Sprint, capacity: number | null) => {
     const existing = findCapacity(data!.caps, team.id, sprint);
+    if (capacity === null) {
+      // Hybrid mode: clearing the override falls back to the derived value.
+      if (!existing) return;
+      try {
+        await capacityStore.remove(existing.id);
+        setData((d) => (d ? { ...d, caps: d.caps.filter((c) => c.id !== existing.id) } : d));
+      } catch (e: any) {
+        setActionError(`Could not clear the capacity override: ${e?.message ?? e}`);
+      }
+      return;
+    }
     const doc: IterationCapacity = {
       ...(existing ?? { id: capacityId(team.id, sprint.identifier), nodeId: team.id, iterationPath: sprint.path }),
       iterationPath: sprint.path,
@@ -498,6 +513,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const onBoard = new Set(block.stories.map((s) => s.id));
   const hints = showDeps ? edgeHints(shownDeps, (id) => rects.has(id)) : new Map<number, EdgeHint[]>();
   const shadows = rolled.data ?? [];
+  const capSource = capacitySettings(config).source;
   const laneOfShadow = (s: Shadow) => {
     const parent = block.parents.get(s.item.id);
     const lane = lanes.find((l) => l.feature?.id === parent);
@@ -608,7 +624,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                 status={status[i]}
                 readOnly={readOnly}
                 load={loads[i]}
-                capacity={findCapacity(data.caps, team.id, s)?.capacity}
+                capacity={effectiveCapacity(config, data.caps, data.derived, team.id, s)}
                 onSave={(c) => saveCapacity(s, c)}
                 onError={setActionError}
               />
@@ -778,7 +794,11 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
           </div>
         </div>
         <div className="legend-bar muted small">
-          <span>Load / Capacity in story points.{!readOnly && " Click a capacity to edit it."}</span>
+          <span>
+            Load / Capacity in story points ({CAPACITY_SOURCE_LABEL[capSource].toLowerCase()}).
+            {!readOnly && capSource === "manual" && " Click a capacity to edit it."}
+            {!readOnly && capSource === "hybrid" && " Click a capacity to override it; clear the value to use the derived one."}
+          </span>
           {!readOnly && <span>Drag stories to plan them; the swimlane sets the parent Feature.</span>}
           <span>Edge dots mark dependencies to items not shown (left = providers, right = consumers).</span>
         </div>
@@ -805,11 +825,16 @@ function SprintHeader(props: {
   status: IterationStatus;
   readOnly: boolean;
   load: number;
-  capacity: number | undefined;
-  onSave: (capacity: number) => Promise<void>;
+  capacity: EffectiveCapacity;
+  /** null clears a (hybrid) override. */
+  onSave: (capacity: number | null) => Promise<void>;
   onError: (message: string) => void;
 }) {
-  const { sprint, status, load, capacity } = props;
+  const { sprint, status, load } = props;
+  const eff = props.capacity;
+  const capacity = eff.value;
+  // Derived capacity comes from Azure DevOps and is edited there; hybrid edits the override.
+  const editable = eff.source !== "derived";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const done = useRef(false);
@@ -820,11 +845,15 @@ function SprintHeader(props: {
     done.current = true;
     setEditing(false);
     const value = Number(draft);
+    if (draft.trim() === "" && eff.source === "hybrid") {
+      if (eff.manual !== undefined) void props.onSave(null);
+      return;
+    }
     if (draft.trim() === "" || !Number.isFinite(value) || value < 0) {
       props.onError(`Capacity must be a non-negative number`);
       return;
     }
-    if (value !== capacity) void props.onSave(value);
+    if (value !== (eff.source === "hybrid" ? eff.manual : capacity)) void props.onSave(value);
   };
 
   const loadText = (
@@ -832,6 +861,7 @@ function SprintHeader(props: {
       <span className={"tb-load" + (over ? " overload" : "")}>{load}</span> / {capacity ?? "–"}
     </>
   );
+  const badge = eff.source !== "manual" && <CapacityBadge origin={eff.origin} explanation={eff.explanation} />;
 
   return (
     <div className={"board-col-header tb-col-header " + status}>
@@ -845,10 +875,16 @@ function SprintHeader(props: {
         </div>
       )}
       <div className="small tb-capacity-row">
-        {status === "past" || props.readOnly ? (
+        {status === "past" || props.readOnly || !editable ? (
           <span
             className="tb-capacity locked"
-            title={status === "past" ? "Iteration completed — capacity is locked" : "Load / Capacity (story points) — read-only"}
+            title={
+              status === "past"
+                ? "Iteration completed — capacity is locked"
+                : !editable
+                ? "Load / Capacity (story points) — derived from Azure DevOps team capacity"
+                : "Load / Capacity (story points) — read-only"
+            }
           >
             {loadText}
           </span>
@@ -874,16 +910,19 @@ function SprintHeader(props: {
           <button
             className="link tb-capacity"
             aria-label={`Load ${load} of capacity ${capacity ?? "not set"} for ${sprint.name}`}
-            title="Load / Capacity (story points) — click to edit capacity"
+            title={eff.source === "hybrid" ? "Load / Capacity (story points) — click to override the capacity" : "Load / Capacity (story points) — click to edit capacity"}
             onClick={() => {
               done.current = false;
-              setDraft(capacity === undefined ? "" : String(capacity));
+              const start = eff.source === "hybrid" ? eff.manual : capacity;
+              setDraft(start === undefined ? "" : String(start));
               setEditing(true);
             }}
           >
             {loadText}
           </button>
         )}
+        {badge}
+        <CapacitySetupLink capacity={eff} />
       </div>
     </div>
   );

@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { CAPACITY_SOURCE_LABEL, capacitySettings, DEFAULT_POINTS_PER_PERSON_DAY } from "../api/capacity";
 import { newId } from "../api/data";
 import { DEFAULT_DEPENDENCY_LINK } from "../api/dependencies";
 import { childLevels, flatten } from "../api/org";
 import { DEFAULT_RROE_FIELD } from "../api/rules";
-import { Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
+import { CapacitySource, Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
 import {
   ClassificationNode,
   getAreaPaths,
@@ -53,7 +54,7 @@ interface CheckItem {
   target: string;
 }
 
-const SECTION = { types: "setup-types", pis: "setup-pis", hierarchy: "setup-hierarchy", dependencies: "setup-dependencies" };
+const SECTION = { types: "setup-types", pis: "setup-pis", hierarchy: "setup-hierarchy", dependencies: "setup-dependencies", capacity: "setup-capacity" };
 
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -67,6 +68,8 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>();
   const [generateMode, setGenerateMode] = useState<"art" | "solution">("art");
+  /** Text of the points-per-person-day input while it is edited (may be temporarily invalid). */
+  const [factorText, setFactorText] = useState<string>();
 
   const meta = useAsync(async () => {
     const [types, fields, iterationTree, areas, teams, relationTypes] = await Promise.all([
@@ -150,6 +153,7 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
   const linkName = (ref: string) => m?.relationTypes.find((t) => t.referenceName === ref)?.name ?? ref;
   const hasDefaultRroe = !!m?.numericFields.some((f) => f.referenceName === DEFAULT_RROE_FIELD);
   const rroe = draft.rroeField ?? (hasDefaultRroe ? DEFAULT_RROE_FIELD : "");
+  const capacity = capacitySettings(draft);
   const checks = checklist(draft, m);
   const done = checks.filter((c) => c.ok).length;
 
@@ -312,6 +316,56 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
               Direction: provider → consumer. The provider links to the consumer with <strong>{linkName(link.forward)}</strong>; the
               consumer links back with <strong>{linkName(link.reverse)}</strong>
               {link.forward === link.reverse ? " (a symmetric link: the first-linked item counts as the provider)" : ""}.
+            </p>
+          </div>
+        </section>
+
+        <section className="panel" id={SECTION.capacity}>
+          <div className="panel-header">
+            <h3>Capacity</h3>
+          </div>
+          <div className="pad form">
+            <div className="field-row">
+              <Field label="Capacity source">
+                <select
+                  value={capacity.source}
+                  onChange={(e) => {
+                    const source = e.target.value as CapacitySource;
+                    // Manual (the default) is stored as "no setting" so existing configs stay unchanged.
+                    setDraft({ ...draft, capacity: source === "manual" && !draft.capacity?.pointsPerPersonDay ? undefined : { ...draft.capacity, source } });
+                  }}
+                >
+                  {(Object.keys(CAPACITY_SOURCE_LABEL) as CapacitySource[]).map((k) => (
+                    <option key={k} value={k}>
+                      {CAPACITY_SOURCE_LABEL[k]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Story points per person-day">
+                <input
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  disabled={capacity.source === "manual"}
+                  value={factorText ?? String(draft.capacity?.pointsPerPersonDay ?? DEFAULT_POINTS_PER_PERSON_DAY)}
+                  onBlur={() => setFactorText(undefined)}
+                  onChange={(e) => {
+                    setFactorText(e.target.value);
+                    const f = Number(e.target.value);
+                    setDraft({
+                      ...draft,
+                      capacity: { ...draft.capacity, source: capacity.source, pointsPerPersonDay: Number.isFinite(f) && f > 0 ? f : undefined },
+                    });
+                  }}
+                />
+              </Field>
+            </div>
+            <p className="muted small capacity-help">
+              {capacity.source === "manual"
+                ? "Teams enter their capacity in story points per iteration on the Team Planning Board."
+                : `Capacity is derived from each team's Azure DevOps capacity (Boards → Sprints → Capacity) with SAFe normalized estimation: every working day a member with capacity per day is available (weekends, team and personal days off excluded) counts ${capacity.pointsPerPersonDay} SP, so a full-time member in a 2-week iteration yields ${Math.round(capacity.pointsPerPersonDay * 100) / 10} SP.`}
+              {capacity.source === "hybrid" && " A value entered on the Team Planning Board overrides the derived one."}
             </p>
           </div>
         </section>

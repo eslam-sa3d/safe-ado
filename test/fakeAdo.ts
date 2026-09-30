@@ -63,6 +63,17 @@ export const fake = {
   hash: "",
   /** Areas where the current user may not save work items (validate-only create answers 403). */
   denyWriteAreas: [] as string[],
+  /** Team settings working days by team id (Mon–Fri when missing); the value is returned as is. */
+  teamWorkingDays: {} as Record<string, Json>,
+  /** Azure DevOps team capacity by `${teamId}|${iterationId}` (members as the capacities API returns them). */
+  teamCapacity: {} as Record<string, Json[]>,
+  /** Team days off by `${teamId}|${iterationId}`. */
+  teamDaysOff: {} as Record<string, { start: string; end: string }[]>,
+  /**
+   * Response shape of the capacities API: Services 7.x wraps members in `{ teamMembers }`,
+   * other servers return the usual `{ value }` list envelope or a bare array.
+   */
+  capacityShape: "teamMembers" as "teamMembers" | "value" | "array",
 };
 
 /** The reverse of each link type Azure DevOps keeps in sync automatically. */
@@ -269,6 +280,10 @@ export function resetFake() {
   };
   fake.hash = "";
   fake.denyWriteAreas = [];
+  fake.teamWorkingDays = {};
+  fake.teamCapacity = {};
+  fake.teamDaysOff = {};
+  fake.capacityShape = "teamMembers";
 
   dataStore.values.clear();
   dataStore.collections.clear();
@@ -701,6 +716,27 @@ function route(method: string, path: string, body: Json, full: string): Response
   }
 
   if (method === "GET" && path === `_apis/projects/${P1}/teams`) return json({ value: [...fake.teams].reverse() });
+
+  if (method === "GET" && (m = new RegExp(`^${P1}/([^/]+)/_apis/work/teamsettings$`).exec(path))) {
+    const team = decodeURIComponent(m[1]);
+    if (!fake.teams.some((t) => t.id === team)) return json({ message: `VS800075: team ${team} not found` }, 404);
+    const workingDays = team in fake.teamWorkingDays ? fake.teamWorkingDays[team] : ["monday", "tuesday", "wednesday", "thursday", "friday"];
+    return json({ workingDays, bugsBehavior: "off" });
+  }
+
+  if (method === "GET" && (m = new RegExp(`^${P1}/([^/]+)/_apis/work/teamsettings/iterations/([^/]+)/(capacities|teamdaysoff)$`).exec(path))) {
+    const team = decodeURIComponent(m[1]);
+    const iteration = decodeURIComponent(m[2]);
+    const key = `${team}|${iteration}`;
+    // Like Azure DevOps: the iteration must be one of the team's iterations (seeded data counts as selected).
+    const known = (fake.teamIterations[team] ?? []).includes(iteration) || key in fake.teamCapacity || key in fake.teamDaysOff;
+    if (!known) return json({ message: `VS403345: The iteration ${iteration} is not a team iteration.` }, 404);
+    if (m[3] === "teamdaysoff") return json({ daysOff: fake.teamDaysOff[key] ?? [] });
+    const members = fake.teamCapacity[key] ?? [];
+    if (fake.capacityShape === "array") return json(members);
+    if (fake.capacityShape === "value") return json({ count: members.length, value: members });
+    return json({ teamMembers: members, totalCapacityPerDay: 0, totalDaysOff: 0 });
+  }
 
   if ((m = new RegExp(`^${P1}/([^/]+)/_apis/work/teamsettings/iterations/([^/]+)$`).exec(path)) && method === "DELETE") {
     const team = decodeURIComponent(m[1]);

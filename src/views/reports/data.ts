@@ -1,3 +1,4 @@
+import { CapacityTotal, DerivedMap, effectiveCapacity, loadDerivedCapacity, totalCapacity } from "../../api/capacity";
 import { capacityStore, metaStore, milestonesStore, objectivesStore, risksStore, snapshotsStore } from "../../api/data";
 import { dependenciesOf, DependencyLinkTypes, dependencyLinkTypes } from "../../api/dependencies";
 import { flatten, scopeAreas, effectivePiRoot } from "../../api/org";
@@ -7,7 +8,6 @@ import {
   burnup,
   burnupFromHistory,
   buildSnapshot,
-  capacityTotal,
   dependencyRows,
   DepRow,
   DepSource,
@@ -48,6 +48,8 @@ export interface ReportData {
   risks: Risk[];
   milestones: Milestone[];
   capacity: IterationCapacity[];
+  /** Capacity derived from Azure DevOps per `${teamNodeId}|${iterationId}` (empty in manual mode). */
+  derived: DerivedMap;
   meta: Map<number, WorkItemMeta>;
   /** Dependency link types configured in Setup. */
   link: DependencyLinkTypes;
@@ -81,10 +83,17 @@ export interface LoadOptions {
   pis?: ProgramIncrement[];
 }
 
-/** Capacity of the unit's teams over the PI's iterations. */
-export function piCapacity(docs: IterationCapacity[], node: OrgNode, pi: ProgramIncrement): number {
-  const teams = new Set(flatten(node).filter((n) => n.level === "team").map((n) => n.id));
-  return capacityTotal(docs, teams, pi.sprints.map((s) => s.path));
+const teamsOf = (node: OrgNode) => flatten(node).filter((n) => n.level === "team");
+
+/** Effective capacity of the unit's teams over the PI's iterations (see api/capacity.ts). */
+export function piCapacity(
+  config: Pick<SafeConfig, "capacity">,
+  docs: IterationCapacity[],
+  derived: DerivedMap,
+  node: OrgNode,
+  pi: ProgramIncrement
+): CapacityTotal {
+  return totalCapacity(teamsOf(node).flatMap((t) => pi.sprints.map((s) => effectiveCapacity(config, docs, derived, t.id, s))));
 }
 
 export async function loadReportData(config: SafeConfig, node: OrgNode, pi: ProgramIncrement | undefined, opts: LoadOptions): Promise<ReportData> {
@@ -95,7 +104,7 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
   const piLevel = !!pi && node.level !== "portfolio";
   const completed = piLevel && piStatus(pi!, opts.today) === "completed";
 
-  const [chainCategory, objectives, risks, milestones, capacity, meta, stored, bugType] = await Promise.all([
+  const [chainCategory, objectives, risks, milestones, capacity, meta, stored, bugType, derived] = await Promise.all([
     getStateCategories(enabler ? [...chain, enabler] : chain),
     objectivesStore.list(),
     risksStore.list(),
@@ -109,6 +118,8 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
           .then((ts) => (ts.some((t) => t.name === BUG_TYPE) ? BUG_TYPE : undefined))
           .catch(() => undefined)
       : Promise.resolve(undefined),
+    // Azure DevOps team capacity (no requests in manual mode).
+    piLevel ? loadDerivedCapacity(config, teamsOf(node), pi!.sprints) : Promise.resolve<DerivedMap>(new Map()),
   ]);
   const bugCategory = bugType ? await getStateCategories([bugType]).catch(() => undefined) : undefined;
   const categoryOf = (type: string, state: string) => (bugCategory && type === bugType ? bugCategory(type, state) : chainCategory(type, state));
@@ -204,7 +215,7 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
       pi: pi!,
       stories,
       piStories,
-      capacity: piCapacity(capacity, node, pi!),
+      capacity: piCapacity(config, capacity, derived, node, pi!).value,
       burnup: chart,
       today: opts.today,
     });
@@ -225,6 +236,7 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
     risks,
     milestones,
     capacity,
+    derived,
     meta: new Map(meta.map((m) => [m.workItemId, m])),
     link,
     burnup: chart,

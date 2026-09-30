@@ -829,3 +829,11 @@ a.member-name:hover { text-decoration: underline; }
 .pill.enabler-pill { margin-left: 6px; background: rgba(119, 59, 147, 0.12); color: #773b93; font-size: 11px; }
 .btn.record-snapshot { white-space: nowrap; }
 .snapshot-note.snapshot-missing { font-style: italic; }
+
+/* capacity source marker (manual / derived / override) */
+.pill.cap-src { font-size: 10px; line-height: 14px; padding: 0 6px; margin-left: 4px; cursor: help; vertical-align: middle; }
+.pill.cap-src-derived { background: rgba(0, 120, 212, 0.14); }
+.pill.cap-src-override { background: rgba(139, 92, 246, 0.16); }
+.pill.cap-src-mixed { background: rgba(214, 127, 60, 0.18); }
+.pill.cap-src-none { background: var(--alpha-6); color: var(--text-2); }
+.cap-setup { display: block; margin-top: 2px; }
