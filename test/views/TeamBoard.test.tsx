@@ -111,7 +111,13 @@ describe("Team Planning Board", () => {
     fireEvent.change(input, { target: { value: "10" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await screen.findByRole("button", { name: "Load 3 of capacity 10 for PI 2 Sprint 2" });
-    expect(collection("capacity").find((c) => c.iterationPath === PI2_S2)).toMatchObject({ id: `n-red|${PI2_S2}`, nodeId: "n-red", capacity: 10 });
+    // New capacity documents are keyed by the iteration's stable id (survives renames).
+    expect(collection("capacity").find((c) => c.iterationPath === PI2_S2)).toMatchObject({
+      id: "n-red|iteration-PIs-PI_2-PI_2_Sprint_2",
+      iterationId: "iteration-PIs-PI_2-PI_2_Sprint_2",
+      nodeId: "n-red",
+      capacity: 10,
+    });
 
     // Blur saves an update of an existing document (keeping its etag)
     fireEvent.click(screen.getByRole("button", { name: /for PI 2 Sprint 1/ }));
