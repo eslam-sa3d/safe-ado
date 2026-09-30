@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { ReactElement, useState } from "react";
 import { vi } from "vitest";
 import { findNode } from "../src/api/org";
+import { ALL_ALLOWED, Capabilities } from "../src/api/permissions";
 import { ProgramIncrement, SafeConfig } from "../src/api/types";
 import { getProgramIncrements } from "../src/api/wit";
 import { App } from "../src/components/App";
@@ -26,7 +27,18 @@ export async function renderApp(opts: { nodeId?: string; view?: string; piPath?:
  */
 export async function renderView(
   ui: ReactElement,
-  opts: { nodeId?: string; config?: SafeConfig; pi?: ProgramIncrement | null; pis?: ProgramIncrement[] } = {}
+  opts: {
+    nodeId?: string;
+    config?: SafeConfig;
+    pi?: ProgramIncrement | null;
+    pis?: ProgramIncrement[];
+    /** Permissions for the view (default: everything allowed). */
+    can?: Partial<Capabilities>;
+    /** The selected unit's PI root (per-unit cadence). */
+    piRoot?: string;
+    /** Provide shell navigation (openView), as inside the hub; off by default. */
+    shell?: boolean;
+  } = {}
 ) {
   const initial = opts.config ?? makeConfig();
   const pis = opts.pis ?? (await getProgramIncrements(initial.piRootIteration));
@@ -34,6 +46,7 @@ export async function renderView(
     saveConfig: vi.fn(async (_c: SafeConfig) => undefined),
     selectNode: vi.fn(),
     reloadPis: vi.fn(),
+    openView: vi.fn(),
     pis,
   };
 
@@ -50,6 +63,9 @@ export async function renderView(
       pis,
       pi: opts.pi === null ? undefined : opts.pi ?? pis.find((p) => p.name === "PI 2"),
       reloadPis: ctx.reloadPis,
+      openView: opts.shell ? ctx.openView : undefined,
+      piRoot: opts.piRoot ?? initial.piRootIteration,
+      can: { ...ALL_ALLOWED, ...opts.can },
     };
     return <SafeContext.Provider value={value}>{ui}</SafeContext.Provider>;
   }

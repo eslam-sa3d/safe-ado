@@ -156,7 +156,8 @@ button:disabled { cursor: default; }
 .pi-picker label { font-weight: 600; color: var(--text-2); }
 .pi-picker select { min-width: 220px; }
 /* pivot tabs (bolt-tabbar tall) */
-.tabs { display: flex; padding: 0 24px; flex-wrap: wrap; align-items: stretch; }
+.tabs { display: flex; padding: 0 24px; flex-wrap: nowrap; align-items: stretch; overflow-x: auto; scrollbar-width: thin; }
+.tabs .tab { flex-shrink: 0; white-space: nowrap; }
 .tab { background: none; border: 0; padding: 0 8px; height: 48px; color: var(--text); display: inline-flex; align-items: center; position: relative; border-radius: 2px; }
 .tab::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 6px; height: 2px; background: transparent; }
 .tab:hover { background: var(--alpha-6); }
