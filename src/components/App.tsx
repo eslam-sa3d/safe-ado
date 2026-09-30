@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProject } from "../api/client";
 import { defaultConfig, loadConfig, saveConfig as persistConfig } from "../api/data";
-import { effectivePiRoot, findNode, pathTo } from "../api/org";
-import { ALL_ALLOWED, Capabilities, loadCapabilities } from "../api/permissions";
+import { effectivePiRoot, findNode, pathTo, scopeAreas } from "../api/org";
+import { canPlanIn, Capabilities, loadCapabilities, UNCONFIRMED } from "../api/permissions";
 import { indexTree, reconcileConfig, reconcileDocs } from "../api/reconcile";
 import { localToday } from "../api/rules";
-import { readUrlState, writeUrlState } from "../api/urlState";
+import { onUrlStateChanged, readUrlState, writeUrlState } from "../api/urlState";
+import { getUserValue, setUserValue } from "../api/data";
 import { Level, LEVEL_LABEL, SafeConfig } from "../api/types";
 import { getAreaTree, getIterationTree, getProgramIncrements } from "../api/wit";
 import { HierarchyView } from "../views/HierarchyView";
@@ -84,7 +85,13 @@ export function App() {
   const [view, setView] = useState<ViewKey>(getPrefs().view);
   // The chosen PI, by iteration id (or, for older preferences, by path).
   const [piPath, setPiPath] = useState(getPrefs().piPath);
-  const [can, setCan] = useState<Capabilities>(ALL_ALLOWED);
+  // Project-level capabilities; "plan" is refined per selected unit (see planByArea).
+  const [baseCan, setBaseCan] = useState<Capabilities>(UNCONFIRMED);
+  const [planByArea, setPlanByArea] = useState<Record<string, boolean>>({});
+  const configRef = useRef<SafeConfig | null>(null);
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
   const [tick, setTick] = useState(0);
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
   const [tourKey, setTourKey] = useState(0);
@@ -103,6 +110,12 @@ export function App() {
       if (url.view) setView(url.view as ViewKey);
       if (url.pi) setPiPath(url.pi);
       urlReady.current = true;
+      // Back / forward and pasted links update the selection.
+      void onUrlStateChanged((next) => {
+        if (next.node) setNodeId(next.node);
+        if (next.view) setView(next.view as ViewKey);
+        if (next.pi) setPiPath(next.pi);
+      });
       const saved = await loadConfig();
       if (saved) {
         setConfig(saved);
@@ -121,14 +134,22 @@ export function App() {
     try {
       const [areaTree, iterationTree] = await Promise.all([getAreaTree(), getIterationTree()]);
       const caps = await loadCapabilities(areaTree.identifier, iterationTree.identifier);
-      setCan(caps);
+      setBaseCan(caps);
       const iterations = indexTree(iterationTree);
       const fixedConfig = reconcileConfig(saved, indexTree(areaTree), iterations);
-      if (fixedConfig) {
+      // Only apply the repair if the user hasn't changed the configuration meanwhile.
+      if (fixedConfig && configRef.current === saved) {
         setConfig(fixedConfig);
         if (caps.admin) await persistConfig(fixedConfig).catch(() => undefined);
       }
-      if (caps.plan && (await reconcileDocs(iterations)) > 0) refresh();
+      // Repair stored records only when the iteration tree changed since this user last did.
+      const signature = treeSignature(iterations.byId);
+      const canWrite = await canPlanIn(saved.root.areaPath ?? "", saved.types.story || saved.types.feature);
+      if (canWrite && (await getUserValue("reconciledTree", "")) !== signature) {
+        const fixed = await reconcileDocs(iterations);
+        await setUserValue("reconciledTree", signature).catch(() => undefined);
+        if (fixed > 0) refresh();
+      }
     } catch {
       /* healing is best effort; views still work with the stored keys */
     }
@@ -153,6 +174,23 @@ export function App() {
 
   const findAny = (c: SafeConfig) => findNode(c.root, nodeId) ?? (c.detached ?? []).map((d) => findNode(d, nodeId)).find(Boolean);
   const shortcutNode = config ? findAny(config) ?? config.root : undefined;
+
+  // Can the user save work items in the selected unit's area? (validate-only create, cached)
+  const planArea = shortcutNode ? shortcutNode.areaPath ?? scopeAreas(shortcutNode)[0] ?? "" : "";
+  const planType = config ? config.types.story || config.types.feature : "";
+  useEffect(() => {
+    if (!planArea || planArea in planByArea) return;
+    let live = true;
+    void canPlanIn(planArea, planType).then((ok) => live && setPlanByArea((m) => ({ ...m, [planArea]: ok })));
+    return () => {
+      live = false;
+    };
+  }, [planArea, planType, planByArea]);
+  const can: Capabilities = {
+    ...baseCan,
+    plan: planArea && planArea in planByArea ? planByArea[planArea] : baseCan.plan,
+    known: !!baseCan.known && (!planArea || planArea in planByArea),
+  };
   useNewItemShortcut({ config: config!, node: shortcutNode!, pi, enabled: !!config && can.plan });
 
   const saveConfig = useCallback(async (next: SafeConfig) => {
@@ -306,4 +344,15 @@ function ViewSwitch({ view, firstRun }: { view: ViewKey; firstRun: boolean }) {
     case "setup":
       return <SetupView firstRun={firstRun} />;
   }
+}
+
+/** A short hash of the iteration tree (ids + paths) to detect renames since the last repair. */
+function treeSignature(byId: Map<string, string>): string {
+  const text = Array.from(byId.entries())
+    .map(([id, path]) => `${id}=${path}`)
+    .sort()
+    .join("|");
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return `${byId.size}:${(h >>> 0).toString(36)}`;
 }

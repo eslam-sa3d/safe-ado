@@ -61,6 +61,8 @@ export const fake = {
   teamMembers: {} as Record<string, { id: string; displayName: string; uniqueName: string; imageUrl?: string }[]>,
   /** Current URL hash of the host page (host navigation service). */
   hash: "",
+  /** Areas where the current user may not save work items (validate-only create answers 403). */
+  denyWriteAreas: [] as string[],
 };
 
 /** The reverse of each link type Azure DevOps keeps in sync automatically. */
@@ -266,6 +268,7 @@ export function resetFake() {
     "t-blue": [{ id: "u-alan", displayName: "Alan Turing", uniqueName: "alan@fabrikam.com" }],
   };
   fake.hash = "";
+  fake.denyWriteAreas = [];
 
   dataStore.values.clear();
   dataStore.collections.clear();
@@ -606,6 +609,13 @@ function route(method: string, path: string, body: Json, full: string): Response
   if (method === "POST" && (m = new RegExp(`^${P1}/_apis/wit/workitems/\\$(.+)$`).exec(path))) {
     const type = decodeURIComponent(m[1]);
     if (!fake.types.some((t) => t.name === type)) return json({ message: `TF401326: Invalid work item type ${type}` }, 400);
+    if (new URL(full).searchParams.get("validateOnly") === "true") {
+      const area = body.find((op: Json) => op.path === "/fields/System.AreaPath")?.value ?? "";
+      if (fake.denyWriteAreas.some((d) => under(area, d))) {
+        return json({ message: `TF237111: The current user does not have permissions to save work items under the specified area path.` }, 403);
+      }
+      return json({ id: -1, fields: {} });
+    }
     const id = fake.nextId++;
     const fields: Json = { "System.Id": id, "System.WorkItemType": type, "System.State": fake.states[type]?.[0]?.name ?? "New", "System.TeamProject": fake.projectName };
     for (const op of body) if (op.path.startsWith("/fields/")) fields[op.path.slice(8)] = op.value;

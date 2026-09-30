@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../../src/components/App";
 import { useSafe } from "../../src/components/context";
@@ -289,12 +289,45 @@ describe("App shell: help, tour, shortcuts, read-only", () => {
 
   it("shows a Read-only pill and disables the shortcut without admin and plan rights", async () => {
     fake.permissions[PROJECT_WRITE] = false;
-    fake.permissions[AREA_WRITE] = false;
+    // Planning rights come from a validate-only create in the unit's area.
+    fake.denyWriteAreas = ["Fabrikam\\ART A"];
     await renderApp({ nodeId: "n-arta", view: "organization" });
     expect(await screen.findByText("Read-only", { selector: ".readonly-pill" })).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "c" });
     await new Promise((r) => setTimeout(r, 20));
     expect(sdk.workItemForm.openNewWorkItem).not.toHaveBeenCalled();
+  });
+
+  it("checks planning rights per unit area (sub-area permissions)", async () => {
+    fake.denyWriteAreas = ["Fabrikam\\ART B"];
+    await renderApp({ nodeId: "n-green", view: "objectives" });
+    expect(await screen.findByText(/read-only access/)).toBeInTheDocument();
+    const probes = () => callsTo(/workitems\/\$/, "POST").filter((c) => c.url.includes("validateOnly=true"));
+    expect(probes().some((c) => JSON.stringify(c.body).includes("ART B\\\\Team Green"))).toBe(true);
+    // Another unit with write access is editable again.
+    fireEvent.click(within(screen.getByRole("navigation")).getByText("Team Red"));
+    await waitFor(() => expect(probes().some((c) => JSON.stringify(c.body).includes("Team Red"))).toBe(true));
+    await waitFor(() => expect(screen.queryByText(/read-only access/)).toBeNull());
+  });
+
+  it("repairs stored records only when the iteration tree changed", async () => {
+    await renderApp({ nodeId: "n-arta", view: "setup" });
+    await waitFor(() => expect(dataStore.values.has("reconciledTree-p1")).toBe(true));
+    const reads = () => dataManager.getDocuments.mock.calls.filter((c: any[]) => c[0] === "objectives-p1").length;
+    const before = reads();
+    cleanup();
+    await renderApp({ nodeId: "n-arta", view: "setup" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reads()).toBe(before);
+  });
+
+  it("follows back / forward navigation of the host URL", async () => {
+    await renderApp({ nodeId: "n-arta", view: "reports" });
+    await waitFor(() => expect(sdk.hostNavigation.onHashChanged).toHaveBeenCalled());
+    const listener = sdk.hostNavigation.onHashChanged.mock.calls.at(-1)![0] as (h: string) => void;
+    act(() => listener("node=n-blue&view=risks"));
+    expect(await screen.findByRole("tab", { name: "Risks (ROAM)" })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector(".header .level-badge")).toHaveTextContent("Team");
   });
 
   it("has no Read-only pill when the user can plan", async () => {

@@ -24,7 +24,7 @@ describe("permissions", () => {
   it("checks project, iteration and area permissions", async () => {
     fake.permissions["52d39943-cb85-4d7f-8fa8-c6baac873819/2"] = false;
     const caps = await loadCapabilities("area-root", "iteration-root");
-    expect(caps).toEqual({ admin: false, managePis: true, plan: true });
+    expect(caps).toEqual({ admin: false, managePis: true, plan: true, known: true });
     const tokens = callsTo(/_apis\/permissions/).map((c) => decodeURIComponent(new URL(c.url).searchParams.get("tokens")!));
     expect(tokens).toEqual([
       "$PROJECT:vstfs:///Classification/TeamProject/p1",
@@ -35,7 +35,20 @@ describe("permissions", () => {
 
   it("allows actions when the check itself fails or roots are unknown", async () => {
     fake.failures.push({ match: /permissions/, status: 500, message: "x" });
-    expect(await loadCapabilities()).toEqual({ admin: true, managePis: true, plan: true });
+    expect(await loadCapabilities()).toEqual({ admin: true, managePis: true, plan: true, known: true });
+  });
+
+  it("probes planning rights with a validate-only create that saves nothing", async () => {
+    const { canPlanIn } = await import("../../src/api/permissions");
+    const before = fake.workItems.size;
+    expect(await canPlanIn(RED, "User Story")).toBe(true);
+    fake.denyWriteAreas = ["Fabrikam\\ART A"];
+    expect(await canPlanIn(RED, "User Story")).toBe(false);
+    expect(fake.workItems.size).toBe(before);
+    // Unknown when the probe fails for another reason, or nothing to check.
+    fake.failures.push({ match: /validateOnly|workitems\/\$/, status: 400, message: "TF401320: rule violation" });
+    expect(await canPlanIn("Fabrikam\\ART B", "User Story")).toBe(true);
+    expect(await canPlanIn("", "User Story")).toBe(true);
   });
 });
 

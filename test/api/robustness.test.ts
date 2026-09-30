@@ -138,3 +138,17 @@ describe("shared rules", () => {
     expect(isOnWsjfScale(4)).toBe(false);
   });
 });
+
+describe("safety of retries and paging", () => {
+  it("does not retry a write that answered 503 (it may have been applied)", async () => {
+    fetchOnce(status(503));
+    await expect(api("_apis/wit/workitems/10", { method: "PATCH", body: [] })).rejects.toThrow("status 503");
+    expect((globalThis.fetch as any).mock.calls.length).toBe(1);
+  });
+
+  it("finds ORDER BY only outside string literals", async () => {
+    const { orderByIndex } = await import("../../src/api/wit");
+    expect(orderByIndex("SELECT x WHERE [System.Title] = 'a ORDER BY b' ORDER BY [System.Id]")).toBe(46);
+    expect(orderByIndex("SELECT x WHERE [System.Title] = 'no ORDER BY here'")).toBe(-1);
+  });
+});

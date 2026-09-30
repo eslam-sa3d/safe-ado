@@ -13,10 +13,13 @@ import { wsjfOf } from "../api/rules";
  */
 const RROE_FIELD = "Custom.RROEValue";
 
-const wsjf = (item: WorkItem) => wsjfOf(item.fields, RROE_FIELD);
+const wsjfWith = (rroeField: string) => (item: WorkItem) => wsjfOf(item.fields, rroeField);
 
 export function PortfolioKanban() {
   const { config, node } = useSafe();
+  // The configured RR/OE field ("" = none), else the conventional default.
+  const rroeField = config.rroeField ?? RROE_FIELD;
+  const wsjf = wsjfWith(rroeField);
   const canPlan = useCan().plan;
   const epic = config.types.epic;
   const areas = scopeAreas(node);
@@ -27,7 +30,7 @@ export function PortfolioKanban() {
   const { data, loading, error, reload, setData } = useAsync(async () => {
     // Only request WSJF fields that exist; the batch API rejects unknown field names.
     const known = new Set((await getFieldNames()).map((f) => f.referenceName));
-    const wsjfFields = [F.businessValue, F.timeCriticality, F.effort, RROE_FIELD].filter((f) => known.has(f));
+    const wsjfFields = [F.businessValue, F.timeCriticality, F.effort, rroeField].filter((f) => f && known.has(f));
     const [states, items] = await Promise.all([
       getStates(epic),
       queryWorkItems(scopeQuery([epic], areas), [...baseFields(config), ...wsjfFields]),
@@ -35,7 +38,7 @@ export function PortfolioKanban() {
     const visible = states.filter((s) => s.category !== "Removed");
     // Items in Removed (or unknown) states have no column, so they are not counted either.
     return { states: visible, items: items.filter((i) => visible.some((s) => s.name === i.fields[F.state])) };
-  }, [epic, areas.join("|")]);
+  }, [epic, areas.join("|"), rroeField]);
 
   if (!epic) return <Empty title="No Epic type mapped">Set the Epic work item type in Setup.</Empty>;
   if (loading && !data) return <Spinner label="Loading portfolio…" />;

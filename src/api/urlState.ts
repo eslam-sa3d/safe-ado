@@ -52,6 +52,15 @@ export async function writeUrlState(state: UrlState): Promise<void> {
   }
 }
 
+/** Calls `cb` when the host URL hash changes (browser back / forward, pasted links). */
+export async function onUrlStateChanged(cb: (state: UrlState) => void): Promise<void> {
+  try {
+    (await nav())?.onHashChanged((hash: string) => cb(parseHash(hash)));
+  } catch {
+    /* host without navigation service */
+  }
+}
+
 /** Opens a URL in a new browser tab through the host (the extension iframe can't open windows itself). */
 export async function openInNewTab(url: string): Promise<void> {
   const service = await nav();

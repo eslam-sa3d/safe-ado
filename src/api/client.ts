@@ -86,7 +86,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
-    const throttled = response.status === 429 || response.status === 503;
+    // 429 means the request was not processed, so any method may be retried. A 503 may come
+    // after a write was applied, so only safe (GET) requests are retried on 503.
+    const method = options.method ?? "GET";
+    const throttled = response.status === 429 || (response.status === 503 && method === "GET");
     if (!throttled || attempt >= retryPolicy.retries) break;
     await sleep(retryDelay(response, attempt));
   }

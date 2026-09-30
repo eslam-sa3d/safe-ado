@@ -25,8 +25,18 @@ export const wiqlPaging = { pageSize: 20000, maxItems: 200000 };
 
 export class QueryLimitError extends Error {}
 
+/** Index of the top-level " ORDER BY " (outside string literals), or -1. */
+export function orderByIndex(query: string): number {
+  let inString = false;
+  for (let i = 0; i < query.length; i++) {
+    if (query[i] === "'") inString = !inString;
+    else if (!inString && /^ ORDER BY /i.test(query.slice(i, i + 10))) return i;
+  }
+  return -1;
+}
+
 function insertBeforeOrderBy(query: string, clause: string): string {
-  const i = query.search(/ ORDER BY /i);
+  const i = orderByIndex(query);
   return i < 0 ? `${query} ${clause}` : `${query.slice(0, i)} ${clause}${query.slice(i)}`;
 }
 
@@ -37,7 +47,8 @@ export async function queryIds(wiql: string): Promise<number[]> {
 
   // A full page may be truncated. The first page follows the query's own ORDER BY, so we can't
   // continue from it; restart in id order and walk pages with "[System.Id] > last".
-  const unordered = wiql.replace(/ ORDER BY .*$/i, "");
+  const cut = orderByIndex(wiql);
+  const unordered = cut < 0 ? wiql : wiql.slice(0, cut);
   const ids: number[] = [];
   let last = 0;
   for (;;) {
