@@ -199,7 +199,7 @@ table.grid { width: 100%; border-collapse: collapse; }
 .grid tbody tr:hover { background: var(--row-hover); }
 .grid tbody tr:last-child td { border-bottom: 0; }
 .grid.compact td { padding: 5px 12px; }
-.cell-input { width: 100%; border-color: transparent; background: transparent; }
+.cell-input { width: 100%; border-color: var(--border-strong); background: var(--bg); }
 .cell-input:hover:not(:disabled) { border-color: var(--text-2); }
 .cell-input:disabled { background: transparent; border-color: transparent; color: var(--text); }
 .cell-input.num { width: 72px; }
@@ -216,8 +216,9 @@ tr.uncommitted td:first-child input { font-style: italic; }
 .state { white-space: nowrap; display: inline-flex; align-items: center; }
 
 .progress { position: relative; height: 20px; background: var(--alpha-6); border-radius: 2px; overflow: hidden; min-width: 80px; }
-.progress-bar { position: absolute; inset: 0 auto 0 0; background: var(--good); opacity: 0.8; }
-.progress-text { position: relative; font-size: 12px; padding: 0 8px; line-height: 20px; white-space: nowrap; }
+.progress-bar { position: absolute; inset: 0 auto 0 0; background: var(--good); opacity: 0.4; }
+.progress-bar::after { content: ""; position: absolute; inset: auto 0 0 0; height: 3px; background: inherit; filter: saturate(1.4); }
+.progress-text { position: relative; font-size: 12px; font-weight: 600; padding: 0 8px; line-height: 20px; white-space: nowrap; }
 
 /* ---------- work item cards (boards) ---------- */
 .card {
@@ -237,7 +238,8 @@ tr.uncommitted td:first-child input { font-style: italic; }
 
 /* ---------- ART planning board ---------- */
 .board-scroll { overflow: auto; border-radius: var(--radius); background: var(--bg-callout); box-shadow: var(--shadow-8); }
-.board-grid { display: grid; position: relative; min-width: max-content; }
+/* Columns share the width (min-width set inline from the column count); the board scrolls only past that. */
+.board-grid { display: grid; position: relative; }
 .board-corner, .board-col-header { position: sticky; top: 0; z-index: 2; background: var(--bg-callout); border-bottom: 1px solid var(--border); }
 .board-col-header { padding: 10px 12px; font-weight: 600; border-left: 1px solid var(--border); }
 .board-col-header .muted { font-weight: 400; }
@@ -248,13 +250,14 @@ tr.uncommitted td:first-child input { font-style: italic; }
 .cell-add:hover { background: var(--alpha-10); }
 .board-cell:hover .cell-add, .cell-add:focus { opacity: 1; }
 .dep-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; overflow: visible; }
+.board-cell .card, .tb-cell .card { position: relative; z-index: 2; }
 .dep-line { fill: none; stroke-width: 2; pointer-events: stroke; cursor: pointer; }
 .dep-line:hover { stroke-width: 4; }
 .legend-bar { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
 .legend-bar .line { display: inline-block; width: 20px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
 
 /* ---------- kanban / ROAM columns ---------- */
-.kanban, .roam { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(190px, 1fr); gap: 12px; overflow-x: auto; align-items: start; padding-bottom: 8px; }
+.kanban, .roam { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(160px, 1fr); gap: 12px; overflow-x: auto; align-items: start; padding-bottom: 8px; }
 .kanban-col, .roam-col { background: var(--alpha-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px 8px; min-height: 320px; }
 .kanban-header, .roam-header { display: flex; justify-content: space-between; align-items: center; font-weight: 600; padding: 10px 4px; border-top: 3px solid var(--border-strong); margin: 0 -8px 8px; padding-left: 12px; padding-right: 12px; border-radius: var(--radius) var(--radius) 0 0; }
 .count { color: var(--text-2); font-weight: 400; background: var(--alpha-6); border-radius: 120px; padding: 0 8px; font-size: 12px; }
@@ -324,7 +327,8 @@ tr.uncommitted td:first-child input { font-style: italic; }
 .filterbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 8px; background: var(--bg-callout); border-radius: var(--radius); box-shadow: var(--shadow); }
 .filterbar .wiql { flex: 1; min-width: 220px; font-family: Menlo, Consolas, monospace; font-size: 12px; }
 .filterbar .wiql.active { border-color: var(--accent); }
-.filterbar .btn { background: transparent; font-weight: 400; }
+.filterbar .btn { background: transparent; font-weight: 400; padding: 5px 8px; }
+.filterbar { gap: 4px; }
 .filterbar .btn:hover:not(:disabled) { background: var(--alpha-6); }
 .filterbar .btn.primary { background: var(--row-selected); color: var(--text); font-weight: 600; }
 .facet { position: relative; }
@@ -513,7 +517,7 @@ tr.uncommitted td:first-child input { font-style: italic; }
   padding: 6px 8px; cursor: default; font-size: 12px;
 }
 .card-popover ul { margin: 4px 0 0; padding-left: 16px; }
-.exposure-chip { display: inline-block; color: #fff; border-radius: 8px; padding: 0 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
+.exposure-chip { display: inline-block; color: #fff; border-radius: 8px; padding: 1px 8px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.02em; }
 .risk-assessment { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin: 8px 0; }
 .risk-assessment legend { font-weight: 600; padding: 0 4px; }
 .pi-group-row th { background: var(--bg-2); text-align: left; }
@@ -621,7 +625,7 @@ tr.dep-resolved td { opacity: 0.5; }
 .tone-warn .progress-bar { background: var(--warn); }
 .tone-bad .progress-bar { background: var(--bad); }
 
-.exposure-chip { color: #fff; border-radius: 10px; padding: 0 8px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.exposure-chip { color: #fff; border-radius: 10px; padding: 1px 8px; font-size: 11px; line-height: 16px; font-weight: 600; white-space: nowrap; }
 .roam-chip { font-size: 11px; border-radius: 10px; padding: 0 8px; background: var(--bg-3); white-space: nowrap; }
 .roam-chip.roam-resolved { background: rgba(51, 153, 51, 0.18); }
 .roam-chip.roam-owned { background: rgba(0, 120, 212, 0.18); }
@@ -738,7 +742,9 @@ tr.dep-resolved td { opacity: 0.5; }
 .pi-create-result { padding-bottom: 12px; }
 .pi-iterations .actions { white-space: nowrap; }
 .setup-checklist .checklist { list-style: none; margin: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-.setup-checklist .checklist li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.setup-checklist .checklist li { display: grid; grid-template-columns: 1em minmax(0, 1fr); column-gap: 6px; align-items: baseline; }
+.setup-checklist .checklist li > .link { text-align: left; }
+.setup-checklist .checklist li > .muted { grid-column: 2; }
 .setup-checklist .check-mark { font-weight: 700; width: 1em; }
 .setup-checklist li.ok .check-mark { color: var(--good); }
 .setup-checklist li.missing .check-mark { color: var(--bad); }
@@ -873,3 +879,11 @@ a.member-name:hover { text-decoration: underline; }
 .bv-hint, .bv-by { margin-top: 2px; }
 .import-summary { margin: 8px 0; max-width: 320px; }
 .import-mode .check { display: block; margin: 6px 0; }
+
+/* ---------- visibility pass ---------- */
+.plain-fieldset.pad { padding: 12px 20px; }
+/* Team board criticality toggles: space them and show their line colour (as in the legend). */
+.tb-deps { gap: 16px; flex-wrap: wrap; }
+.tb-deps .line { display: inline-block; width: 20px; height: 0; border-top: 2px solid; vertical-align: middle; }
+/* Small secondary text carries counts and dates: a little stronger than the host's 55% so it stays legible at 12px. */
+.muted.small { color: color-mix(in srgb, var(--text) 80%, transparent); }

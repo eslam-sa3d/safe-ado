@@ -36,6 +36,11 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
 - Writes that go only to extension data are read-only when a permission check cannot be
   answered (they used to be allowed).
 - Marketplace listing rewritten for SAFe® program offices; trademark attribution added.
+- **Visibility pass**: inline-edit fields (budgets, rates, notes, objectives) have visible borders;
+  risk exposure tags are larger, readable ("Exposure: High", "Priority: High") and meet 4.5:1
+  contrast; progress-bar labels stay readable; ART and Team Planning Boards fit the whole PI on
+  screen; Portfolio Kanban columns fit; cards sit above dependency lines; tighter filter bars;
+  Setup checklist and "Create a PI" layout fixes; "1 item" wording.
 
 ## [1.3.0] - 2026-09-30
 

@@ -57,7 +57,7 @@ describe("ROAM board", () => {
     await renderRisks();
     const c = card("Vendor API delay");
     expect(c).toHaveClass("impact-high");
-    expect(within(c).getByText("High")).toBeInTheDocument();
+    expect(within(c).getByText("Priority: High")).toBeInTheDocument();
     expect(within(c).getByText("Team Red")).toBeInTheDocument();
     expect(within(c).getByText("· Sam")).toBeInTheDocument();
     fireEvent.click(within(c).getByRole("button", { name: "#10" }));
@@ -102,14 +102,14 @@ describe("ROAM board", () => {
     fireEvent.change(within(dialog).getByLabelText("Description"), { target: { value: "Knowledge silo" } });
     fireEvent.change(within(dialog).getByLabelText("ROAM status"), { target: { value: "Owned" } });
     fireEvent.change(within(dialog).getByLabelText("Priority"), { target: { value: "Low" } });
-    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("INTERMEDIATE");
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("Exposure: Intermediate");
     fireEvent.change(within(dialog).getByLabelText("Probability"), { target: { value: "Almost Certain" } });
-    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("INTERMEDIATE");
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("Exposure: Intermediate");
     fireEvent.change(within(dialog).getByLabelText("Impact"), { target: { value: "Catastrophic" } });
-    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("EXTREME");
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("Exposure: Extreme");
     fireEvent.change(within(dialog).getByLabelText("Residual probability"), { target: { value: "Very Unlikely" } });
     fireEvent.change(within(dialog).getByLabelText("Residual impact"), { target: { value: "Insignificant" } });
-    expect(within(dialog).getByTestId("residual-exposure")).toHaveTextContent("Residual LOW");
+    expect(within(dialog).getByTestId("residual-exposure")).toHaveTextContent("Residual: Low");
     const owner = within(dialog).getByLabelText("Raised by / belongs to") as HTMLSelectElement;
     expect(Array.from(owner.options).map((o) => o.textContent)).toEqual([
       "ART A (Agile Release Train)",
@@ -138,7 +138,7 @@ describe("ROAM board", () => {
     });
     const created = card("Key engineer leaving");
     expect(within(created).getByTitle("Exposure: EXTREME")).toHaveStyle({ background: "#8b0000" });
-    expect(within(created).getByTitle("Residual exposure: LOW")).toHaveTextContent("Residual LOW");
+    expect(within(created).getByTitle("Residual exposure: LOW")).toHaveTextContent("Residual: Low");
   });
 
   it("shows exposure chips on cards, defaulting to INTERMEDIATE when unassessed", async () => {
@@ -156,8 +156,8 @@ describe("ROAM board", () => {
     const dialog = screen.getByRole("dialog", { name: "Edit risk" });
     expect(within(dialog).getByLabelText("Probability")).toHaveValue("Likely");
     expect(within(dialog).getByLabelText("Impact")).toHaveValue("Minor");
-    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("MEDIUM");
-    expect(within(dialog).getByTestId("residual-exposure")).toHaveTextContent("Residual HIGH");
+    expect(within(dialog).getByTestId("exposure")).toHaveTextContent("Exposure: Medium");
+    expect(within(dialog).getByTestId("residual-exposure")).toHaveTextContent("Residual: High");
   });
 
   it("sorts risks within columns by exposure when asked", async () => {

@@ -291,7 +291,7 @@ describe("ART board — dependencies (A7)", () => {
     expect(screen.getByLabelText("Hidden consumers of #10").getAttribute("title")).toBe("Hidden consumers of #10\nHealthy: #11");
     expect(line("10-11")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Collapse external Team Green" }));
-    expect(within(cell("External Team Green / PI 2 IP")).getByText("1 items")).toBeInTheDocument();
+    expect(within(cell("External Team Green / PI 2 IP")).getByText("1 item")).toBeInTheDocument();
     expect(screen.getByLabelText("Hidden consumers of #10").getAttribute("title")).toBe("Hidden consumers of #10\nHealthy: #11, #20");
     fireEvent.click(screen.getByRole("button", { name: "Expand external Team Green" }));
     expect(line("10-20")).not.toBeNull();

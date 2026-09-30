@@ -387,7 +387,7 @@ export function ProgramBoard() {
         <div
           className="board-grid"
           ref={gridRef}
-          style={{ gridTemplateColumns: `180px repeat(${columns.length}, minmax(190px, 1fr))` }}
+          style={{ gridTemplateColumns: `180px repeat(${columns.length}, minmax(170px, 1fr))`, minWidth: 180 + columns.length * 170 }}
         >
           <div className="board-corner" />
           {columns.map((c, ci) => (
@@ -466,14 +466,14 @@ export function ProgramBoard() {
                         </button>
                         <span>{name}</span>
                       </div>
-                      <div className="muted small">{g.items.length} items</div>
+                      <div className="muted small">{g.items.length} {g.items.length === 1 ? "item" : "items"}</div>
                     </div>
                     {columns.map((col, ci) => {
                       const cellItems = g.items.filter((i) => extCol.get(i.id) === ci);
                       return (
                         <div key={col.key} role="group" aria-label={`External ${name} / ${col.title}`} className="board-cell ab-external-cell">
                           {isCollapsed
-                            ? cellItems.length > 0 && <span className="muted small">{cellItems.length} items</span>
+                            ? cellItems.length > 0 && <span className="muted small">{cellItems.length} {cellItems.length === 1 ? "item" : "items"}</span>
                             : cellItems.map((i) => (
                                 <ExternalCard
                                   key={i.id}
@@ -603,7 +603,7 @@ function RowCells(props: {
           </button>
           <span>{row.title}</span>
         </div>
-        <div className="muted small">{items.length} items</div>
+        <div className="muted small">{items.length} {items.length === 1 ? "item" : "items"}</div>
         <div className={"small" + (props.critical > 0 ? " danger" : " muted")} title="Unresolved critical dependencies involving this row">
           {props.critical} critical
         </div>
@@ -632,7 +632,7 @@ function RowCells(props: {
             }}
           >
             {collapsed
-              ? cellItems.length > 0 && <span className="muted small">{cellItems.length} items</span>
+              ? cellItems.length > 0 && <span className="muted small">{cellItems.length} {cellItems.length === 1 ? "item" : "items"}</span>
               : cellItems.map((i) => (
                   <BoardCard
                     key={i.id}

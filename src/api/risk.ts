@@ -30,8 +30,8 @@ export const EXPOSURE_RANK: Record<Exposure, number> = { EXTREME: 4, HIGH: 3, IN
 
 export const EXPOSURE_COLOR: Record<Exposure, string> = {
   EXTREME: "#8b0000",
-  HIGH: "#cd4a45",
-  INTERMEDIATE: "#8a8886",
-  MEDIUM: "#d67f3c",
-  LOW: "#339933",
+  HIGH: "#b52e2a",
+  INTERMEDIATE: "#605e5c",
+  MEDIUM: "#a8521d",
+  LOW: "#237a23",
 };

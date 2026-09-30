@@ -536,7 +536,7 @@ describe("ART Planning Board — calculated mode (default)", () => {
     await renderBoard();
     fireEvent.click(screen.getByRole("button", { name: "Collapse Team Blue" }));
     expect(screen.queryByText("Wallet")).toBeNull();
-    expect(within(cell("Team Blue / PI 2 Sprint 1")).getByText("1 items")).toBeInTheDocument();
+    expect(within(cell("Team Blue / PI 2 Sprint 1")).getByText("1 item")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Expand Team Blue" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText("Payment API")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Expand Team Blue" }));

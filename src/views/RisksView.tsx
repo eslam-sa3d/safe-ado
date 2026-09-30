@@ -50,8 +50,8 @@ export function byExposure(a: Risk, b: Risk): number {
 function ExposureChip({ label, value }: { label: string; value: Exposure }) {
   return (
     <span className="exposure-chip" style={{ background: EXPOSURE_COLOR[value] }} title={`${label}: ${value}`}>
-      {label === "Exposure" ? "" : "Residual "}
-      {value}
+      {label === "Exposure" ? "Exposure: " : "Residual: "}
+      {value.charAt(0) + value.slice(1).toLowerCase()}
     </span>
   );
 }
@@ -174,7 +174,7 @@ export function RisksView() {
                     <ExposureChip label="Exposure" value={riskExposure(r)} />
                     <ExposureChip label="Residual exposure" value={residualExposure(r)} />
                     <span className="pill" title="Priority">
-                      {r.impact}
+                      Priority: {r.impact}
                     </span>
                     <span className="muted">{nodeName.get(r.nodeId)}</span>
                     {r.owner && <span className="muted">· {r.owner}</span>}

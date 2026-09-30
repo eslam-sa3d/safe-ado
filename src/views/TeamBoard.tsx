@@ -511,7 +511,8 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const featureTitle = (id: number | undefined) => block.features.find((f) => f.id === id)?.fields[F.title] as string | undefined;
   const shownDeps = deps.filter((d) => crit.includes(d.criticality));
   const critical = deps.filter((d) => d.criticality === "critical").length;
-  const cols = `220px repeat(${pi.sprints.length}, minmax(200px, 1fr))`;
+  const cols = `220px repeat(${pi.sprints.length}, minmax(180px, 1fr))`;
+  const gridMinWidth = 220 + pi.sprints.length * 180;
   const plannedCount = block.stories.length;
   const onBoard = new Set(block.stories.map((s) => s.id));
   const hints = showDeps ? edgeHints(shownDeps, (id) => rects.has(id)) : new Map<number, EdgeHint[]>();
@@ -618,7 +619,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
           <div
             className={"board-grid tb-grid" + (dragging ? " tb-dragging" : "")}
             ref={gridRef}
-            style={{ gridTemplateColumns: cols }}
+            style={{ gridTemplateColumns: cols, minWidth: gridMinWidth }}
           >
             <div className="board-corner" />
             {pi.sprints.map((s, i) => (
