@@ -52,6 +52,8 @@ export interface RItem {
   /** Risk Reduction / Opportunity Enablement, when the process has the field. */
   rroe?: number;
   effort?: number;
+  /** When work started (Microsoft.VSTS.Common.ActivatedDate), for flow time. */
+  activatedDate?: string;
 }
 
 const num = (v: unknown): number | undefined => {
@@ -60,7 +62,15 @@ const num = (v: unknown): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-export function normalize(wi: WorkItem, categoryOf: (type: string, state: string) => string, spField: string): RItem {
+/** Activated date field of the Agile / CMMI / Scrum processes. */
+export const ACTIVATED_DATE = "Microsoft.VSTS.Common.ActivatedDate";
+
+export function normalize(
+  wi: WorkItem,
+  categoryOf: (type: string, state: string) => string,
+  spField: string,
+  rroeField: string = DEFAULT_RROE_FIELD
+): RItem {
   const f = wi.fields;
   const rels = wi.relations ?? [];
   const parent = rels.find((r) => r.rel === LINK.parent);
@@ -83,8 +93,9 @@ export function normalize(wi: WorkItem, categoryOf: (type: string, state: string
     assignedTo: typeof assigned === "string" ? assigned : assigned?.displayName,
     businessValue: num(f[F.businessValue]),
     timeCriticality: num(f[F.timeCriticality]),
-    rroe: num(f[DEFAULT_RROE_FIELD]),
+    rroe: num(f[rroeField || DEFAULT_RROE_FIELD]),
     effort: num(f[F.effort]),
+    activatedDate: f[ACTIVATED_DATE] || undefined,
   };
 }
 
@@ -335,55 +346,64 @@ export interface BurnupDay {
 
 export interface Burnup {
   days: BurnupDay[];
+  /** Scope on today (or on the PI's last day for a past PI); the ideal line ends here. */
   scope: number;
   bands: { name: string; from: number; to: number; ip: boolean }[];
   /** Index of today in `days`, or -1 when today is outside the PI. */
   todayIndex: number;
   /** Average SP per day used for the forecast. */
   dailyRate: number;
+  /** "history": reconstructed from revisions; "current": from the stories' current state. */
+  source?: "history" | "current";
+}
+
+/** What a burnup needs per day: the scope and the burned points at the end of day `d`. */
+interface BurnupInput {
+  scopeAt: (d: number) => number;
+  burnedAt: (d: number) => number;
+  /** Points completed within a (dated) iteration, for the forecast rate. */
+  sprintDone: (s: Sprint) => number;
 }
 
 /**
- * Burnup over the PI's days. Scope = current total SP; burned = cumulative SP of completed
- * stories by closed date (up to today); ideal = 0 → scope linearly over the non-IP days;
- * forecast = from today at the average daily velocity of completed iterations
- * (or the burn rate so far when no iteration is complete), capped at scope.
+ * Burnup over the PI's days: scope and burned per day up to today (scope stays at today's
+ * value afterwards); ideal = 0 → scope linearly over the non-IP days; forecast = from today
+ * at the average daily velocity of completed iterations (or the burn rate so far when no
+ * iteration is complete), capped at scope.
  */
-export function burnup(pi: ProgramIncrement, stories: RItem[], today: number): Burnup | null {
+function buildBurnup(pi: ProgramIncrement, today: number, input: BurnupInput, source: Burnup["source"]): Burnup | null {
   if (!pi.start || !pi.finish) return null;
   const start = toDay(pi.start);
   const end = Math.max(start, toDay(pi.finish));
-  const live = stories.filter(isLive);
-  const scope = live.reduce((a, s) => a + points(s), 0);
-  const closeDay = (s: RItem) => (s.closedDate ? toDay(s.closedDate) : Math.min(today, end));
-  const done = live.filter(isDone).map((s) => ({ day: closeDay(s), sp: points(s) }));
-  const burnedAt = (d: number) => done.filter((x) => x.day <= d).reduce((a, x) => a + x.sp, 0);
+  const ref = Math.min(today, end);
+  const scope = input.scopeAt(ref);
 
   const dated = pi.sprints.filter((s) => s.start && s.finish);
-  const ipDay = (d: number) => dated.some((s) => isIpSprint(s) && toDay(s.start!) <= d && d <= toDay(s.finish!));
+  const isIp = (s: Sprint) => isIpSprint(s, pi.name);
+  const ipDay = (d: number) => dated.some((s) => isIp(s) && toDay(s.start!) <= d && d <= toDay(s.finish!));
   const allDays: number[] = [];
   for (let d = start; d <= end; d++) allDays.push(d);
   const workDays = allDays.filter((d) => !ipDay(d)).length;
 
-  const completed = dated.filter((s) => !isIpSprint(s) && isCompletedSprint(s, today));
+  const completed = dated.filter((s) => !isIp(s) && isCompletedSprint(s, today));
   const completedDays = completed.reduce((a, s) => a + toDay(s.finish!) - toDay(s.start!) + 1, 0);
   const todayIndex = today >= start && today <= end ? today - start : -1;
+  const burnedToday = todayIndex >= 0 ? input.burnedAt(today) : 0;
   const dailyRate =
     completedDays > 0
-      ? completed.reduce((a, s) => a + doneIn(live, s.path), 0) / completedDays
+      ? completed.reduce((a, s) => a + input.sprintDone(s), 0) / completedDays
       : todayIndex >= 0
-      ? burnedAt(today) / (today - start + 1)
+      ? burnedToday / (today - start + 1)
       : 0;
 
   let workSoFar = 0;
   const days = allDays.map((d) => {
     if (!ipDay(d)) workSoFar++;
-    const burnedToday = todayIndex >= 0 ? burnedAt(today) : 0;
     return {
       day: d,
       date: dayIso(d),
-      scope,
-      burned: d <= today ? burnedAt(d) : null,
+      scope: d <= ref ? input.scopeAt(d) : scope,
+      burned: d <= today ? input.burnedAt(d) : null,
       ideal: workDays > 0 ? round1((scope * workSoFar) / workDays) : scope,
       forecast: todayIndex >= 0 && d >= today ? round1(Math.min(scope, burnedToday + dailyRate * (d - today))) : null,
     };
@@ -393,9 +413,118 @@ export function burnup(pi: ProgramIncrement, stories: RItem[], today: number): B
     name: s.name,
     from: Math.max(0, toDay(s.start!) - start),
     to: Math.min(end, toDay(s.finish!)) - start,
-    ip: isIpSprint(s),
+    ip: isIp(s),
   }));
-  return { days, scope, bands, todayIndex, dailyRate: round1(dailyRate) };
+  return { days, scope, bands, todayIndex, dailyRate: round1(dailyRate), source };
+}
+
+/**
+ * Burnup from the stories' current state: scope = current total SP; burned = cumulative SP
+ * of completed stories by closed date.
+ */
+export function burnup(pi: ProgramIncrement, stories: RItem[], today: number): Burnup | null {
+  if (!pi.start || !pi.finish) return null;
+  const end = Math.max(toDay(pi.start), toDay(pi.finish));
+  const live = stories.filter(isLive);
+  const scope = live.reduce((a, s) => a + points(s), 0);
+  const closeDay = (s: RItem) => (s.closedDate ? toDay(s.closedDate) : Math.min(today, end));
+  const done = live.filter(isDone).map((s) => ({ day: closeDay(s), sp: points(s) }));
+  return buildBurnup(
+    pi,
+    today,
+    {
+      scopeAt: () => scope,
+      burnedAt: (d) => done.filter((x) => x.day <= d).reduce((a, x) => a + x.sp, 0),
+      sprintDone: (s) => doneIn(live, s.path),
+    },
+    "current"
+  );
+}
+
+/** A work item revision as the reporting revisions API returns it. */
+export interface RevisionLike {
+  id: number;
+  rev: number;
+  fields: Record<string, any>;
+}
+
+export interface HistoryOptions {
+  storyType: string;
+  spField: string;
+  /** Area paths of the unit; stories outside them don't count on that day. */
+  areas: string[];
+  categoryOf: (type: string, state: string) => string;
+}
+
+/** Fields the history burnup and flow time read from revisions. */
+export function historyFields(spField: string): string[] {
+  return [F.iteration, F.state, F.type, F.area, spField, F.changedDate];
+}
+
+/**
+ * Burnup reconstructed from revision history. For each day, a story's last revision up to
+ * that day decides: SCOPE counts its points when it was a live story planned under the PI in
+ * the unit's areas; BURNED counts them when it was also in a Completed state.
+ */
+export function burnupFromHistory(pi: ProgramIncrement, revisions: RevisionLike[], opts: HistoryOptions, today: number): Burnup | null {
+  if (!pi.start || !pi.finish) return null;
+  type Entry = { day: number; rev: number; scope: number; done: number };
+  const byId = new Map<number, Entry[]>();
+  for (const r of revisions) {
+    const f = r.fields;
+    if (!f[F.changedDate]) continue;
+    const category = opts.categoryOf(f[F.type], f[F.state]);
+    const counts =
+      f[F.type] === opts.storyType && isUnder(f[F.iteration], pi.path) && opts.areas.some((a) => isUnder(f[F.area], a)) && category !== "Removed";
+    const sp = counts ? num(f[opts.spField]) ?? 0 : 0;
+    const list = byId.get(r.id) ?? [];
+    list.push({ day: toDay(f[F.changedDate]), rev: r.rev, scope: sp, done: category === "Completed" ? sp : 0 });
+    byId.set(r.id, list);
+  }
+  const timelines = Array.from(byId.values()).map((l) => l.sort((a, b) => a.day - b.day || a.rev - b.rev));
+  const cache = new Map<number, { scope: number; done: number }>();
+  const at = (d: number) => {
+    let hit = cache.get(d);
+    if (!hit) {
+      hit = { scope: 0, done: 0 };
+      for (const list of timelines) {
+        let last: Entry | undefined;
+        for (const e of list) {
+          if (e.day > d) break;
+          last = e;
+        }
+        if (last) {
+          hit.scope += last.scope;
+          hit.done += last.done;
+        }
+      }
+      cache.set(d, hit);
+    }
+    return hit;
+  };
+  return buildBurnup(
+    pi,
+    today,
+    {
+      scopeAt: (d) => at(d).scope,
+      burnedAt: (d) => at(d).done,
+      sprintDone: (s) => at(toDay(s.finish!)).done - at(toDay(s.start!) - 1).done,
+    },
+    "history"
+  );
+}
+
+/** First time each item entered an in-progress state (InProgress or Resolved category), from revisions. */
+export function firstActiveDates(revisions: RevisionLike[], categoryOf: (type: string, state: string) => string): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const r of revisions) {
+    const changed = r.fields[F.changedDate];
+    const category = categoryOf(r.fields[F.type], r.fields[F.state]);
+    if (!changed || (category !== "InProgress" && category !== "Resolved")) continue;
+    const prev = out.get(r.id);
+    if (!prev || Date.parse(changed) < Date.parse(prev)) out.set(r.id, changed);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -543,7 +672,11 @@ export function overviewRows(opts: {
   counts: (story: RItem) => boolean;
   teams: OrgNode[];
   keepRoot?: (root: RItem) => boolean;
-}): { rows: OverviewRow[]; orphans: OverviewRow | null } {
+  /** Only roots accepted here become rows (e.g. features directly under an epic). */
+  rootFilter?: (root: RItem) => boolean;
+  /** Stories already shown elsewhere; they don't become "Without parent" orphans. */
+  exclude?: Set<number>;
+}): { rows: OverviewRow[]; orphans: OverviewRow | null; covered: Set<number> } {
   const live = opts.items.filter(isLive);
   const byId = new Map(live.map((i) => [i.id, i]));
   const kids = new Map<number, RItem[]>();
@@ -564,7 +697,7 @@ export function overviewRows(opts: {
   };
 
   const rows: OverviewRow[] = [];
-  for (const root of live.filter((i) => i.type === opts.rootType)) {
+  for (const root of live.filter((i) => i.type === opts.rootType && (!opts.rootFilter || opts.rootFilter(i)))) {
     const built = build(root, new Set())!;
     const keep = opts.keepRoot ? opts.keepRoot(root) : built.stories.length > 0;
     if (!keep) continue;
@@ -573,7 +706,7 @@ export function overviewRows(opts: {
   }
   rows.sort((a, b) => (b.wsjf ?? -1) - (a.wsjf ?? -1) || a.item.id - b.item.id);
 
-  const loose = live.filter((i) => i.type === opts.storyType && opts.counts(i) && !covered.has(i.id));
+  const loose = live.filter((i) => i.type === opts.storyType && opts.counts(i) && !covered.has(i.id) && !opts.exclude?.has(i.id));
   const orphans = loose.length
     ? summarize(
         { id: 0, type: "", title: "Without parent", state: "", category: "", sp: null, childIds: [] },
@@ -582,7 +715,183 @@ export function overviewRows(opts: {
         loose.map((s) => summarize(s, [s], opts.teams, []))
       )
     : null;
-  return { rows, orphans };
+  return { rows, orphans, covered };
+}
+
+/**
+ * Index over `items` returning the iterations of every live descendant of an item
+ * (children, grandchildren, ...). Build once, query per row.
+ */
+export function descendantIterations(items: RItem[]): (rootId: number) => (string | undefined)[] {
+  const kids = new Map<number, RItem[]>();
+  for (const i of items) if (i.parentId !== undefined && isLive(i)) kids.set(i.parentId, [...(kids.get(i.parentId) ?? []), i]);
+  return (rootId) => {
+    const out: (string | undefined)[] = [];
+    const seen = new Set<number>([rootId]);
+    const walk = (id: number) => {
+      for (const c of kids.get(id) ?? []) {
+        if (seen.has(c.id)) continue;
+        seen.add(c.id);
+        out.push(c.iteration);
+        walk(c.id);
+      }
+    };
+    walk(rootId);
+    return out;
+  };
+}
+
+/**
+ * Estimated completion: the finish date of the latest sprint any of `iterations` is planned
+ * in (items planned on a PI or outside any sprint don't count). Null when none is.
+ */
+export function estimatedCompletion(iterations: (string | undefined)[], sprints: Sprint[]): string | null {
+  let best: string | null = null;
+  for (const s of sprints) {
+    if (!s.finish || !iterations.some((it) => isUnder(it, s.path))) continue;
+    if (!best || toDay(s.finish) > toDay(best)) best = s.finish;
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Queries ("Open in query")
+// ---------------------------------------------------------------------------------------------
+
+/** WIQL listing exactly the given work items (for "Open in query"); null without ids. */
+export function idsQuery(ids: number[]): string | null {
+  const unique = Array.from(new Set(ids.filter((id) => id > 0))).sort((a, b) => a - b);
+  if (unique.length === 0) return null;
+  return (
+    `SELECT [${F.id}], [${F.type}], [${F.title}], [${F.state}], [${F.area}], [${F.iteration}] FROM WorkItems ` +
+    `WHERE [System.TeamProject] = @project AND [${F.id}] IN (${unique.join(", ")}) ORDER BY [${F.id}] ASC`
+  );
+}
+
+/** Ids of the rows of an overview tree, including every expanded level (synthetic rows excluded). */
+export function overviewIds(rows: OverviewRow[]): number[] {
+  const out: number[] = [];
+  const walk = (r: OverviewRow) => {
+    if (r.item.id > 0) out.push(r.item.id);
+    r.children.forEach(walk);
+  };
+  rows.forEach(walk);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Flow metrics (SAFe flow velocity / time / load / distribution)
+// ---------------------------------------------------------------------------------------------
+
+export interface FlowMetrics {
+  /** Items completed per iteration of the PI. */
+  velocity: { name: string; path: string; ip: boolean; count: number }[];
+  /** Items completed in the PI. */
+  completed: number;
+  /** Days from start (activated) to closed, over completed items with both dates. */
+  time: { median: number | null; average: number | null; samples: number; missing: number };
+  /** Work in progress now (InProgress or Resolved category). */
+  load: number;
+  /** Completed items by type, largest share first. */
+  distribution: { type: string; count: number; pct: number }[];
+}
+
+const within = (iso: string | undefined, s: Sprint) => !!iso && !!s.start && !!s.finish && toDay(iso) >= toDay(s.start) && toDay(iso) <= toDay(s.finish);
+
+/** Whether a done item was completed in `s`: by closed date when both are dated, else by iteration path. */
+function completedIn(i: RItem, s: Sprint): boolean {
+  if (!isDone(i) || !isLive(i)) return false;
+  return i.closedDate && s.start && s.finish ? within(i.closedDate, s) : inIteration(i, s.path);
+}
+
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const v = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  return round1(v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2);
+}
+
+/**
+ * Flow metrics of `items` (the unit's flow items) for a PI. `firstActive` supplies start
+ * dates from revision history for items without an activated date.
+ */
+export function flowMetrics(items: RItem[], pi: ProgramIncrement, firstActive: Map<number, string> = new Map()): FlowMetrics {
+  const done = items.filter((i) => completedIn(i, pi));
+  const velocity = pi.sprints.map((s) => ({ name: s.name, path: s.path, ip: isIpSprint(s, pi.name), count: items.filter((i) => completedIn(i, s)).length }));
+  const durations: number[] = [];
+  let missing = 0;
+  for (const i of done) {
+    const start = i.activatedDate ?? firstActive.get(i.id);
+    if (!start || !i.closedDate) missing++;
+    else durations.push(Math.max(0, toDay(i.closedDate) - toDay(start)));
+  }
+  const byType = new Map<string, number>();
+  for (const i of done) byType.set(i.type, (byType.get(i.type) ?? 0) + 1);
+  return {
+    velocity,
+    completed: done.length,
+    time: {
+      median: median(durations),
+      average: durations.length ? round1(durations.reduce((a, b) => a + b, 0) / durations.length) : null,
+      samples: durations.length,
+      missing,
+    },
+    load: items.filter((i) => isLive(i) && (i.category === "InProgress" || i.category === "Resolved")).length,
+    distribution: Array.from(byType.entries())
+      .map(([type, count]) => ({ type, count, pct: Math.round((count / done.length) * 100) }))
+      .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type)),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// PI snapshots (completed PIs keep the numbers recorded at PI end)
+// ---------------------------------------------------------------------------------------------
+
+export interface PiSnapshot {
+  /** `${nodeId}|${pi.identifier}` */
+  id: string;
+  nodeId: string;
+  piPath: string;
+  piId: string;
+  piName: string;
+  createdAt: string;
+  points: PointsSummary;
+  velocity: Velocity;
+  /** Completed SP per iteration of the PI. */
+  sprintVelocity: { name: string; path: string; done: number }[];
+  load: LoadCapacity;
+  burnup: Burnup | null;
+  __etag?: number;
+}
+
+export const snapshotId = (nodeId: string, pi: Sprint) => `${nodeId}|${pi.identifier}`;
+
+/** The numbers of a completed PI as the report shows them, for storing at PI end. */
+export function buildSnapshot(opts: {
+  nodeId: string;
+  team: boolean;
+  pi: ProgramIncrement;
+  stories: RItem[];
+  piStories: RItem[];
+  capacity: number;
+  burnup: Burnup | null;
+  today: number;
+  now?: Date;
+}): PiSnapshot {
+  const { pi, stories, piStories, today } = opts;
+  return {
+    id: snapshotId(opts.nodeId, pi),
+    nodeId: opts.nodeId,
+    piPath: pi.path,
+    piId: pi.identifier,
+    piName: pi.name,
+    createdAt: (opts.now ?? new Date()).toISOString(),
+    points: pointsSummary(piStories),
+    velocity: opts.team ? teamVelocity(pi, [], stories, today) : trainVelocity(pi, [], stories, today),
+    sprintVelocity: pi.sprints.map((s) => ({ name: s.name, path: s.path, done: doneIn(stories, s.path) })),
+    load: loadVsCapacity(piStories, opts.capacity),
+    burnup: opts.burnup,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------

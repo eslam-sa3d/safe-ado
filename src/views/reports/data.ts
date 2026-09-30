@@ -1,10 +1,29 @@
-import { capacityStore, metaStore, milestonesStore, objectivesStore, risksStore } from "../../api/data";
-import { dependenciesOf } from "../../api/dependencies";
-import { scopeAreas } from "../../api/org";
+import { capacityStore, metaStore, milestonesStore, objectivesStore, risksStore, snapshotsStore } from "../../api/data";
+import { dependenciesOf, DependencyLinkTypes, dependencyLinkTypes } from "../../api/dependencies";
+import { flatten, scopeAreas } from "../../api/org";
 import { scopeQuery, typeChain } from "../../api/queries";
-import { dependencyRows, DepRow, DepSource, inIteration, isLive, normalize, placements, RItem } from "../../api/reports";
+import {
+  Burnup,
+  burnup,
+  burnupFromHistory,
+  buildSnapshot,
+  capacityTotal,
+  dependencyRows,
+  DepRow,
+  DepSource,
+  firstActiveDates,
+  historyFields,
+  inIteration,
+  isLive,
+  normalize,
+  PiSnapshot,
+  piStatus,
+  placements,
+  RItem,
+  snapshotId,
+} from "../../api/reports";
 import { F, IterationCapacity, LINK, Milestone, OrgNode, PiObjective, ProgramIncrement, Risk, SafeConfig, WorkItem, WorkItemMeta } from "../../api/types";
-import { getStateCategories, getWorkItems, isUnder, queryWorkItems, relationTargetId } from "../../api/wit";
+import { getRevisions, getStateCategories, getWorkItems, isUnder, queryWorkItems, relationTargetId, Revision } from "../../api/wit";
 
 /** Everything the Reports widgets read, loaded once per node / PI. */
 export interface ReportData {
@@ -24,20 +43,47 @@ export interface ReportData {
   milestones: Milestone[];
   capacity: IterationCapacity[];
   meta: Map<number, WorkItemMeta>;
+  /** Dependency link types configured in Setup. */
+  link: DependencyLinkTypes;
+  /** Burnup of the selected PI: from revision history, or from the current state as fallback. */
+  burnup: Burnup | null;
+  /** Why the history could not be read (the burnup then uses the current state). */
+  historyError?: string;
+  /** First in-progress date per item from revision history (flow time fallback). */
+  firstActive: Map<number, string>;
+  /** Numbers recorded when the selected (completed) PI ended. */
+  snapshot?: PiSnapshot;
 }
 
-export async function loadReportData(config: SafeConfig, node: OrgNode, pi: ProgramIncrement | undefined): Promise<ReportData> {
+export interface LoadOptions {
+  /** Today as a day number (see reports.toDay). */
+  today: number;
+  /** Whether a missing PI snapshot may be written (the user can plan). */
+  persist?: boolean;
+}
+
+/** Capacity of the unit's teams over the PI's iterations. */
+export function piCapacity(docs: IterationCapacity[], node: OrgNode, pi: ProgramIncrement): number {
+  const teams = new Set(flatten(node).filter((n) => n.level === "team").map((n) => n.id));
+  return capacityTotal(docs, teams, pi.sprints.map((s) => s.path));
+}
+
+export async function loadReportData(config: SafeConfig, node: OrgNode, pi: ProgramIncrement | undefined, opts: LoadOptions): Promise<ReportData> {
   const areas = scopeAreas(node);
   const chain = typeChain(config);
-  const { epic, capability, feature, story } = config.types;
+  const link = dependencyLinkTypes(config);
+  const { epic, capability, feature, story, enabler } = config.types;
+  const piLevel = !!pi && node.level !== "portfolio";
+  const completed = piLevel && piStatus(pi!, opts.today) === "completed";
 
-  const [categoryOf, objectives, risks, milestones, capacity, meta] = await Promise.all([
+  const [categoryOf, objectives, risks, milestones, capacity, meta, stored] = await Promise.all([
     getStateCategories(chain),
     objectivesStore.list(),
     risksStore.list(),
     milestonesStore.list(),
     capacityStore.list(),
     metaStore.list(),
+    completed ? snapshotsStore.get(snapshotId(node.id, pi!)) : Promise.resolve(undefined),
   ]);
 
   const raw = new Map<number, WorkItem>();
@@ -56,6 +102,8 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
       .filter((id): id is number => id !== null);
 
   let anchors: number[] = [];
+  let revisions: Revision[] | null = null;
+  let historyError: string | undefined;
   if (node.level === "portfolio") {
     const epics = await queryWorkItems(scopeQuery([epic], areas), [], true);
     add(epics);
@@ -65,10 +113,17 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
       if (!(await fetchMissing(ids(LINK.child)))) break;
     }
   } else if (pi) {
-    const [stories, planning] = await Promise.all([
+    const flowTypes = [story, feature, capability, enabler].filter((t): t is string => !!t);
+    const [stories, planning, history] = await Promise.all([
       queryWorkItems(scopeQuery([story], areas, config.piRootIteration), [], true),
-      queryWorkItems(scopeQuery([feature, capability].filter(Boolean), areas, pi.path), [], true),
+      queryWorkItems(scopeQuery([feature, capability, enabler].filter((t): t is string => !!t), areas, pi.path), [], true),
+      // History for the burnup and flow time; the report still works without it.
+      getRevisions(flowTypes, historyFields(config.storyPointsField)).catch((e) => {
+        historyError = e?.message ?? String(e);
+        return null;
+      }),
     ]);
+    revisions = history;
     add(stories);
     add(planning);
     anchors = [...planning, ...stories.filter((w) => isUnder(w.fields[F.iteration], pi.path))].map((w) => w.id);
@@ -80,12 +135,12 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
   // Dependency partners outside the loaded set (external dependencies).
   const anchorSet = new Set(anchors);
   await fetchMissing(
-    dependenciesOf(Array.from(raw.values()))
+    dependenciesOf(Array.from(raw.values()), link)
       .filter((d) => anchorSet.has(d.provider) || anchorSet.has(d.consumer))
       .flatMap((d) => [d.provider, d.consumer])
   );
 
-  const items = new Map(Array.from(raw.values()).map((w) => [w.id, normalize(w, categoryOf, config.storyPointsField)]));
+  const items = new Map(Array.from(raw.values()).map((w) => [w.id, normalize(w, categoryOf, config.storyPointsField, config.rroeField)]));
   // Links are two-way in Azure DevOps, but a child fetched without its reverse link still has a known parent.
   for (const parent of items.values()) {
     for (const id of parent.childIds) {
@@ -95,11 +150,35 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
   }
   const inScope = (i: RItem) => areas.some((a) => isUnder(i.area, a));
   const stories = Array.from(items.values()).filter((i) => i.type === story && isLive(i) && inScope(i));
+  const piStories = piLevel ? stories.filter((s) => inIteration(s, pi!.path)) : [];
+
+  const chart = !piLevel
+    ? null
+    : revisions
+    ? burnupFromHistory(pi!, revisions, { storyType: story, spField: config.storyPointsField, areas, categoryOf }, opts.today)
+    : burnup(pi!, piStories, opts.today);
+
+  let snapshot = stored;
+  if (completed && !snapshot) {
+    const fresh = buildSnapshot({
+      nodeId: node.id,
+      team: node.level === "team",
+      pi: pi!,
+      stories,
+      piStories,
+      capacity: piCapacity(capacity, node, pi!),
+      burnup: chart,
+      today: opts.today,
+    });
+    // Recording is best effort: a failed write only means the next visit tries again.
+    if (opts.persist) snapshot = await snapshotsStore.save(fresh).catch(() => undefined);
+  }
+
   return {
     items,
     raw: Array.from(raw.values()),
     stories,
-    piStories: pi && node.level !== "portfolio" ? stories.filter((s) => inIteration(s, pi.path)) : [],
+    piStories,
     anchorIds: anchorSet,
     inScope,
     objectives,
@@ -107,6 +186,11 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
     milestones,
     capacity,
     meta: new Map(meta.map((m) => [m.workItemId, m])),
+    link,
+    burnup: chart,
+    historyError,
+    firstActive: revisions ? firstActiveDates(revisions, categoryOf) : new Map(),
+    snapshot,
   };
 }
 
@@ -114,5 +198,5 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
 export function reportDependencies(data: ReportData, pis: ProgramIncrement[], source: DepSource): DepRow[] {
   const all = Array.from(data.items.values());
   const placement = placements(all, pis.flatMap((p) => p.sprints.map((s) => s.path)));
-  return dependencyRows(dependenciesOf(data.raw), { items: data.items, anchorIds: data.anchorIds, inScope: data.inScope, placement, meta: data.meta }, source);
+  return dependencyRows(dependenciesOf(data.raw, data.link), { items: data.items, anchorIds: data.anchorIds, inScope: data.inScope, placement, meta: data.meta }, source);
 }

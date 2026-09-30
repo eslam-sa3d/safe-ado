@@ -3,7 +3,7 @@ import { capacityTotal, defaultIterationIndex, iterationSummary } from "../../ap
 import { CATEGORY_COLOR, fmtDate, Progress } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { ItemRef, SelectPi, Widget } from "./Widget";
+import { ItemRef, OpenInQuery, SelectPi, Widget } from "./Widget";
 
 /** Iteration Overview (team): page through the PI's iterations and their planned items. */
 export function IterationOverviewWidget({ data, today }: { data: ReportData; today: number }) {
@@ -45,6 +45,7 @@ export function IterationOverviewWidget({ data, today }: { data: ReportData; tod
       <button className="btn" aria-label="Next iteration" disabled={index >= pi.sprints.length - 1} onClick={() => setIndex(index + 1)}>
         ›
       </button>
+      <OpenInQuery ids={s.groups.flatMap((g) => g.items.map((i) => i.id))} />
     </span>
   );
 

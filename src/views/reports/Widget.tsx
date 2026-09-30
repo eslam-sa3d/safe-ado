@@ -1,6 +1,9 @@
 import { ReactNode } from "react";
+import { queryUrl } from "../../api/links";
+import { idsQuery } from "../../api/reports";
+import { openInNewTab } from "../../api/urlState";
 import { openWorkItem } from "../../api/wit";
-import { typeColor, Icon } from "../../components/common";
+import { fmtDate, typeColor, Icon } from "../../components/common";
 
 /** A dashboard card. `size` controls how many grid columns it spans. */
 export function Widget({
@@ -75,5 +78,44 @@ export function ItemRef({ item }: { item: { id: number; type: string; title: str
       </button>
       <span className="muted small">#{item.id}</span>
     </span>
+  );
+}
+
+/** Marks numbers read from the snapshot stored when the PI ended. */
+export function SnapshotNote({ createdAt }: { createdAt: string }) {
+  return (
+    <div className="snapshot-note muted small" title={`Recorded ${fmtDate(createdAt)}`}>
+      <Icon name="Clock" className="small" /> as recorded at PI end
+    </div>
+  );
+}
+
+/** "Open in query": the widget's work items as an ad-hoc Azure Boards query in a new tab. */
+export function OpenInQuery({ ids }: { ids: number[] }) {
+  const wiql = idsQuery(ids);
+  return (
+    <button
+      className="btn open-query"
+      disabled={!wiql}
+      title={wiql ? "Open these work items in an Azure Boards query" : "No work items to open"}
+      onClick={async () => wiql && openInNewTab(await queryUrl(wiql))}
+    >
+      <Icon name="OpenInNewTab" className="small" /> Open in query
+    </button>
+  );
+}
+
+/** A small "+" button that creates something, disabled with a reason when the user can't plan. */
+export function AddButton({ label, canPlan, onClick }: { label: string; canPlan: boolean; onClick: () => void }) {
+  return (
+    <button
+      className="btn add-button"
+      aria-label={label}
+      disabled={!canPlan}
+      title={canPlan ? label : "You don't have permission to plan in this unit"}
+      onClick={onClick}
+    >
+      +
+    </button>
   );
 }

@@ -3,6 +3,7 @@ import type { IExtensionDataManager, IExtensionDataService } from "azure-devops-
 import { getProject, ServiceIds } from "./client";
 import type { QuickFilter } from "./filters";
 import type { ConfidenceVote, ImprovementItem, PlanReview } from "./planning";
+import type { PiSnapshot } from "./reports";
 import { IterationCapacity, Milestone, OrgNode, PiObjective, Risk, SafeConfig, WorkItemMeta, WorkItemTypeMap } from "./types";
 import { getWorkItemTypes } from "./wit";
 
@@ -139,6 +140,7 @@ export const metaStore = docStore<WorkItemMeta>("wimeta");
 export const votesStore = docStore<ConfidenceVote>("votes");
 export const planReviewsStore = docStore<PlanReview>("planreviews");
 export const inspectAdaptStore = docStore<ImprovementItem>("improvements");
+export const snapshotsStore = docStore<PiSnapshot>("snapshots");
 
 export const capacityId = (nodeId: string, iterationPath: string) => `${nodeId}|${iterationPath}`;
 

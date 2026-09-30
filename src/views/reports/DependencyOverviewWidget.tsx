@@ -6,7 +6,7 @@ import { Criticality } from "../../api/types";
 import { lastSegment } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData, reportDependencies } from "./data";
-import { ItemRef, SelectPi, Widget } from "./Widget";
+import { ItemRef, OpenInQuery, SelectPi, Widget } from "./Widget";
 
 const FILTERS: Criticality[] = ["critical", "atRisk", "healthy", "resolved"];
 const SOURCES: DepSource[] = ["team", "roadmap", "combined"];
@@ -132,6 +132,7 @@ export function DependencyOverviewWidget({ data }: { data: ReportData }) {
           {CRITICALITY_LABEL[f]}
         </label>
       ))}
+      <OpenInQuery ids={rows.flatMap((r) => [r.provider.id, r.consumer.id])} />
     </>
   );
 

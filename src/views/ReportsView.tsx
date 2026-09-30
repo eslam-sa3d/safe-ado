@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { toDay } from "../api/reports";
 import { Level } from "../api/types";
 import { ErrorBar, Spinner, useAsync } from "../components/common";
-import { useSafe } from "../components/context";
+import { useCan, useSafe } from "../components/context";
+import { FlowWidget } from "./reports/FlowWidget";
 import { BurnupWidget } from "./reports/BurnupWidget";
 import { BusinessValueWidget } from "./reports/BusinessValueWidget";
 import { CriticalDependenciesWidget } from "./reports/CriticalDependenciesWidget";
@@ -35,7 +36,8 @@ export type WidgetKey =
   | "risks"
   | "overview"
   | "iterations"
-  | "predictability";
+  | "predictability"
+  | "flow";
 
 const PI_WIDGETS: WidgetKey[] = [
   "piProgress",
@@ -54,9 +56,9 @@ const PI_WIDGETS: WidgetKey[] = [
 /** Agile Hive's widget matrix per layer (the header is always shown). */
 export const LEVEL_WIDGETS: Record<Level, WidgetKey[]> = {
   portfolio: ["dependencies", "milestones", "overview"],
-  solution: [...PI_WIDGETS, "overview", "predictability"],
-  art: [...PI_WIDGETS, "overview", "predictability"],
-  team: [...PI_WIDGETS, "iterations", "predictability"],
+  solution: [...PI_WIDGETS, "overview", "predictability", "flow"],
+  art: [...PI_WIDGETS, "overview", "predictability", "flow"],
+  team: [...PI_WIDGETS, "iterations", "predictability", "flow"],
 };
 
 function render(key: WidgetKey, data: ReportData, today: number) {
@@ -76,7 +78,7 @@ function render(key: WidgetKey, data: ReportData, today: number) {
     case "dependencies":
       return <DependencyOverviewWidget key={key} data={data} />;
     case "burnup":
-      return <BurnupWidget key={key} data={data} today={today} />;
+      return <BurnupWidget key={key} data={data} />;
     case "milestones":
       return <MilestonesWidget key={key} data={data} today={today} />;
     case "objectives":
@@ -89,6 +91,8 @@ function render(key: WidgetKey, data: ReportData, today: number) {
       return <IterationOverviewWidget key={key} data={data} today={today} />;
     case "predictability":
       return <PredictabilityWidget key={key} data={data} />;
+    case "flow":
+      return <FlowWidget key={key} data={data} />;
   }
 }
 
@@ -96,7 +100,11 @@ function render(key: WidgetKey, data: ReportData, today: number) {
 export function ReportsView() {
   const { config, node, pi } = useSafe();
   const today = useMemo(() => toDay(localToday()), []);
-  const { data, loading, error, reload } = useAsync(() => loadReportData(config, node, pi), [config, node.id, pi?.path]);
+  const can = useCan();
+  const { data, loading, error, reload } = useAsync(
+    () => loadReportData(config, node, pi, { today, persist: can.plan }),
+    [config, node.id, pi?.path, can.plan]
+  );
 
   return (
     <div className="reports-dashboard">

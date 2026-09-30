@@ -1,8 +1,8 @@
-import { burnup, BurnupDay } from "../../api/reports";
+import { Burnup, BurnupDay } from "../../api/reports";
 import { fmtDate } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { SelectPi, Widget } from "./Widget";
+import { SelectPi, SnapshotNote, Widget } from "./Widget";
 
 const W = 720;
 const H = 240;
@@ -16,19 +16,37 @@ const SERIES: { key: keyof Pick<BurnupDay, "scope" | "burned" | "ideal" | "forec
 ];
 
 /** Burnup of the PI's story points with iteration bands, a Today marker and a forecast. */
-export function BurnupWidget({ data, today }: { data: ReportData; today: number }) {
+export function BurnupWidget({ data }: { data: ReportData }) {
   const { pi } = useSafe();
-  const chart = pi && burnup(pi, data.piStories, today);
+  const snap = data.snapshot?.burnup ? data.snapshot : undefined;
+  const chart = snap?.burnup ?? data.burnup;
   return (
     <Widget title="Burnup" size="wide">
-      {!pi ? <SelectPi /> : !chart ? <p className="muted widget-hint">{pi.name} has no start and finish dates.</p> : <Chart chart={chart} />}
+      {!pi ? (
+        <SelectPi />
+      ) : !chart ? (
+        <p className="muted widget-hint">{pi.name} has no start and finish dates.</p>
+      ) : (
+        <>
+          <Chart chart={chart} />
+          {snap ? (
+            <SnapshotNote createdAt={snap.createdAt} />
+          ) : (
+            data.historyError && (
+              <p className="muted small burnup-note" role="note">
+                History unavailable ({data.historyError}); scope and burned points use the stories' current state.
+              </p>
+            )
+          )}
+        </>
+      )}
     </Widget>
   );
 }
 
-function Chart({ chart }: { chart: NonNullable<ReturnType<typeof burnup>> }) {
+function Chart({ chart }: { chart: Burnup }) {
   const n = chart.days.length;
-  const max = Math.max(1, chart.scope, ...chart.days.map((d) => d.burned ?? 0));
+  const max = Math.max(1, chart.scope, ...chart.days.map((d) => Math.max(d.scope, d.burned ?? 0)));
   const iw = W - PAD.left - PAD.right;
   const ih = H - PAD.top - PAD.bottom;
   const step = n > 1 ? iw / (n - 1) : iw;

@@ -21,19 +21,19 @@ const PI_WIDGETS = [
 describe("Reports dashboard", () => {
   it("shows every widget except the Iteration Overview on an ART", async () => {
     await renderReports();
-    expect(widgetTitles()).toEqual(["Unit", ...PI_WIDGETS, "PI Overview", "PI Predictability"]);
+    expect(widgetTitles()).toEqual(["Unit", ...PI_WIDGETS, "PI Overview", "PI Predictability", "Flow metrics"]);
   });
 
   it("shows every widget except the PI Overview on a team", async () => {
     await renderReports({ nodeId: "n-red" });
-    expect(widgetTitles()).toEqual(["Unit", ...PI_WIDGETS, "Iteration Overview", "PI Predictability"]);
+    expect(widgetTitles()).toEqual(["Unit", ...PI_WIDGETS, "Iteration Overview", "PI Predictability", "Flow metrics"]);
   });
 
   it("shows the ART widgets on a Large Solution", async () => {
     const config = makeConfig();
     config.root.children = [{ id: "n-sol", name: "Big Solution", level: "solution", areaPath: "Fabrikam", children: config.root.children }];
     await renderReports({ config, nodeId: "n-sol" });
-    expect(widgetTitles()).toEqual(["Unit", ...PI_WIDGETS, "PI Overview", "PI Predictability"]);
+    expect(widgetTitles()).toEqual(["Unit", ...PI_WIDGETS, "PI Overview", "PI Predictability", "Flow metrics"]);
   });
 
   it("shows header, dependencies, milestones and the Epic Overview on the portfolio", async () => {
@@ -43,7 +43,7 @@ describe("Reports dashboard", () => {
 
   it("asks for a PI in every PI widget when none is selected", async () => {
     await renderReports({ pi: null, pis: [] });
-    for (const title of [...PI_WIDGETS, "PI Overview"]) {
+    for (const title of [...PI_WIDGETS, "PI Overview", "Flow metrics"]) {
       expect(within(widget(title)).getByText("Select a PI to see this report.")).toBeInTheDocument();
     }
     expect(within(widget("PI Predictability")).getByText("No data.")).toBeInTheDocument();

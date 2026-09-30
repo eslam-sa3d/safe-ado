@@ -1,7 +1,7 @@
 import { teamVelocity, trainVelocity } from "../../api/reports";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { SelectPi, Widget } from "./Widget";
+import { SelectPi, SnapshotNote, Widget } from "./Widget";
 
 /** Velocity: per-iteration average for teams, per-PI totals for ARTs and solutions. */
 export function VelocityWidget({ data, today }: { data: ReportData; today: number }) {
@@ -13,7 +13,8 @@ export function VelocityWidget({ data, today }: { data: ReportData; today: numbe
       </Widget>
     );
   const team = node.level === "team";
-  const v = team ? teamVelocity(pi, pis, data.stories, today) : trainVelocity(pi, pis, data.stories, today);
+  const snap = data.snapshot;
+  const v = snap?.velocity ?? (team ? teamVelocity(pi, pis, data.stories, today) : trainVelocity(pi, pis, data.stories, today));
   return (
     <Widget title="Velocity">
       <div className="kpi">
@@ -21,6 +22,20 @@ export function VelocityWidget({ data, today }: { data: ReportData; today: numbe
         <div className="muted small">
           SP {team ? "per iteration" : "per PI"} · {v.basis}
         </div>
+        {snap && (
+          <>
+            {team && snap.sprintVelocity.length > 0 && (
+              <ul className="snapshot-sprints small" aria-label="Velocity per iteration">
+                {snap.sprintVelocity.map((s) => (
+                  <li key={s.path}>
+                    <span>{s.name}</span> <strong>{s.done}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <SnapshotNote createdAt={snap.createdAt} />
+          </>
+        )}
       </div>
     </Widget>
   );
