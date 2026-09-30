@@ -209,6 +209,24 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | FORM-02 | "Open children in query" opens the item's children in Azure Boards | As described | Auto: `form/FormPanel.test.tsx` |
 | MAN-DND | Mouse and touchpad dragging on the Roadmap and boards in a real browser | Smooth; no text selection glitches | **Manual** |
 
+## 11b. Data governance (audit, backup, permissions, roles)
+
+| ID | Scenario | Expected | Verified by |
+|---|---|---|---|
+| GOV-01 | Every write through the document stores is stamped | `createdBy`/`createdAt` on create (kept on update, never credited to the current user for older documents), `modifiedBy`/`modifiedAt` on every write; snapshots are not stamped | Auto: `api/governance.test.ts` |
+| GOV-02 | Every create, update and delete is appended to `audit-<projectId>` | Collection, document id, action, user, time, label and a compact diff of the changed top-level fields; no-op updates are not logged; config changes are logged too | Auto: `api/governance.test.ts` |
+| GOV-03 | The change log cannot break a save | A failed pre-read or audit write is ignored and the document is still saved or deleted | Auto: `api/governance.test.ts` |
+| GOV-04 | Retention | Entries older than 180 days and beyond the newest 2000 are pruned, at most 50 per pass, by a background pass started on about 1 write in 25 | Auto: `api/governance.test.ts` |
+| GOV-05 | History of an objective or a risk | The History dialog lists who changed which fields and when, newest first; available to read-only users | Auto: `views/Governance.test.tsx` |
+| GOV-06 | Setup audit log | Loads on demand, newest first, filters by data and user, pages 100 at a time, shows load errors | Auto: `views/Governance.test.tsx` |
+| GOV-07 | Export SAFe data | One JSON file with the format name, schema version, project, configuration and every document collection (without etags) | Auto: `api/governance.test.ts`, `views/Governance.test.tsx` |
+| GOV-08 | Import a backup | The file is validated first; a summary (counts, source project, author, unknown collections) is confirmed; merge or overwrite; the configuration is optional; the audit log is never deleted; one "import" entry is logged; administrators only | Auto: `api/governance.test.ts`, `views/Governance.test.tsx` |
+| GOV-09 | A permission check errors (not "denied") | Extension-data writes (objectives, risks, milestones, capacity, votes, reviews, config) become read-only with an explanation and Retry; work item edits stay available | Auto: `views/Governance.test.tsx`, `api/governance.test.ts` |
+| GOV-10 | Retry after a failed check | The checks run again and the views unlock once they succeed | Auto: `views/Governance.test.tsx` |
+| GOV-11 | SAFe roles | Members' roles come from a list; older free-text roles are mapped case-insensitively, unknown ones become "Other" with their label kept | Auto: `api/governance.test.ts`, `views/Governance.test.tsx`, `views/SetupMembers.test.tsx` |
+| GOV-12 | Actual BV by Business Owners | When the unit or an ancestor has Business Owners, only they (matched by identity id or sign-in name) can enter Actual BV; others see it read-only with a hint; who entered it and when is recorded and shown | Auto: `views/Governance.test.tsx`, `api/governance.test.ts` |
+| GOV-13 | Restore on a freshly installed extension | Export, uninstall, reinstall, import: configuration and documents come back | Manual |
+
 ## 12. Security and permissions (manual)
 
 | ID | Scenario | Expected |
@@ -217,6 +235,7 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | SEC-02 | User without "Edit project-level information" creates a PI | Iteration creation fails with the server message |
 | SEC-03 | Project A's data is not visible from project B | Config, objectives and risks are isolated per project |
 | SEC-04 | Scopes are minimal | Only `vso.work_write` and `vso.project` are requested |
+| SEC-05 | A member writes an objective through the Extension Data REST API directly | The write succeeds (there is no server-side ACL) and does not appear in the audit log, which records writes made through SAFe Ado only. The next SAFe Ado write to that document logs the difference |
 
 ## 13. Regression bugs caught by this suite
 
