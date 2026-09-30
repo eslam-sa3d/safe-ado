@@ -250,10 +250,11 @@ describe("Work Item List", () => {
       fireEvent.change(input, { target: { value: "#2" } });
       fireEvent.keyDown(input, { key: "Enter" });
       fireEvent.blur(input);
-      await waitFor(() => expect(patches(10)).toHaveLength(2));
+      // One atomic request: remove the old link and add the new one.
+      await waitFor(() => expect(patches(10)).toHaveLength(1));
       const rels = fake.workItems.get(10)!.relations!.filter((r) => r.rel === PARENT);
       expect(rels.map((r) => r.url)).toEqual([url(2)]);
-      expect(patches(10)[0].body[0].op).toBe("remove");
+      expect(patches(10)[0].body.map((o: any) => o.op)).toEqual(["remove", "add"]);
       expect(screen.getByLabelText("Parent of #10")).toHaveValue("2");
 
       // Escape reverts the draft; unchanged input does nothing.
@@ -264,12 +265,12 @@ describe("Work Item List", () => {
       fireEvent.blur(again);
       fireEvent.change(again, { target: { value: "#2" } });
       fireEvent.blur(again);
-      expect(patches(10)).toHaveLength(2);
+      expect(patches(10)).toHaveLength(1);
 
       // Blank removes the parent.
       fireEvent.change(again, { target: { value: " " } });
       fireEvent.blur(again);
-      await waitFor(() => expect(patches(10)).toHaveLength(3));
+      await waitFor(() => expect(patches(10)).toHaveLength(2));
       expect(fake.workItems.get(10)!.relations!.some((r) => r.rel === PARENT)).toBe(false);
       expect(screen.getByLabelText("Parent of #10")).toHaveValue("");
     });

@@ -1,11 +1,11 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { emptyMeta, metaStore } from "../api/data";
-import { EMPTY_FILTER, ExtraFacet, facetOptions, ItemFilter, matchesFilter, withWiqlFilter } from "../api/filters";
+import { EMPTY_FILTER, ExtraFacet, facetOptions, ItemFilter, matchesFilter, wiqlSuffix, withWiqlFilter } from "../api/filters";
+import { changeParent } from "../api/teamboard";
 import { boardType, findNode, flatten, scopeAreas } from "../api/org";
 import { scopeQuery, typeChain } from "../api/queries";
 import { F, LINK, OrgNode, ProgramIncrement, SafeConfig, WorkItem, WorkItemMeta } from "../api/types";
 import {
-  addLink,
   getStateCategories,
   getTeamMembers,
   getWorkItems,
@@ -13,7 +13,6 @@ import {
   openWorkItem,
   queryWorkItems,
   relationTargetId,
-  removeLink,
   setFields,
 } from "../api/wit";
 import { CATEGORY_COLOR, Empty, ErrorBar, Info, lastSegment, Spinner, typeColor, useAsync } from "../components/common";
@@ -169,8 +168,9 @@ export function expectedParentType(config: SafeConfig, type: string): string | u
 }
 
 /** Loads the unit's items, their parents, child areas / iterations and SAFe metadata. */
-async function loadRows(types: string[], chain: string[], areas: string[], wiql: string, needChildren: boolean): Promise<ListData> {
-  const query = withWiqlFilter(scopeQuery(types, areas, undefined, F.id), { ...EMPTY_FILTER, wiql });
+async function loadRows(types: string[], chain: string[], areas: string[], filter: ItemFilter, needChildren: boolean): Promise<ListData> {
+  // The advanced clause and the WIQL of active quick filters apply server-side.
+  const query = withWiqlFilter(scopeQuery(types, areas, undefined, F.id), { ...EMPTY_FILTER, wiql: filter.wiql, quick: filter.quick });
   const [items, categoryOf, metas] = await Promise.all([
     queryWorkItems(query, [], true),
     getStateCategories(Array.from(new Set([...types, ...chain]))),
@@ -221,12 +221,13 @@ async function loadRows(types: string[], chain: string[], areas: string[], wiql:
 }
 
 /**
- * One CSV cell. Text starting with =, +, -, @, tab or CR is prefixed with an apostrophe so
- * spreadsheets don't evaluate it as a formula (CSV injection); then quoted when needed.
+ * One CSV cell. Text starting with =, +, -, @ (also after leading whitespace), tab or CR is
+ * prefixed with an apostrophe so spreadsheets don't evaluate it as a formula (CSV injection);
+ * then quoted when needed.
  */
 export function csvCell(value: string | number): string {
   let s = String(value);
-  if (typeof value === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (typeof value === "string" && /^(?:[\t\r]|\s*[=+\-@])/.test(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -254,8 +255,8 @@ export function WorkItemList() {
   const [error, setError] = useState<string>();
 
   const { data, loading, error: loadError, setData } = useAsync(
-    () => loadRows(types, chain, areas, filter.wiql, needChildren),
-    [types.join("|"), chain.join("|"), areas.join("|"), filter.wiql, needChildren]
+    () => loadRows(types, chain, areas, filter, needChildren),
+    [types.join("|"), chain.join("|"), areas.join("|"), wiqlSuffix(filter), needChildren]
   );
   const { data: members } = useAsync(() => (readOnly ? Promise.resolve([]) : loadMembers(node)), [node.id, readOnly]);
 
@@ -338,6 +339,7 @@ export function WorkItemList() {
       pisFacet,
       facet("owner", "Owning team", (r) => [nodeName(r.meta?.owningNodeId)].filter(Boolean)),
       facet("assigned", "Assigned teams", assignedTeams),
+      facet("teams", "Teams involved", (r) => teamsInvolved(node, r).map((n) => n.name)),
       involvement,
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -444,11 +446,10 @@ export function WorkItemList() {
       row,
       (r) => ({ ...r, parentId: next, parentOnItem: next !== null }),
       async () => {
-        if (old !== null) {
-          if (row.parentOnItem) await removeLink(row.item.id, old, LINK.parent);
-          else await removeLink(old, row.item.id, LINK.child);
-        }
-        if (next !== null) await addLink(row.item.id, next, LINK.parent);
+        // Fresh relations (indexes), so remove + add go in one atomic request when the link is on the item.
+        const [current] = await getWorkItems([row.item.id], undefined, true);
+        if (!current) throw new Error("the work item no longer exists");
+        await changeParent(current, old, next);
       },
       "the parent"
     );
@@ -486,7 +487,8 @@ export function WorkItemList() {
       columns.map((c) => c.label),
       visible.map((r) => columns.map((c) => cellText(r, c.key)))
     );
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    // The BOM makes Excel read the file as UTF-8 (accents, non-Latin names).
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `${node.name} work items.csv`;

@@ -1,4 +1,4 @@
-import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { capacityId, capacityStore, emptyMeta, findCapacity, metaStore } from "../api/data";
 import { CRITICALITY_COLOR, CRITICALITY_LABEL, dependencyLinkTypes, DependencyLinkTypes, sprintIndex } from "../api/dependencies";
 import { applyFilter, EMPTY_FILTER, ExtraFacet, facetOptions, isFilterActive, ItemFilter, wiqlSuffix, withWiqlFilter } from "../api/filters";
@@ -14,6 +14,7 @@ import {
   boardDependencies,
   boardFacets,
   buildLanes,
+  changeParent,
   childIds,
   CRITICALITY_RANK,
   decodeDrag,
@@ -30,6 +31,7 @@ import {
   IterationStatus,
   Lane,
   moveChanges,
+  openStatesClause,
   ownParentId,
   parentMap,
   piOf,
@@ -69,11 +71,10 @@ import {
   openWorkItem,
   queryIds,
   queryWorkItems,
-  removeLink,
   setFields,
 } from "../api/wit";
 import { FilterBar } from "../components/FilterBar";
-import { CATEGORY_COLOR, ErrorBar, fmtDate, Info, lastSegment, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
+import { CATEGORY_COLOR, ErrorBar, fmtDate, Icon, Info, lastSegment, RefreshContext, Spinner, storage, typeColor, useAsync } from "../components/common";
 import { useCan, useSafe } from "../components/context";
 
 /**
@@ -140,6 +141,40 @@ const [loadLayout, saveLayout] = storage<Layout>("safe-ado-teamboard-layout", "c
 const DAY = 86_400_000;
 const isDenied = (e: any) => e?.status === 401 || e?.status === 403;
 const notRemoved = (category: Category) => (i: WorkItem) => category(i.fields[F.type], i.fields[F.state]) !== "Removed";
+
+interface LaneOption {
+  key: string;
+  title: string;
+}
+
+const laneOption = (l: Lane): LaneOption => ({ key: l.key, title: l.feature ? `#${l.feature.id} ${l.title}` : l.title });
+
+/** Lane options of several blocks, first occurrence of each key wins. */
+function unionLanes(lists: LaneOption[][]): LaneOption[] {
+  const out = new Map<string, LaneOption>();
+  lists.flat().forEach((o) => out.has(o.key) || out.set(o.key, o));
+  return Array.from(out.values());
+}
+
+/**
+ * Loads `fn` whenever `key` changes (not on re-renders or unrelated reloads); keeps the previous
+ * data until the new one arrives. An undefined key means "not ready yet".
+ */
+function useKeyed<T>(key: string | undefined, fn: () => Promise<T>): { data?: T; error?: string } {
+  const [state, setState] = useState<{ data?: T; error?: string }>({});
+  useEffect(() => {
+    if (key === undefined) return;
+    let live = true;
+    fn()
+      .then((data) => live && setState({ data }))
+      .catch((e) => live && setState((s) => ({ data: s.data, error: e?.message ?? String(e) })));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return state;
+}
 
 /** Loads one team's stories in the PI, their Feature parents, assigned features and external dependency ends. */
 async function loadBlock(ctx: Ctx, team: OrgNode, filter: ItemFilter): Promise<BlockData> {
@@ -261,10 +296,13 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const [layout, setLayoutState] = useState<Layout>(loadLayout);
   const [collapse, setCollapse] = useState<{ all: boolean; over: Record<string, boolean> }>({ all: false, over: {} });
   const [actionError, setActionError] = useState<string>();
-  const [backlogToken, setBacklogToken] = useState(0);
+  /** Bumped by actual board changes (drop, create, remove); keys the cached side data. */
+  const [version, setVersion] = useState(0);
   const [creating, setCreating] = useState<{ lane: string; sprint: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState<DragInfo | null>(null);
+  const [siblingLanes, setSiblingLanes] = useState<Record<string, LaneOption[]>>({});
+  const tick = useContext(RefreshContext);
   const wiqlKey = wiqlSuffix(filter);
 
   const { data, loading, error, reload, setData } = useAsync(async () => {
@@ -277,18 +315,28 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
     const metas = new Map(metaDocs.map((m) => [m.workItemId, m]));
     const ctx: Ctx = { config, pi, pis, types, category, metas, artAreas, link: dependencyLinkTypes(config) };
     const block = await loadBlock(ctx, team, filter);
-    return { ctx, block, caps };
-  }, [team.id, pi.path, wiqlKey]);
+    // Load counts every story of the team in the sprint, whatever the (server-side) filter shows.
+    const all = wiqlKey
+      ? (await queryWorkItems(scopeQuery(types, scopeAreas(team), pi.path), [F.id, F.type, F.state, F.iteration, config.storyPointsField])).filter(
+          notRemoved(category)
+        )
+      : block.stories;
+    return { ctx, block, caps, all, key: `${tick}|${version}|${wiqlKey}` };
+  }, [team.id, pi.path, wiqlKey, version]);
 
   const block = data?.block;
   const ctx = data?.ctx;
 
-  // Sibling critical counts and rolled-over shadows load after the board, whenever it reloads.
-  const summaries = useAsync(
-    async () => (block && ctx && siblings.length ? loadSiblingSummaries(ctx, siblings, block, filter) : new Map<string, SiblingSummary>()),
-    [ctx]
+  // Sibling critical counts and rolled-over shadows are cached until the global refresh or a
+  // board change; reloading the main block alone (e.g. after a work item dialog) keeps them.
+  const summaries = useKeyed(data?.key, async () =>
+    block && ctx && siblings.length ? loadSiblingSummaries(ctx, siblings, block, filter) : new Map<string, SiblingSummary>()
   );
-  const rolled = useAsync(async () => (ctx ? loadRolledOver(ctx, team, past) : []), [ctx]);
+  const rolled = useKeyed(data ? `${tick}|${version}` : undefined, async () => (ctx ? loadRolledOver(ctx, team, past) : []));
+  const onSiblingLanes = useCallback(
+    (id: string, list: LaneOption[]) => setSiblingLanes((s) => (JSON.stringify(s[id]) === JSON.stringify(list) ? s : { ...s, [id]: list })),
+    []
+  );
 
   const setLayout = (l: Layout) => {
     setLayoutState(l);
@@ -301,7 +349,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
     () => (block && ctx ? buildLanes(block.stories, block.features, block.parents, ctx.metas, team.id, pi.path) : []),
     [block, ctx, team.id, pi.path]
   );
-  const loads = useMemo(() => (block ? sprintLoads(block.stories, sprintPaths, config.storyPointsField) : []), [block, sprintPaths.join("|")]);
+  const loads = useMemo(() => (data ? sprintLoads(data.all, sprintPaths, config.storyPointsField) : []), [data, sprintPaths.join("|")]);
   const deps: BoardDependency[] = useMemo(() => (block && ctx ? blockDependencies(block, ctx) : []), [block, ctx]);
   const facets: ExtraFacet[] = useMemo(
     () => (block && ctx ? boardFacets(block.stories, block.features, block.parents, ctx.metas, pis) : []),
@@ -341,14 +389,23 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
       setActionError(`${label}: ${e?.message ?? e}`);
     } finally {
       setBusy(false);
-      // Reloading the board also reloads expanded sibling blocks and their counts (new ctx).
-      reload(true);
-      setBacklogToken((t) => t + 1);
+      // A board change reloads the board, the backlog, sibling counts, expanded siblings and shadows.
+      setVersion((v) => v + 1);
     }
   };
 
   const saveMeta = (id: number, change: (m: WorkItemMeta) => WorkItemMeta) =>
     metaStore.save(change(data!.ctx.metas.get(id) ?? emptyMeta(id)));
+
+  /** The item's Feature parent: the lane it is shown in, or (off the board) its own parent when that is a Feature. */
+  const featureParentOf = async (item: WorkItem): Promise<number | null> => {
+    const lanesParent = data!.block.parents.get(item.id);
+    if (lanesParent !== undefined) return lanesParent;
+    const own = ownParentId(item);
+    if (own === null || data!.block.stories.some((s) => s.id === item.id)) return null;
+    const known = data!.block.features.find((f) => f.id === own) ?? (await getWorkItems([own], [F.id, F.type]))[0];
+    return known?.fields[F.type] === config.types.feature ? own : null;
+  };
 
   const onDrop = (raw: string, lane: Lane | null, sprint: Sprint | null) => {
     setDragging(null);
@@ -356,7 +413,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
     if (!payload || !data || readOnly) return;
     if (payload.kind === "feature") {
       if (lanes.some((l) => l.feature?.id === payload.id && l.assigned)) return;
-      void run(`Could not add swimlane for #${payload.id}`, () => saveMeta(payload.id, (m) => assignMeta(m, team.id, pi.path)));
+      void run(`Could not add swimlane for #${payload.id}`, () => saveMeta(payload.id, (m) => assignMeta(m, team.id, pi)));
       return;
     }
     if (!lane || !sprint) return;
@@ -365,27 +422,33 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
       const [item] = await getWorkItems([id], undefined, true);
       if (!item) throw new Error("the work item no longer exists");
       const changes = moveChanges(item, sprint.path, team.areaPath);
-      const current = data.block.parents.get(id) ?? ownParentId(item);
+      // Only the Feature parent (the swimlane) is managed here: staying in the lane never touches
+      // links, Independent removes only a Feature parent, and a Feature lane replaces any parent.
+      const featureParent = await featureParentOf(item);
       const target = lane.feature?.id ?? null;
-      if (Object.keys(changes).length) await setFields(id, changes);
-      if (current === target) return;
-      if (current !== null) {
-        // Remove the link from whichever side holds it.
-        if (ownParentId(item) === current) await removeLink(id, current, LINK.parent);
-        else await removeLink(current, id, LINK.child);
-      }
-      if (target !== null) await addLink(id, target, LINK.parent);
+      if (target === featureParent) await changeParent(item, null, null, changes);
+      else if (target === null) await changeParent(item, featureParent, null, changes);
+      else await changeParent(item, ownParentId(item) ?? featureParent, target, changes);
     });
   };
 
   const removeLane = (lane: Lane) =>
-    run(`Could not remove swimlane "${lane.title}"`, () => saveMeta(lane.feature!.id, (m) => unassignMeta(m, team.id, pi.path)));
+    run(`Could not remove swimlane "${lane.title}"`, () => saveMeta(lane.feature!.id, (m) => unassignMeta(m, team.id, pi)));
 
   const removeFromBoard = (item: WorkItem) =>
     // Back to the unit's cadence root (its own PI root, an ancestor's, or the project's).
     run(`Could not remove #${item.id} from the board`, () => setFields(item.id, { [F.iteration]: piRoot ?? config.piRootIteration }));
 
-  const open = (id: number) => run(`Could not open #${id}`, () => openWorkItem(id));
+  /** Opens the work item dialog; once it closes only the main block reloads (side data stays cached). */
+  const open = async (id: number) => {
+    try {
+      await openWorkItem(id);
+    } catch (e: any) {
+      setActionError(`Could not open #${id}: ${e?.message ?? e}`);
+      return;
+    }
+    reload(true);
+  };
 
   const create = (lane: Lane, sprint: Sprint, values: { title: string; type: string; points: string }) =>
     run("Could not create the work item", async () => {
@@ -422,8 +485,10 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   if (!data || !block || !ctx) return <ErrorBar message={error} />;
 
   const visibleStories = new Set(applyFilter(block.stories, filter, facets).map((s) => s.id));
-  const laneOptions = lanes.map((l) => ({ key: l.key, title: l.feature ? `#${l.feature.id} ${l.title}` : l.title }));
+  // The swimlane filter applies across all blocks, so it lists the (expanded) siblings' features too.
+  const laneOptions = unionLanes([lanes.filter((l) => l.feature).map(laneOption), ...Object.values(siblingLanes), [laneOption(lanes[lanes.length - 1])]]);
   const laneVisible = (l: Lane) => laneFilter.length === 0 || laneFilter.includes(l.key);
+  const filtering = isFilterActive(filter);
   const featureTitle = (id: number | undefined) => block.features.find((f) => f.id === id)?.fields[F.title] as string | undefined;
   const shownDeps = deps.filter((d) => crit.includes(d.criticality));
   const critical = deps.filter((d) => d.criticality === "critical").length;
@@ -565,7 +630,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                 </div>
               )}
             </div>
-            {lanes.filter(laneVisible).map((lane) => {
+            {lanes.filter((l) => laneVisible(l) && !(filtering && l.feature && !l.stories.some((s) => visibleStories.has(s.id)))).map((lane) => {
               const key = `${team.id}|${lane.key}`;
               const collapsed = isCollapsed(key);
               const stories = lane.stories.filter((s) => visibleStories.has(s.id));
@@ -649,8 +714,10 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                 key={sib.id}
                 team={sib}
                 ctx={ctx}
+                reloadKey={data.key}
                 filter={filter}
                 summary={summaries.data?.get(sib.id)}
+                onLanes={onSiblingLanes}
                 laneVisible={laneVisible}
                 isCollapsed={isCollapsed}
                 onToggleLane={toggleLane}
@@ -718,7 +785,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
       <UnplannedSidebar
         team={team}
         ctx={ctx}
-        token={backlogToken}
+        token={version}
         canPlan={!readOnly}
         onOpen={open}
         onDragStart={setDragging}
@@ -1068,21 +1135,29 @@ function Card(props: {
 function SiblingBlock(props: {
   team: OrgNode;
   ctx: Ctx;
+  /** Changes on the global refresh, a board change or a new server-side filter (not on a card open). */
+  reloadKey: string;
   filter: ItemFilter;
   summary?: SiblingSummary;
+  onLanes: (teamId: string, lanes: LaneOption[]) => void;
   laneVisible: (l: Lane) => boolean;
   isCollapsed: (key: string) => boolean;
   onToggleLane: (key: string) => void;
   cardProps: { category: Category; pointsField: string; layout: Layout; onOpen: (id: number) => void };
 }) {
-  const { team, ctx, filter, summary } = props;
+  const { team, ctx, filter, summary, onLanes } = props;
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<BlockData>();
   const [error, setError] = useState<{ message: string; denied: boolean }>();
   const [loading, setLoading] = useState(false);
-  const wiqlKey = wiqlSuffix(filter);
 
-  // Reloads when expanded and whenever the board reloads (new ctx), e.g. after a drop.
+  // The team's feature lanes join the swimlane filter once loaded.
+  useEffect(() => {
+    if (data) onLanes(team.id, buildLanes(data.stories, data.features, data.parents, ctx.metas, team.id, ctx.pi.path).filter((l) => l.feature && l.stories.length).map(laneOption));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  // Reloads when expanded and whenever the board data key changes, e.g. after a drop.
   useEffect(() => {
     if (!open) return;
     let live = true;
@@ -1096,7 +1171,7 @@ function SiblingBlock(props: {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ctx, wiqlKey]);
+  }, [open, props.reloadKey]);
 
   const sprintPaths = ctx.pi.sprints.map((s) => s.path);
   const loadedCount = useMemo(
@@ -1282,20 +1357,26 @@ function BacklogList(props: SidebarProps & { tab: Tab }) {
   const sprintPaths = pi.sprints.map((s) => s.path);
   const nodeName = (id: string) => findNode(config.root, id)?.name;
 
+  // Active quick filters may carry WIQL clauses: those apply server-side, like on the board.
+  const quick: ItemFilter = { ...EMPTY_FILTER, quick: filter.quick };
+  const quickKey = wiqlSuffix(quick);
+
   const { data, loading, error } = useAsync(async () => {
     if (tab === "team") {
-      const items = await queryWorkItems(scopeQuery(types, scopeAreas(team)), baseFields(config).concat(F.priority));
+      // Completed / Removed stories are excluded by the server, not downloaded and dropped.
+      const open = { ...quick, wiql: await openStatesClause(types) };
+      const items = await queryWorkItems(withWiqlFilter(scopeQuery(types, scopeAreas(team)), open), baseFields(config).concat(F.priority));
       return unplannedStories(items, sprintPaths, category);
     }
     // Only request optional fields the process has (unknown fields fail the whole batch).
     const known = new Set((await getFieldNames()).map((f) => f.referenceName));
     const optional = [F.priority, F.stackRank, F.businessValue, F.timeCriticality, F.effort, config.rroeField ?? DEFAULT_RROE_FIELD];
-    const items = await queryWorkItems(scopeQuery([config.types.feature], ctx.artAreas), [
+    const items = await queryWorkItems(withWiqlFilter(scopeQuery([config.types.feature], ctx.artAreas), quick), [
       ...baseFields(config),
       ...optional.filter((f) => known.has(f)),
     ]);
     return items.filter((i) => isOpen(i, category));
-  }, [tab, props.token]);
+  }, [tab, props.token, quickKey]);
 
   const items = data ?? [];
   const opts = facetOptions(items);

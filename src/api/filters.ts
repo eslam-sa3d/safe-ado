@@ -92,9 +92,43 @@ export function applyFilter(items: WorkItem[], f: ItemFilter, extraFacets: Extra
   return items.filter((i) => matchesFilter(i, f, extraFacets));
 }
 
-/** All WIQL clauses in effect (own + active quick filters). */
+/**
+ * Why a user-entered WIQL clause can't be appended to a scoped query, or null when it can.
+ * The clause is wrapped in "AND (<clause>)" after the project / area / iteration scope, so
+ * unbalanced parentheses or quotes (e.g. "1=1) OR (...") would escape that scope, and ORDER BY /
+ * ASOF / MODE would change the statement itself.
+ */
+export function wiqlClauseProblem(clause: string): string | null {
+  let depth = 0;
+  let quote: string | null = null;
+  let outside = "";
+  for (let i = 0; i < clause.length; i++) {
+    const c = clause[i];
+    if (quote) {
+      // A doubled quote is an escaped quote inside the literal.
+      if (c === quote && clause[i + 1] === quote) i++;
+      else if (c === quote) quote = null;
+      outside += " ";
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      outside += " ";
+      continue;
+    }
+    if (c === "(") depth++;
+    if (c === ")" && --depth < 0) return "Unbalanced parentheses in the WIQL clause.";
+    outside += c;
+  }
+  if (quote) return "Unbalanced quotes in the WIQL clause.";
+  if (depth !== 0) return "Unbalanced parentheses in the WIQL clause.";
+  if (/\bORDER\s+BY\b|\bASOF\b|\bMODE\b/i.test(outside)) return "ORDER BY, ASOF and MODE aren't allowed in a filter clause.";
+  return null;
+}
+
+/** All WIQL clauses in effect (own + active quick filters); clauses failing the guard are never sent. */
 function wiqlClauses(f: ItemFilter): string[] {
-  return [f.wiql.trim(), ...(f.quick ?? []).flatMap((q) => wiqlClauses(q.filter))].filter(Boolean);
+  return [f.wiql.trim(), ...(f.quick ?? []).flatMap((q) => wiqlClauses(q.filter))].filter((c) => !!c && !wiqlClauseProblem(c));
 }
 
 /** " AND (<clause>)" per WIQL clause in effect, else "". */
@@ -125,18 +159,50 @@ export function facetOptions(items: WorkItem[]) {
   };
 }
 
-/** Human-readable WIQL equivalent of the facets, for "Copy WIQL". */
-export function filterToWiql(f: ItemFilter): string {
+export interface WiqlExport {
+  wiql: string;
+  /** True when active facets without a WIQL form (iteration names, priority "None", SAFe facets) were left out. */
+  omitted: boolean;
+}
+
+/**
+ * WIQL equivalent of the filter, for "Copy WIQL". Only valid WIQL is emitted: "Unassigned" becomes
+ * `[System.AssignedTo] = ''` (ORed with named assignees); facets WIQL can't express are left out
+ * and flagged. Active quick filters are included (ANDed), like they apply.
+ */
+export function describeWiql(f: ItemFilter): WiqlExport {
   const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
   const parts: string[] = [];
+  let omitted = false;
   if (f.text.trim()) parts.push(`[System.Title] CONTAINS ${q(f.text.trim())}`);
   if (f.types.length) parts.push(`[System.WorkItemType] IN (${f.types.map(q).join(", ")})`);
   if (f.states.length) parts.push(`[System.State] IN (${f.states.map(q).join(", ")})`);
-  if (f.assignees.length) parts.push(`[System.AssignedTo] IN (${f.assignees.map(q).join(", ")})`);
+  if (f.assignees.length) {
+    const named = f.assignees.filter((a) => a !== "Unassigned");
+    const alts = [
+      named.length ? `[System.AssignedTo] IN (${named.map(q).join(", ")})` : "",
+      named.length < f.assignees.length ? `[System.AssignedTo] = ''` : "",
+    ].filter(Boolean);
+    parts.push(alts.length > 1 ? `(${alts.join(" OR ")})` : alts[0]);
+  }
   if (f.tags.length) parts.push("(" + f.tags.map((t) => `[System.Tags] CONTAINS ${q(t)}`).join(" OR ") + ")");
   const prios = (f.priorities ?? []).filter((p) => p !== "None");
   if (prios.length) parts.push(`[Microsoft.VSTS.Common.Priority] IN (${prios.join(", ")})`);
-  if (len(f.iterations)) parts.push("(" + f.iterations!.map((i) => `[System.IterationPath] UNDER ${q(i)}`).join(" OR ") + ")");
-  for (const c of wiqlClauses(f)) parts.push(`(${c})`);
-  return parts.join(" AND ");
+  if (prios.length < len(f.priorities)) omitted = true;
+  // The iteration facet matches the last path segment only, and view facets are client-side data.
+  if (len(f.iterations) || Object.values(f.extra ?? {}).some((v) => v.length)) omitted = true;
+  const own = f.wiql.trim();
+  if (own && !wiqlClauseProblem(own)) parts.push(`(${own})`);
+  for (const quick of f.quick ?? []) {
+    const sub = describeWiql(quick.filter);
+    // An AND chain of self-contained parts: no extra parentheses needed.
+    if (sub.wiql) parts.push(sub.wiql);
+    omitted ||= sub.omitted;
+  }
+  return { wiql: parts.join(" AND "), omitted };
+}
+
+/** WIQL equivalent of the filter, for "Copy WIQL" (see describeWiql). */
+export function filterToWiql(f: ItemFilter): string {
+  return describeWiql(f).wiql;
 }
