@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { localToday } from "../../src/api/rules";
 import { OrgNode, ProgramIncrement } from "../../src/api/types";
 import { getProgramIncrements } from "../../src/api/wit";
 import { PiManagementView } from "../../src/views/PiManagementView";
@@ -7,7 +8,12 @@ import { callsTo, fail, fake, makeConfig, PI2 } from "../fakeAdo";
 import { renderView } from "../utils";
 
 const DAY = 86_400_000;
-const day = (offset: number) => new Date(Date.now() + offset * DAY).toISOString().slice(0, 10);
+/** Today ± offset days on the user's local calendar. */
+const day = (offset: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return localToday(d);
+};
 const iso = (d: string) => `${d}T00:00:00Z`;
 
 async function renderPis(opts: Parameters<typeof renderView>[1] = {}) {

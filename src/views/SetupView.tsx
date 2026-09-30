@@ -1,20 +1,25 @@
 import { useState } from "react";
 import { newId } from "../api/data";
-import { childLevels, flatten, LEVEL_COLOR } from "../api/org";
+import { DEFAULT_DEPENDENCY_LINK } from "../api/dependencies";
+import { childLevels, flatten } from "../api/org";
+import { DEFAULT_RROE_FIELD } from "../api/rules";
 import { Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
 import {
   ClassificationNode,
   getAreaPaths,
   getAreaTree,
   getFieldNames,
-  getIterationPaths,
+  getIterationTree,
+  getRelationTypes,
   getTeamDefaultArea,
+  getTeamMembers,
   getTeams,
   getWorkItemTypes,
   nodePathToFieldPath,
+  RelationType,
 } from "../api/wit";
 import { ErrorBar, Field, Info, Spinner, useAsync, Icon, LevelPill } from "../components/common";
-import { useSafe } from "../components/context";
+import { useCan, useSafe } from "../components/context";
 
 function updateNode(root: OrgNode, id: string, fn: (n: OrgNode) => OrgNode): OrgNode {
   if (root.id === id) return fn(root);
@@ -28,8 +33,35 @@ function removeNode(root: OrgNode, id: string): OrgNode {
   return { ...root, children: root.children.filter((c) => c.id !== id).map((c) => removeNode(c, id)) };
 }
 
+/** Link types that can express a provider → consumer dependency (dependency or network topology, forward ends only). */
+export function dependencyLinkOptions(types: RelationType[]): RelationType[] {
+  return types.filter(
+    (t) => (t.attributes?.topology === "dependency" || t.attributes?.topology === "network") && !/-Reverse$/.test(t.referenceName)
+  );
+}
+
+/** The paired end of a link type: "X-Forward" ↔ "X-Reverse"; symmetric (network) types pair with themselves. */
+export function reverseLinkType(forward: string): string {
+  return /-Forward$/.test(forward) ? forward.replace(/-Forward$/, "-Reverse") : forward;
+}
+
+interface CheckItem {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+  target: string;
+}
+
+const SECTION = { types: "setup-types", pis: "setup-pis", hierarchy: "setup-hierarchy", dependencies: "setup-dependencies" };
+
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+}
+
 export function SetupView({ firstRun }: { firstRun: boolean }) {
   const { config, saveConfig } = useSafe();
+  const readOnly = !useCan().admin;
   const [draft, setDraft] = useState<SafeConfig>(config);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -37,19 +69,32 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
   const [generateMode, setGenerateMode] = useState<"art" | "solution">("art");
 
   const meta = useAsync(async () => {
-    const [types, fields, iterations, areas, teams] = await Promise.all([
+    const [types, fields, iterationTree, areas, teams, relationTypes] = await Promise.all([
       getWorkItemTypes(),
       getFieldNames(),
-      getIterationPaths(),
+      getIterationTree(),
       getAreaPaths(),
       getTeams(),
+      // Optional: without link types the dependency setting keeps its current value.
+      getRelationTypes().catch(() => [] as RelationType[]),
     ]);
+    const iterations: string[] = [];
+    const childCount = new Map<string, number>();
+    const walk = (n: ClassificationNode) => {
+      const path = nodePathToFieldPath(n.path);
+      iterations.push(path);
+      childCount.set(path.toLowerCase(), n.children?.length ?? 0);
+      n.children?.forEach(walk);
+    };
+    walk(iterationTree);
     return {
       types: types.map((t) => t.name).sort(),
       numericFields: fields.filter((f) => f.type === "double" || f.type === "integer").sort((a, b) => a.name.localeCompare(b.name)),
       iterations,
+      childCount,
       areas,
       teams,
+      relationTypes,
     };
   }, []);
 
@@ -100,6 +145,13 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
 
   if (meta.loading && !meta.data) return <Spinner label="Loading project metadata…" />;
   const m = meta.data;
+  const linkOptions = dependencyLinkOptions(m?.relationTypes ?? []);
+  const link = draft.dependencyLink ?? DEFAULT_DEPENDENCY_LINK;
+  const linkName = (ref: string) => m?.relationTypes.find((t) => t.referenceName === ref)?.name ?? ref;
+  const hasDefaultRroe = !!m?.numericFields.some((f) => f.referenceName === DEFAULT_RROE_FIELD);
+  const rroe = draft.rroeField ?? (hasDefaultRroe ? DEFAULT_RROE_FIELD : "");
+  const checks = checklist(draft, m);
+  const done = checks.filter((c) => c.ok).length;
 
   return (
     <div className="setup">
@@ -109,89 +161,178 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
           model your Portfolio → Large Solution → ART → Team hierarchy. The quickest start is <em>Generate from area paths</em>.
         </Info>
       )}
+      {readOnly && (
+        <div className="msg msg-info readonly-banner" role="note">
+          Read-only: only project administrators can change the SAFe configuration.
+        </div>
+      )}
       <ErrorBar message={meta.error ?? error} onClose={() => setError(undefined)} />
 
-      <div className="savebar">
-        <span className="muted">{dirty ? "Unsaved changes" : saved ? "Saved ✓" : "All changes saved"}</span>
-        <span className="spacer" />
-        <button className="btn" disabled={!dirty || saving} onClick={() => setDraft(config)}>
-          Discard
-        </button>
-        <button className="btn primary" disabled={(!dirty && !firstRun) || saving} onClick={save}>
-          {saving ? "Saving…" : "Save configuration"}
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="savebar">
+          <span className="muted">{dirty ? "Unsaved changes" : saved ? "Saved ✓" : "All changes saved"}</span>
+          <span className="spacer" />
+          <button className="btn" disabled={!dirty || saving} onClick={() => setDraft(config)}>
+            Discard
+          </button>
+          <button className="btn primary" disabled={(!dirty && !firstRun) || saving} onClick={save}>
+            {saving ? "Saving…" : "Save configuration"}
+          </button>
+        </div>
+      )}
 
-      <div className="two-col">
-        <section className="panel">
-          <div className="panel-header">
-            <h3>Work item types</h3>
-          </div>
-          <div className="pad form">
-            {(
-              [
-                ["epic", "Portfolio level (Epic)"],
-                ["capability", "Large Solution level (Capability) — optional"],
-                ["feature", "ART level (Feature)"],
-                ["story", "Team level (Story)"],
-              ] as const
-            ).map(([k, label]) => (
-              <Field key={k} label={label}>
-                <select
-                  value={draft.types[k]}
-                  onChange={(e) => setDraft({ ...draft, types: { ...draft.types, [k]: e.target.value } })}
-                >
-                  <option value="">{k === "capability" ? "(none — Features link directly to Epics)" : "(select)"}</option>
-                  {m?.types.map((t) => (
-                    <option key={t}>{t}</option>
+      <section className="panel setup-checklist" aria-label="Configuration checklist">
+        <div className="panel-header">
+          <h3>Configuration checklist</h3>
+          <span className="muted small">
+            {done} of {checks.length} done
+          </span>
+        </div>
+        <ul className="checklist pad">
+          {checks.map((c) => (
+            <li key={c.key} className={c.ok ? "ok" : "missing"} data-check={c.key}>
+              <span className="check-mark" aria-label={c.ok ? "Done" : "Missing"} role="img">
+                {c.ok ? "✓" : "✗"}
+              </span>
+              <button className="link" onClick={() => scrollToSection(c.target)}>
+                {c.label}
+              </button>
+              {c.detail && <span className="muted small">{c.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <fieldset className="plain-fieldset" disabled={readOnly}>
+        <div className="two-col">
+          <section className="panel" id={SECTION.types}>
+            <div className="panel-header">
+              <h3>Work item types</h3>
+            </div>
+            <div className="pad form">
+              {(
+                [
+                  ["epic", "Portfolio level (Epic)"],
+                  ["capability", "Large Solution level (Capability) — optional"],
+                  ["feature", "ART level (Feature)"],
+                  ["story", "Team level (Story)"],
+                  ["enabler", "Enabler type — optional"],
+                  ["theme", "Strategic Theme type — optional"],
+                ] as const
+              ).map(([k, label]) => {
+                const optional = k === "capability" || k === "enabler" || k === "theme";
+                return (
+                  <Field key={k} label={label}>
+                    <select
+                      value={draft.types[k] ?? ""}
+                      onChange={(e) => {
+                        // Unset optional types are left out so choosing "(none)" restores the saved config.
+                        const value = e.target.value || (k === "enabler" || k === "theme" ? undefined : "");
+                        setDraft({ ...draft, types: { ...draft.types, [k]: value } });
+                      }}
+                    >
+                      <option value="">
+                        {k === "capability" ? "(none — Features link directly to Epics)" : optional ? "(none)" : "(select)"}
+                      </option>
+                      {m?.types.map((t) => (
+                        <option key={t}>{t}</option>
+                      ))}
+                    </select>
+                  </Field>
+                );
+              })}
+              <Field label="Story size field">
+                <select value={draft.storyPointsField} onChange={(e) => setDraft({ ...draft, storyPointsField: e.target.value })}>
+                  {m?.numericFields.map((f) => (
+                    <option key={f.referenceName} value={f.referenceName}>
+                      {f.name} ({f.referenceName})
+                    </option>
                   ))}
                 </select>
               </Field>
-            ))}
-            <Field label="Story size field">
-              <select value={draft.storyPointsField} onChange={(e) => setDraft({ ...draft, storyPointsField: e.target.value })}>
-                {m?.numericFields.map((f) => (
-                  <option key={f.referenceName} value={f.referenceName}>
-                    {f.name} ({f.referenceName})
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        </section>
+            </div>
+          </section>
 
-        <section className="panel">
+          <section className="panel" id={SECTION.pis}>
+            <div className="panel-header">
+              <h3>Program Increments</h3>
+            </div>
+            <div className="pad form">
+              <Field label="PI root iteration">
+                <select
+                  value={draft.piRootIteration}
+                  // A new path needs a new id: the App resolves (and stores) it on the next load.
+                  onChange={(e) => setDraft({ ...draft, piRootIteration: e.target.value, piRootId: undefined })}
+                >
+                  {m?.iterations.map((p) => (
+                    <option key={p}>{p}</option>
+                  ))}
+                </select>
+              </Field>
+              <p className="muted small">
+                Each direct child of this iteration is treated as a PI, and its children as the PI's iterations (sprints + IP). Example:{" "}
+                <code>{draft.piRootIteration}\PI 1\PI 1 Sprint 1</code>. Solution Trains and ARTs can run their own cadence (set it in the
+                hierarchy below).
+              </p>
+            </div>
+          </section>
+        </div>
+
+        <section className="panel" id={SECTION.dependencies}>
           <div className="panel-header">
-            <h3>Program Increments</h3>
+            <h3>Dependencies &amp; WSJF</h3>
           </div>
           <div className="pad form">
-            <Field label="PI root iteration">
-              <select value={draft.piRootIteration} onChange={(e) => setDraft({ ...draft, piRootIteration: e.target.value })}>
-                {m?.iterations.map((p) => (
-                  <option key={p}>{p}</option>
-                ))}
-              </select>
-            </Field>
-            <p className="muted small">
-              Each direct child of this iteration is treated as a PI, and its children as the PI's iterations (sprints + IP). Example:{" "}
-              <code>{draft.piRootIteration}\PI 1\PI 1 Sprint 1</code>.
+            <div className="field-row">
+              <Field label="Dependency link type">
+                <select
+                  value={link.forward}
+                  onChange={(e) => setDraft({ ...draft, dependencyLink: { forward: e.target.value, reverse: reverseLinkType(e.target.value) } })}
+                >
+                  {!linkOptions.some((t) => t.referenceName === link.forward) && <option value={link.forward}>{link.forward}</option>}
+                  {linkOptions.map((t) => (
+                    <option key={t.referenceName} value={t.referenceName}>
+                      {t.name} ({t.referenceName})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="RR/OE field (WSJF)">
+                <select value={rroe} onChange={(e) => setDraft({ ...draft, rroeField: e.target.value })}>
+                  <option value="">(none)</option>
+                  {m?.numericFields.map((f) => (
+                    <option key={f.referenceName} value={f.referenceName}>
+                      {f.name} ({f.referenceName})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <p className="muted small link-direction">
+              Direction: provider → consumer. The provider links to the consumer with <strong>{linkName(link.forward)}</strong>; the
+              consumer links back with <strong>{linkName(link.reverse)}</strong>
+              {link.forward === link.reverse ? " (a symmetric link: the first-linked item counts as the provider)" : ""}.
             </p>
           </div>
         </section>
-      </div>
+      </fieldset>
 
-      <section className="panel">
+      <section className="panel" id={SECTION.hierarchy}>
         <div className="panel-header">
           <h3>Organization hierarchy</h3>
           <span className="spacer" />
-          <label className="small muted">Top-level areas are</label>
-          <select value={generateMode} onChange={(e) => setGenerateMode(e.target.value as "art" | "solution")}>
-            <option value="art">ARTs (Essential / Portfolio SAFe)</option>
-            <option value="solution">Large Solutions (Full SAFe)</option>
-          </select>
-          <button className="btn" onClick={generate}>
-            Generate from area paths
-          </button>
+          {!readOnly && (
+            <>
+              <label className="small muted">Top-level areas are</label>
+              <select value={generateMode} onChange={(e) => setGenerateMode(e.target.value as "art" | "solution")}>
+                <option value="art">ARTs (Essential / Portfolio SAFe)</option>
+                <option value="solution">Large Solutions (Full SAFe)</option>
+              </select>
+              <button className="btn" onClick={generate}>
+                Generate from area paths
+              </button>
+            </>
+          )}
         </div>
         <p className="muted small pad-x">
           Area Paths scope every view: a node sees work items under its area path. Link Teams so PIs can be assigned to their sprint lists.
@@ -200,7 +341,9 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
           <NodeEditor
             node={draft.root}
             isRoot
+            readOnly={readOnly}
             areas={m?.areas ?? []}
+            iterations={m?.iterations ?? []}
             teams={m?.teams ?? []}
             // Functional updates: the team lookup resolves later and must not overwrite newer edits.
             onChange={(id, fn) => setDraft((d) => ({ ...d, root: updateNode(d.root, id, fn) }))}
@@ -212,17 +355,93 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
   );
 }
 
+interface Meta {
+  types: string[];
+  numericFields: { referenceName: string }[];
+  iterations: string[];
+  childCount: Map<string, number>;
+  relationTypes: RelationType[];
+}
+
+/** Agile Hive-style setup checklist, evaluated against the draft so it updates while editing. */
+export function checklist(draft: SafeConfig, m: Meta | undefined): CheckItem[] {
+  const all = flatten(draft.root);
+  const required = [draft.types.epic, draft.types.feature, draft.types.story];
+  const mapped = [...required, draft.types.capability, draft.types.enabler, draft.types.theme].filter(Boolean) as string[];
+  const unknownTypes = mapped.filter((t) => !m?.types.includes(t));
+  const piRootFound = !!m?.childCount.has(draft.piRootIteration.toLowerCase());
+  const piCount = m?.childCount.get(draft.piRootIteration.toLowerCase()) ?? 0;
+  const arts = all.filter((n) => n.level === "art");
+  const incompleteTeams = all.filter((n) => n.level === "team" && (!n.areaPath || !n.teamId));
+  const artsWithoutMembers = arts.filter((a) => !a.members?.length);
+  const link = draft.dependencyLink;
+  const linkKnown = !link || !m?.relationTypes.length || m.relationTypes.some((t) => t.referenceName === link.forward);
+  const names = (nodes: OrgNode[]) => nodes.map((n) => n.name).join(", ");
+
+  return [
+    {
+      key: "types",
+      label: "Work item types mapped",
+      ok: required.every(Boolean) && unknownTypes.length === 0,
+      detail: !required.every(Boolean) ? "Choose the Epic, Feature and Story types." : unknownTypes.length ? `Not in this process: ${unknownTypes.join(", ")}` : undefined,
+      target: SECTION.types,
+    },
+    {
+      key: "points",
+      label: "Story size field is numeric",
+      ok: !!m?.numericFields.some((f) => f.referenceName === draft.storyPointsField),
+      target: SECTION.types,
+    },
+    { key: "piRoot", label: "PI root iteration found", ok: piRootFound, detail: piRootFound ? undefined : draft.piRootIteration, target: SECTION.pis },
+    {
+      key: "pis",
+      label: "At least one PI exists",
+      ok: piCount > 0,
+      detail: piCount > 0 ? `${piCount} PI${piCount === 1 ? "" : "s"}` : "Create one in PIs & Iterations.",
+      target: SECTION.pis,
+    },
+    { key: "art", label: "Hierarchy has an Agile Release Train", ok: arts.length > 0, target: SECTION.hierarchy },
+    {
+      key: "teams",
+      label: "Every team has an area path and an Azure DevOps team",
+      ok: incompleteTeams.length === 0,
+      detail: incompleteTeams.length ? `Incomplete: ${names(incompleteTeams)}` : undefined,
+      target: SECTION.hierarchy,
+    },
+    {
+      key: "link",
+      label: "Dependency link type set",
+      ok: linkKnown,
+      detail: !link ? "Default (Successor / Predecessor)" : linkKnown ? undefined : `Unknown link type ${link.forward}`,
+      target: SECTION.dependencies,
+    },
+    {
+      key: "members",
+      label: "Every ART has at least one member",
+      ok: arts.length > 0 && artsWithoutMembers.length === 0,
+      detail: artsWithoutMembers.length ? `No members: ${names(artsWithoutMembers)}` : undefined,
+      target: SECTION.hierarchy,
+    },
+  ];
+}
+
 function NodeEditor(props: {
   node: OrgNode;
   isRoot?: boolean;
+  readOnly: boolean;
   areas: string[];
+  iterations: string[];
   teams: { id: string; name: string }[];
   onChange: (id: string, fn: (n: OrgNode) => OrgNode) => void;
   onRemove: (id: string) => void;
 }) {
-  const { node, onChange } = props;
+  const { node, onChange, readOnly } = props;
   const [showMembers, setShowMembers] = useState(false);
   const members = node.members ?? [];
+  const teamMembers = useAsync(
+    () => (showMembers && node.teamId && !readOnly ? getTeamMembers(node.teamId) : Promise.resolve([])),
+    [showMembers, node.teamId, readOnly]
+  );
   const set = (patch: Partial<OrgNode>) => onChange(node.id, (n) => ({ ...n, ...patch }));
   // An empty list is stored as "no members" so adding and removing leaves the config unchanged.
   const updateMembers = (fn: (m: Member[]) => Member[]) =>
@@ -241,6 +460,12 @@ function NodeEditor(props: {
       ...n,
       children: [...n.children, { id: newId(), name: `New ${LEVEL_LABEL[level]}`, level, areaPath: n.areaPath, children: [] }],
     }));
+  const pickable = (teamMembers.data ?? []).filter((t) => !members.some((m) => m.id === t.id));
+  const addIdentity = (id: string) => {
+    const t = pickable.find((p) => p.id === id);
+    if (!t) return;
+    updateMembers((list) => [...list, { name: t.displayName, role: "", id: t.id, uniqueName: t.uniqueName, ...(t.imageUrl ? { imageUrl: t.imageUrl } : {}) }]);
+  };
 
   const onTeam = async (teamId: string) => {
     set({ teamId: teamId || undefined });
@@ -250,19 +475,27 @@ function NodeEditor(props: {
     }
   };
 
+  const hasCadence = node.level === "solution" || node.level === "art";
+  const full = members.length >= MAX_MEMBERS;
+
   return (
     <li>
       <div className="node-row">
         <LevelPill level={node.level} />
-        <input className="node-name" value={node.name} onChange={(e) => set({ name: e.target.value })} aria-label="Name" />
-        <select value={node.areaPath ?? ""} onChange={(e) => set({ areaPath: e.target.value || undefined })} aria-label="Area path">
+        <input className="node-name" value={node.name} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} aria-label="Name" />
+        <select
+          value={node.areaPath ?? ""}
+          disabled={readOnly}
+          onChange={(e) => set({ areaPath: e.target.value || undefined, areaId: undefined })}
+          aria-label="Area path"
+        >
           <option value="">(no area path)</option>
           {props.areas.map((a) => (
             <option key={a}>{a}</option>
           ))}
         </select>
         {node.level !== "portfolio" && (
-          <select value={node.teamId ?? ""} onChange={(e) => onTeam(e.target.value)} aria-label="Azure DevOps team">
+          <select value={node.teamId ?? ""} disabled={readOnly} onChange={(e) => onTeam(e.target.value)} aria-label="Azure DevOps team">
             <option value="">(no team)</option>
             {props.teams.map((t) => (
               <option key={t.id} value={t.id}>
@@ -271,11 +504,29 @@ function NodeEditor(props: {
             ))}
           </select>
         )}
-        {childLevels(node.level).map((l) => (
-          <button key={l} className="link small" onClick={() => add(l)}>
-            <Icon name="Add" className="small" /> Add {LEVEL_LABEL[l]}
-          </button>
-        ))}
+        {hasCadence && (
+          <select
+            value={node.piRootIteration ?? ""}
+            disabled={readOnly}
+            // Clearing the id lets the App resolve the new cadence root on the next load.
+            onChange={(e) => set({ piRootIteration: e.target.value || undefined, piRootId: undefined })}
+            aria-label="PI cadence"
+            title="Where this unit's PIs live: inherit the parent's cadence or use its own PI root iteration"
+          >
+            <option value="">Inherit cadence</option>
+            {props.iterations.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        )}
+        {!readOnly &&
+          childLevels(node.level).map((l) => (
+            <button key={l} className="link small" onClick={() => add(l)}>
+              <Icon name="Add" className="small" /> Add {LEVEL_LABEL[l]}
+            </button>
+          ))}
         <button
           className="link small"
           aria-expanded={showMembers}
@@ -284,7 +535,7 @@ function NodeEditor(props: {
         >
           <Icon name={showMembers ? "ChevronDown" : "ChevronRight"} className="small" /> Members ({members.length})
         </button>
-        {!props.isRoot && (
+        {!props.isRoot && !readOnly && (
           <button
             className="link small danger"
             onClick={() =>
@@ -300,49 +551,76 @@ function NodeEditor(props: {
           {members.length === 0 && <div className="muted small">No members yet.</div>}
           {members.map((m, i) => (
             <div key={i} className="member-row">
+              {m.imageUrl && <img className="member-avatar" src={m.imageUrl} alt="" />}
               <input
                 aria-label={`Member ${i + 1} name`}
                 placeholder="Name"
                 value={m.name}
-                onChange={(e) => updateMembers((list) => list.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                disabled={readOnly}
+                // Typing a name makes it a free-text member: the picked identity no longer applies.
+                onChange={(e) => updateMembers((list) => list.map((x, j) => (j === i ? { name: e.target.value, role: x.role } : x)))}
               />
               <input
                 aria-label={`Member ${i + 1} role`}
                 placeholder="Role (e.g. RTE, Product Owner)"
                 maxLength={MAX_ROLE_LENGTH}
                 value={m.role}
+                disabled={readOnly}
                 onChange={(e) =>
                   updateMembers((list) => list.map((x, j) => (j === i ? { ...x, role: e.target.value.slice(0, MAX_ROLE_LENGTH) } : x)))
                 }
               />
-              <button className="link small" aria-label={`Move member ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>
-                ↑
-              </button>
-              <button
-                className="link small"
-                aria-label={`Move member ${i + 1} down`}
-                disabled={i === members.length - 1}
-                onClick={() => move(i, 1)}
-              >
-                ↓
-              </button>
-              <button
-                className="link small danger"
-                aria-label={`Remove member ${i + 1}`}
-                onClick={() => updateMembers((list) => list.filter((_, j) => j !== i))}
-              >
-                <Icon name="Cancel" className="small" />
-              </button>
+              {m.uniqueName && <span className="muted small member-identity">{m.uniqueName}</span>}
+              {!readOnly && (
+                <>
+                  <button className="link small" aria-label={`Move member ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                    ↑
+                  </button>
+                  <button
+                    className="link small"
+                    aria-label={`Move member ${i + 1} down`}
+                    disabled={i === members.length - 1}
+                    onClick={() => move(i, 1)}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    className="link small danger"
+                    aria-label={`Remove member ${i + 1}`}
+                    onClick={() => updateMembers((list) => list.filter((_, j) => j !== i))}
+                  >
+                    <Icon name="Cancel" className="small" />
+                  </button>
+                </>
+              )}
             </div>
           ))}
-          <button
-            className="link small"
-            disabled={members.length >= MAX_MEMBERS}
-            onClick={() => updateMembers((list) => [...list, { name: "", role: "" }])}
-          >
-            <Icon name="Add" className="small" /> Add member
-          </button>
-          {members.length >= MAX_MEMBERS && <span className="muted small"> A node can have at most {MAX_MEMBERS} members.</span>}
+          {!readOnly && (
+            <div className="member-add">
+              {node.teamId && (
+                <select
+                  aria-label={`Add a team member to ${node.name}`}
+                  value=""
+                  disabled={full || teamMembers.loading}
+                  onChange={(e) => addIdentity(e.target.value)}
+                >
+                  <option value="">
+                    {teamMembers.loading ? "Loading team members…" : pickable.length ? "Add from the team…" : "(no more team members)"}
+                  </option>
+                  {pickable.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.displayName} ({t.uniqueName})
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button className="link small" disabled={full} onClick={() => updateMembers((list) => [...list, { name: "", role: "" }])}>
+                <Icon name="Add" className="small" /> Add member
+              </button>
+              {full && <span className="muted small"> A node can have at most {MAX_MEMBERS} members.</span>}
+              {teamMembers.error && <span className="danger small"> Could not load team members: {teamMembers.error}</span>}
+            </div>
+          )}
         </div>
       )}
       {node.children.length > 0 && (

@@ -209,36 +209,6 @@ describe("My Organization", () => {
   });
 
   describe("unit menu", () => {
-    it("detaches a unit onto the portfolio root where the level allows it", async () => {
-      const { ctx } = await renderView(<OrganizationView />, { config: solutionConfig() });
-      const menu = openMenu("ART S");
-      const detach = within(menu).getByRole("menuitem", { name: "Detach from parent" });
-      expect(detach).toBeEnabled();
-      expect(detach).toHaveAttribute("title", "Attach directly to Fabrikam");
-      fireEvent.click(detach);
-      await waitFor(() => expect(ctx.saveConfig).toHaveBeenCalled());
-      expect(parentOf(savedRoot(ctx), "n-arts")!.id).toBe("n-root");
-      expect(findNode(savedRoot(ctx), "n-arts")!.children.map((c) => c.id)).toEqual(["n-ts"]);
-      expect(screen.getByRole("status")).toHaveTextContent('Detached "ART S".');
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    it("disables detach for units that cannot attach to the root or already do", async () => {
-      await renderView(<OrganizationView />, { config: solutionConfig() });
-      const teamMenu = openMenu("Team S");
-      const detach = within(teamMenu).getByRole("menuitem", { name: "Detach from parent" });
-      expect(detach).toBeDisabled();
-      expect(detach).toHaveAttribute("title", "A Team can only be detached when it can attach to the portfolio root");
-      expect(within(teamMenu).queryByText(/here$/)).not.toBeInTheDocument();
-      // Toggle closed.
-      fireEvent.click(screen.getByRole("button", { name: "Actions for Team S" }));
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-
-      const artDetach = within(openMenu("ART A")).getByRole("menuitem", { name: "Detach from parent" });
-      expect(artDetach).toBeDisabled();
-      expect(artDetach).toHaveAttribute("title", "An Agile Release Train can only be detached when it can attach to the portfolio root");
-    });
-
     it("does not detach when cancelled", async () => {
       vi.mocked(window.confirm).mockReturnValueOnce(false);
       const { ctx } = await renderView(<OrganizationView />, { config: solutionConfig() });
@@ -296,10 +266,10 @@ describe("organization helpers", () => {
     expect(parentOf(moved, "n-ts")!.id).toBe("n-arta");
   });
 
-  it("detaches only below the root where the level may attach to it", () => {
+  it("detaches any unit below the root", () => {
     expect(canDetach(root, root)).toBe(false);
     expect(canDetach(root, findNode(root, "n-arts")!)).toBe(true);
-    expect(canDetach(root, findNode(root, "n-ts")!)).toBe(false);
-    expect(canDetach(root, findNode(root, "n-arta")!)).toBe(false);
+    expect(canDetach(root, findNode(root, "n-ts")!)).toBe(true);
+    expect(canDetach(root, { id: "loose", name: "Loose", level: "team", children: [] })).toBe(false);
   });
 });

@@ -726,3 +726,30 @@ tr.dep-resolved td { opacity: 0.5; }
 .hier-hint { display: inline-flex; color: var(--warn); cursor: help; }
 .hier-query { display: inline-flex; color: var(--text-2); padding: 0 2px; }
 .plain-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+/* ---------- pi / setup / org v2 ---------- */
+.plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.plain-fieldset[disabled] { opacity: 1; }
+.pi-cadence code { font-size: 11px; }
+.pi-plan { display: grid; gap: 4px; }
+.pi-plan-header { display: flex; align-items: center; gap: 8px; }
+.pi-plan-table input { width: 100%; min-width: 0; }
+.pi-create-result { padding-bottom: 12px; }
+.pi-iterations .actions { white-space: nowrap; }
+.setup-checklist .checklist { list-style: none; margin: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.setup-checklist .checklist li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.setup-checklist .check-mark { font-weight: 700; width: 1em; }
+.setup-checklist li.ok .check-mark { color: var(--good); }
+.setup-checklist li.missing .check-mark { color: var(--bad); }
+.link-direction { margin: 0; }
+.member-add { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.member-avatar { width: 20px; height: 20px; border-radius: 50%; }
+.member-identity { white-space: nowrap; }
+.org-detached { border-color: var(--border-strong); border-left-style: dashed; background: var(--bg-2); margin-top: 16px; }
+.org-detached.drop-over { outline: 2px dashed var(--accent); }
+.org-detached-hint { font-weight: 400; }
+.org-node.detached { border-style: dashed; gap: 6px; }
+.org-node.detached .org-node-name { cursor: default; }
+@media (max-width: 600px) {
+  .setup-checklist .checklist { grid-template-columns: 1fr; }
+  .pi-plan-table td { padding: 2px; }
+}

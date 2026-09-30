@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { localToday } from "../../src/api/rules";
 import { OrgNode } from "../../src/api/types";
 import { PiManagementView, planSprints } from "../../src/views/PiManagementView";
 import { callsTo, fail, fake, makeConfig } from "../fakeAdo";
@@ -50,7 +51,7 @@ describe("PIs & Iterations view", () => {
     await renderPis({ pis: [], pi: null });
     expect(screen.getByText("No PIs yet. Create one on the right.")).toBeInTheDocument();
     expect(field("PI name").value).toBe("PI 1");
-    expect(field("Start date").value).toBe(new Date().toISOString().slice(0, 10));
+    expect(field("Start date").value).toBe(localToday());
   });
 
   it("suggests the next PI name and a start date right after the last PI", async () => {
@@ -84,7 +85,7 @@ describe("PIs & Iterations view", () => {
   it("previews the schedule and reacts to form changes", async () => {
     await renderPis();
     fireEvent.change(field("Start date"), { target: { value: "2027-01-04" } });
-    const preview = () => Array.from(document.querySelectorAll(".grid.compact tr")).map((r) => r.firstChild!.textContent);
+    const preview = () => screen.queryAllByLabelText(/^Planned iteration \d+ name$/).map((i) => (i as HTMLInputElement).value);
     expect(preview()).toEqual(["PI 3 Sprint 1", "PI 3 Sprint 2", "PI 3 Sprint 3", "PI 3 Sprint 4", "PI 3 IP"]);
     fireEvent.change(field("Development iterations"), { target: { value: "2" } });
     fireEvent.click(screen.getByLabelText(/Innovation & Planning/));
