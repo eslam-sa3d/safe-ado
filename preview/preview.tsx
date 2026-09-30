@@ -4,7 +4,9 @@
  * Build with `npm run preview`, then open preview-dist/index.html.
  */
 import { createRoot } from "react-dom/client";
+import { setUserValue } from "../src/api/data";
 import { App } from "../src/components/App";
+import { TOUR_STEPS, TOURS_KEY } from "../src/components/Tour";
 import "../src/hub/styles.css";
 import { dataStore, fake, fetchMock, makeConfig, PI1, PI2, PI2_S1, PI2_S2, resetFake, seedConfig, seedDocs } from "../test/fakeAdo";
 import { ADO_THEMES } from "./themes";
@@ -44,9 +46,18 @@ dataStore.collections.set(`capacity-${fake.projectId}`, new Map([
   [`n-red|${PI2_S2}`, { id: `n-red|${PI2_S2}`, nodeId: "n-red", iterationPath: PI2_S2, capacity: 2, __etag: 1 }],
 ]));
 
+// Planned dates for a few features so the Roadmap timeline has bars.
+const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10) + "T00:00:00Z";
+([[10, -30, 20], [11, 5, 45], [14, -12, 26]] as const).forEach(([id, from, to]) => {
+  const wi = fake.workItems.get(id);
+  if (wi) Object.assign(wi.fields, { "Microsoft.VSTS.Scheduling.StartDate": day(from), "Microsoft.VSTS.Scheduling.TargetDate": day(to) });
+});
+
 localStorage.setItem(
   `safe-ado-prefs-${fake.projectId}`,
   JSON.stringify({ nodeId: params.get("node") ?? "n-arta", view: params.get("view") ?? "reports", piPath: "" })
 );
 
-createRoot(document.getElementById("root")!).render(<App />);
+const render = () => createRoot(document.getElementById("root")!).render(<App />);
+if (params.get("tour") === "off") void setUserValue(TOURS_KEY, Object.keys(TOUR_STEPS)).then(render, render);
+else render();

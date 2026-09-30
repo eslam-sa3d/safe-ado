@@ -5,7 +5,7 @@
   "version": "1.3.0",
   "public": true,
   "name": "SAFe Ado",
-  "description": "Scaled Agile Framework (SAFe) for Azure DevOps: Portfolio, Large Solution, ART and Team hierarchy, Program Board, PI Objectives, ROAM risks, PI management and reports.",
+  "description": "Scaled agile planning for SAFe® in Azure Boards (Services and Server 2022.1): ART and team planning boards, roadmap, PI Objectives, ROAM risks, PI Planning and reports.",
   "categories": ["Azure Boards"],
   "tags": ["SAFe", "PI Planning", "ART", "Program Board", "Portfolio", "Scaled Agile"],
   "targets": [
@@ -13,6 +13,15 @@
   ],
   "icons": { "default": "images/logo.png" },
   "content": { "details": { "path": "overview.md" } },
+  "screenshots": [
+    { "path": "images/screenshots/reports-art.png" },
+    { "path": "images/screenshots/art-planning-board.png" },
+    { "path": "images/screenshots/team-planning-board.png" },
+    { "path": "images/screenshots/roadmap.png" },
+    { "path": "images/screenshots/pi-planning.png" },
+    { "path": "images/screenshots/pi-objectives.png" },
+    { "path": "images/screenshots/risks-roam.png" }
+  ],
   "repository": { "type": "git", "uri": "https://github.com/eslam-sa3d/safe-ado" },
   "links": {
     "repository": { "uri": "https://github.com/eslam-sa3d/safe-ado" },

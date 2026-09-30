@@ -110,3 +110,7 @@ src/
 - Work item form group showing PI, ART and objective links
 - PI planning mode (team breakouts, confidence vote)
 - Dashboard widgets for predictability and the program board
+
+## Trademarks
+
+SAFe® and Scaled Agile Framework® are registered trademarks of Scaled Agile, Inc. This extension is not affiliated with or endorsed by Scaled Agile, Inc.
