@@ -16,7 +16,6 @@ import {
   validatePi,
   validatePlan,
 } from "../api/piRules";
-import { localToday } from "../api/rules";
 import { OrgNode, ProgramIncrement, Sprint } from "../api/types";
 import {
   addTeamIteration,
