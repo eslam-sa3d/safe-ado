@@ -73,7 +73,7 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 |---|---|---|---|
 | NAV-01 | The sidebar shows Portfolio → Solution → ART → Team with level colours and a legend | As described | Auto: `components/Sidebar.test.tsx` |
 | NAV-02 | Collapse and expand nodes; deep levels start collapsed | Selection is unchanged by collapsing | Auto: `components/Sidebar.test.tsx` |
-| NAV-03 | Selecting a node updates the breadcrumb, level badge and tabs | Portfolio: Kanban / Hierarchy / Risks / Reports. Others: Board / Objectives / Risks / Hierarchy / Reports | Auto: `components/App.test.tsx` |
+| NAV-03 | Selecting a node updates the breadcrumb, level badge and tabs | Portfolio: Kanban / Lean Portfolio / Hierarchy / Risks / Reports. Others: Board / Objectives / Risks / Hierarchy / Reports | Auto: `components/App.test.tsx` |
 | NAV-04 | Breadcrumb navigates to ancestors | As described | Auto: `components/App.test.tsx` |
 | NAV-05 | Node, tab and PI are remembered per project across reloads | Restored from browser storage | Auto: `components/App.test.tsx` |
 | NAV-06 | A saved view that is unavailable at this level, or a deleted node | Falls back to the first tab, or to the root | Auto: `components/App.test.tsx` |
@@ -169,11 +169,32 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 
 | ID | Scenario | Expected | Verified by |
 |---|---|---|---|
-| KAN-01 | Columns come from Epic states, excluding Removed; counts exclude Removed epics | As described | Auto: `views/PortfolioKanban.test.tsx` |
+| KAN-01 | Columns are the SAFe stages Funnel, Reviewing, Analyzing, Ready, Implementing, Done; each maps to an Epic state (a state named like the stage, else by category); Removed epics are not shown or counted | As described | Auto: `views/PortfolioKanban.test.tsx`, `api/lpm.test.ts` |
 | KAN-02 | WSJF = (BV + TC + RR/OE) ÷ Effort, only when the fields exist; sort by WSJF | As described | Auto: `views/PortfolioKanban.test.tsx` |
 | KAN-03 | Drag to change state; invalid transition shows an error | As described | Auto: `views/PortfolioKanban.test.tsx`; Manual (process rules) |
 | KAN-04 | Open an epic, create a new epic in the portfolio area, refresh | As described | Auto: `views/PortfolioKanban.test.tsx` |
 | KAN-05 | No Epic type mapped | Guidance shown | Auto: `views/PortfolioKanban.test.tsx` |
+| KAN-06 | Columns sharing a state: moving between them changes no state and the column is remembered per Epic; a stale column falls back to the state's category | As described | Auto: `views/PortfolioKanban.test.tsx` |
+| KAN-07 | Columns & WIP dialog: map each column to an Epic state and set WIP limits, saved per portfolio | Unknown states are ignored; save errors shown | Auto: `views/PortfolioKanban.test.tsx` |
+| KAN-08 | A column over its WIP limit is highlighted and a warning names it; moving into a full column asks for confirmation | As described | Auto: `views/PortfolioKanban.test.tsx` |
+| KAN-09 | Guardrail: moving an Epic past Analyzing without a Lean Business Case (hypothesis, business outcomes, MVP) and a Go decision lists what is missing and asks for confirmation; cancel keeps it | As described | Auto: `views/PortfolioKanban.test.tsx`, `api/lpm.test.ts` |
+| KAN-10 | Lean Business Case dialog from the card: hypothesis statement, outcomes, leading indicators, NFRs, MVP, MVP and full cost, Epic Owner, go / no-go with who and when; read-only without planning rights | Saved per Epic (`leancases`) | Auto: `views/PortfolioKanban.test.tsx` |
+
+## 11b. Lean Portfolio (beyond Agile Hive)
+
+| ID | Scenario | Expected | Verified by |
+|---|---|---|---|
+| LPM-01 | Lean Portfolio is a tab at portfolio level only | Not shown for ARTs or teams | Auto: `views/LeanPortfolioView.test.tsx`, `components/App.test.tsx` |
+| LPM-02 | Value streams (portfolio, solutions, ARTs) show planned and completed story points of the selected PI | Removed stories excluded | Auto: `views/LeanPortfolioView.test.tsx` |
+| LPM-03 | Cost per story point: forecast = rate × planned SP, actual = rate × completed SP; rate inherited from the parent unit unless overridden | As described | Auto: `views/LeanPortfolioView.test.tsx`, `api/lpm.test.ts` |
+| LPM-04 | Cost per team per PI: forecast = rate × teams, actual = forecast × share of the PI elapsed | As described | Auto: `views/LeanPortfolioView.test.tsx`, `api/lpm.test.ts` |
+| LPM-05 | Budgets per unit and PI (by PI id, path fallback): save, update, clear | As described | Auto: `views/LeanPortfolioView.test.tsx` |
+| LPM-06 | Guardrail warnings: forecast over budget; child budgets adding up to more than the parent's | As described | Auto: `views/LeanPortfolioView.test.tsx` |
+| LPM-07 | Configurable currency (ISO code), used for all amounts | As described | Auto: `views/LeanPortfolioView.test.tsx` |
+| LPM-08 | Epic cost vs. estimate: actual and forecast cost against MVP and full estimates | Status: within, beyond MVP, forecast / actual over full | Auto: `views/LeanPortfolioView.test.tsx`, `api/lpm.test.ts` |
+| LPM-09 | Portfolio canvas: vision; strategic themes as Theme work items when the type is mapped, else as a list in the settings | As described | Auto: `views/LeanPortfolioView.test.tsx` |
+| LPM-10 | Read-only without planning rights; failed saves are reported | As described | Auto: `views/LeanPortfolioView.test.tsx` |
+| LPM-11 | The work item form shows an Epic's Lean Business Case (decision, owner, estimates in the portfolio currency) and edits it | Not shown for other types or unsaved items | Auto: `form/FormPanelLean.test.tsx`; **Manual**: open an Epic in real Azure DevOps |
 
 ## 11a. Agile Hive parity features
 

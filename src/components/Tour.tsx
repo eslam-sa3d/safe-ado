@@ -21,8 +21,14 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
     { title: "Unplanned work", text: "Items without dates wait in the side list until you drag them onto the timeline." },
   ],
   kanban: [
-    { title: "Epics by state", text: "Each column is an Epic state; drag a card to move it through the portfolio flow." },
+    { title: "SAFe portfolio flow", text: "Columns run Funnel → Reviewing → Analyzing → Ready → Implementing → Done; each maps to an Epic state and can have a WIP limit." },
+    { title: "Lean Business Case", text: "Open an Epic's business case from its card. Leaving Analyzing needs a business case and a Go decision." },
     { title: "Prioritise with WSJF", text: "Turn on sorting by WSJF to rank Epics by cost of delay divided by job size." },
+  ],
+  lean: [
+    { title: "Budgets per value stream", text: "Set a budget per PI for the portfolio, solutions and ARTs; forecast spend over budget is flagged." },
+    { title: "Epic cost", text: "Compare each Epic's cost so far with the MVP and full estimates from its Lean Business Case." },
+    { title: "Portfolio canvas", text: "Keep the portfolio vision and strategic themes next to the numbers." },
   ],
   board: [
     { title: "Plan features per team", text: "Rows are teams (or ARTs), columns are the PI's iterations." },

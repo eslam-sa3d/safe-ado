@@ -1,14 +1,16 @@
 import * as SDK from "azure-devops-extension-sdk";
 import type { IWorkItemFormService } from "azure-devops-extension-api/WorkItemTracking/WorkItemTrackingServices";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { emptyMeta, loadConfig, metaStore } from "../api/data";
+import { emptyMeta, leanCasesStore, loadConfig, metaStore, portfolioSettingsStore } from "../api/data";
 import { hubUrl, queryUrl } from "../api/links";
+import { caseGaps, DEFAULT_CURRENCY, fmtMoney, inherited, LeanBusinessCase } from "../api/lpm";
 import { effectivePiRoot, flatten, pathTo } from "../api/org";
 import { F, LINK, OrgNode, ProgramIncrement, SafeConfig, Sprint, WorkItem, WorkItemMeta } from "../api/types";
 import { openInNewTab } from "../api/urlState";
 import { getProgramIncrements, getStateCategories, getWorkItems, isUnder, openWorkItem, relationTargetId } from "../api/wit";
 import { ErrorBar, fmtDate, Spinner, LevelPill } from "../components/common";
 import { useCanSafe } from "../components/useCanSafe";
+import { DecisionPill, LeanCaseEditor } from "../views/LeanBusinessCase";
 import {
   estimatedCompletion,
   isPiAssigned,
@@ -145,6 +147,8 @@ export interface PanelData {
   /** Scheduling date fields (StartDate / TargetDate) the item's type has. */
   dateFields: string[];
   meta: WorkItemMeta;
+  /** Lean Portfolio data, for Epics only: the Lean Business Case and the portfolio currency. */
+  lean?: { case?: LeanBusinessCase; currency: string };
 }
 
 const linked = (w: WorkItem): Linked => ({
@@ -198,7 +202,12 @@ export async function loadPanel(): Promise<PanelData> {
   const out: PanelData = { ...base, config, unit, pis, pi, sprint, dateFields };
   if (id <= 0) return out;
 
-  const [[self], meta] = await Promise.all([getWorkItems([id], undefined, true), metaStore.get(String(id))]);
+  const isEpic = !!config.types.epic && values[F.type] === config.types.epic;
+  const [[self], meta, lean] = await Promise.all([
+    getWorkItems([id], undefined, true),
+    metaStore.get(String(id)),
+    isEpic ? loadLean(id, config, unit) : Promise.resolve(undefined),
+  ]);
   const rels = self?.relations ?? [];
   const parentId = rels.filter((r) => r.rel === LINK.parent).map((r) => relationTargetId(r.url))[0] ?? null;
   const childIds = rels
@@ -221,7 +230,16 @@ export async function loadPanel(): Promise<PanelData> {
     involvement: piInvolvement(planned, pis),
     completion: estimatedCompletion(planned, pis),
     meta: meta ?? emptyMeta(id),
+    lean,
   };
+}
+
+/** An Epic's Lean Business Case and the currency of its portfolio (inherited down the tree). */
+async function loadLean(id: number, config: SafeConfig, unit: OrgNode): Promise<PanelData["lean"]> {
+  const [lc, settings] = await Promise.all([leanCasesStore.get(String(id)), portfolioSettingsStore.list()]);
+  const chain = pathTo(config.root, unit.id).map((n) => n.id);
+  const currency = inherited(chain, new Map(settings.map((s) => [s.nodeId, s])), "currency") ?? DEFAULT_CURRENCY;
+  return { case: lc, currency };
 }
 
 /** A YYYY-MM-DD date as a local-midnight Date for a work item date field (null clears it). */
@@ -242,6 +260,7 @@ export function FormPanel() {
   const [error, setError] = useState<string>();
   const [saveError, setSaveError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [editingCase, setEditingCase] = useState(false);
   const call = useRef(0);
 
   const load = useCallback(() => {
@@ -388,6 +407,20 @@ export function FormPanel() {
         </span>
       </div>
 
+      {data.lean && editable && (
+        <LeanCaseSection
+          id={data.id}
+          lean={data.lean}
+          editing={editingCase}
+          canEdit={can.plan}
+          onEdit={setEditingCase}
+          onSaved={(saved) => {
+            setData((d) => d && { ...d, lean: { ...d.lean!, case: saved } });
+            setEditingCase(false);
+          }}
+        />
+      )}
+
       <ErrorBar message={saveError} onClose={() => setSaveError(undefined)} />
       {!editable ? (
         <p className="small muted">Save the work item to edit its SAFe planning data.</p>
@@ -455,6 +488,55 @@ export function FormPanel() {
             </span>
           </div>
         </fieldset>
+      )}
+    </div>
+  );
+}
+
+/** The Epic's Lean Business Case: a summary, and the editor on demand. */
+function LeanCaseSection({
+  id,
+  lean,
+  editing,
+  canEdit,
+  onEdit,
+  onSaved,
+}: {
+  id: number;
+  lean: NonNullable<PanelData["lean"]>;
+  editing: boolean;
+  canEdit: boolean;
+  onEdit: (on: boolean) => void;
+  onSaved: (saved: LeanBusinessCase) => void;
+}) {
+  const c = lean.case;
+  const gaps = caseGaps(c);
+  const money = (n?: number) => (n !== undefined ? fmtMoney(n, lean.currency) : "–");
+  return (
+    <div className="safe-form-lean" role="group" aria-label="Lean business case">
+      <div className="safe-form-row">
+        <span className="field-label">Business case</span>
+        <span>
+          <DecisionPill c={c} />
+          {c?.epicOwner && <span className="muted"> · Epic Owner {c.epicOwner}</span>}
+          {!editing && (
+            <button className="link safe-form-open" onClick={() => onEdit(true)}>
+              {canEdit ? "Edit business case" : "View business case"}
+            </button>
+          )}
+        </span>
+      </div>
+      {!editing && (
+        <div className="safe-form-row">
+          <span className="field-label">Estimates</span>
+          <span>
+            MVP {money(c?.mvpCost)} · Full {money(c?.fullCost)}
+            {gaps.length > 0 && <span className="muted small"> · still needs {gaps.join(", ")}</span>}
+          </span>
+        </div>
+      )}
+      {editing && (
+        <LeanCaseEditor workItemId={id} initial={c} currency={lean.currency} readOnly={!canEdit} onCancel={() => onEdit(false)} onSaved={onSaved} />
       )}
     </div>
   );

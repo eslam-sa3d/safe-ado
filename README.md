@@ -14,7 +14,8 @@ The feature set follows Agile Hive for Jira. [docs/AGILE_HIVE_PARITY.md](docs/AG
 | **Roadmap** | Portfolio / Solution / ART | Timeline with PI, iteration and milestone rows. Drag and resize to set planned dates. Unplanned items sit in a sidebar. The PI is assigned automatically at ART level. Dependencies are rated by date |
 | **ART / Solution Planning Board** | Solution / ART | *Calculated* mode (the default) places features by their teams' plans and shows involved teams, the owning team, unplanned-children warnings, milestones and critical dependencies per row. *Feature iteration* mode supports drag-and-drop re-planning and dependency editing |
 | **Team Planning Board** | Team | Sprint columns with feature swimlanes and an Independent lane. Load vs. capacity per sprint. Team and ART backlogs. Drag to set sprint and parent. Create items in a cell. Read-only sibling teams. EXTERNAL dependency lanes |
-| **Portfolio Kanban** | Portfolio | Epics by state; drag to change state; sort by WSJF |
+| **Portfolio Kanban** | Portfolio | SAFe columns (Funnel, Reviewing, Analyzing, Ready, Implementing, Done) mapped onto the Epic states, with WIP limits per column and an over-limit warning. Drag to move; leaving Analyzing without a Lean Business Case and a Go decision asks for confirmation. Edit each Epic's Lean Business Case from its card. Sort by WSJF |
+| **Lean Portfolio** | Portfolio | Portfolio canvas (vision, strategic themes). Value stream budgets per PI for the portfolio, solutions and ARTs, with forecast and actual spend and a guardrail warning when the forecast exceeds the budget. Epic cost vs. the MVP and full estimates of its Lean Business Case |
 | **PI Objectives** | Solution / ART / Team | Committed and uncommitted objectives, planned and actual BV, predictability |
 | **Risks (ROAM)** | All | ROAM board; probability and impact, with residual values and the exposure matrix |
 | **Work Item List** | All | Inline edit of title, priority, assignee and parent. Level-specific columns (owning team, involved teams, assigned PIs, PI involvement). Sort, filter, CSV export |
@@ -22,7 +23,7 @@ The feature set follows Agile Hive for Jira. [docs/AGILE_HIVE_PARITY.md](docs/AG
 | **My Organization** | Global | Canvas with one band per layer. Add, re-parent by drag, detach or remove units |
 | **PIs & Iterations** | Global | Create, edit and delete PIs and iterations, including an IP iteration. Overlap checks and a maximum of 10 iterations. Sprint mapping per team |
 | **Setup** | Global | Type mapping, PI root iteration, capacity source, hierarchy editor with members, generate the hierarchy from area paths |
-| **SAFe panel** on the work item form | — | Shows the item's unit, PI, parent and children. Edits owning team, assigned PIs and planned dates |
+| **SAFe panel** on the work item form | — | Shows the item's unit, PI, parent and children. Edits owning team, assigned PIs and planned dates. For Epics, shows and edits the Lean Business Case |
 
 Every board and list has the shared filter bar: text search, Type / State / Assignee / Tags facets, an advanced WIQL clause, Copy WIQL, and Clear. Units can be starred in the sidebar.
 
@@ -36,6 +37,7 @@ Every board and list has the shared filter bar: text search, Type / State / Assi
 | Iteration / IP iteration | Children of the PI iteration |
 | Dependency | `Successor` / `Predecessor` link between work items |
 | PI Objective, ROAM risk | Extension Data Service documents (per project) |
+| Lean Business Case, value stream budget, portfolio canvas | Extension Data Service documents: `leancases` (per Epic), `budgets` (per unit and PI), `lpmsettings` (per unit: Kanban mapping, WIP limits, currency, rates, vision, themes) |
 | Hierarchy / settings | Extension Data Service value (per project) |
 | Team capacity | Manual story points (Extension Data Service), or derived from the Azure DevOps team capacity (see below) |
 

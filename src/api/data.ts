@@ -2,6 +2,7 @@ import * as SDK from "azure-devops-extension-sdk";
 import type { IExtensionDataManager, IExtensionDataService } from "azure-devops-extension-api/Common/CommonServices";
 import { getProject, ServiceIds } from "./client";
 import type { QuickFilter } from "./filters";
+import type { LeanBusinessCase, PortfolioSettings, ValueStreamBudget } from "./lpm";
 import type { ConfidenceVote, ImprovementItem, PlanReview } from "./planning";
 import type { PiSnapshot } from "./reports";
 import { IterationCapacity, Milestone, OrgNode, PiObjective, Risk, SafeConfig, WorkItemMeta, WorkItemTypeMap } from "./types";
@@ -141,6 +142,10 @@ export const votesStore = docStore<ConfidenceVote>("votes");
 export const planReviewsStore = docStore<PlanReview>("planreviews");
 export const inspectAdaptStore = docStore<ImprovementItem>("improvements");
 export const snapshotsStore = docStore<PiSnapshot>("snapshots");
+/** Lean Portfolio Management (see lpm.ts): Epic business cases, per-node settings, PI budgets. */
+export const leanCasesStore = docStore<LeanBusinessCase>("leancases");
+export const portfolioSettingsStore = docStore<PortfolioSettings>("lpmsettings");
+export const budgetsStore = docStore<ValueStreamBudget>("budgets");
 
 /** Capacity document id: team node + the iteration's stable id (older documents used the path). */
 export const capacityId = (nodeId: string, iterationKey: string) => `${nodeId}|${iterationKey}`;
