@@ -829,3 +829,27 @@ a.member-name:hover { text-decoration: underline; }
 .pill.enabler-pill { margin-left: 6px; background: rgba(119, 59, 147, 0.12); color: #773b93; font-size: 11px; }
 .btn.record-snapshot { white-space: nowrap; }
 .snapshot-note.snapshot-missing { font-style: italic; }
+
+/* ---------- lean portfolio management ---------- */
+.msg-warning { background: var(--warning-bg); }
+.msg-warning::before { content: "\f868"; font-family: "FluentRegular"; color: var(--warn); }
+.kanban-col.wip-over { border-color: var(--warn); background: var(--warning-bg); }
+.kanban-header .count.over { color: var(--warn); font-weight: 700; display: inline-flex; gap: 4px; align-items: center; }
+.kanban-state { font-weight: 400; margin-left: 6px; }
+.pill.decision-go, .pill.budget-ok, .pill.epic-cost-ok { background: rgba(51, 153, 51, 0.16); color: var(--good); }
+.pill.decision-nogo, .pill.budget-over, .pill.epic-cost-actualOverFull { background: var(--error-bg); color: var(--bad); }
+.pill.decision-pivot, .pill.epic-cost-forecastOverFull, .pill.epic-cost-beyondMvp { background: var(--warning-bg); color: var(--warn); }
+.lean-case { display: grid; gap: 12px; }
+.lean-case-fields { border: 0; margin: 0; padding: 0; display: grid; gap: 12px; }
+.lean-hypothesis { display: grid; gap: 4px; }
+.lean-hypothesis-row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; }
+.lean-case-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.safe-form-lean { display: grid; gap: 6px; border-top: 1px solid var(--border); padding-top: 6px; }
+.lean-portfolio .panel-body { padding: 0 20px 16px; overflow-x: auto; }
+.lpm-canvas { display: grid; gap: 16px; }
+.lpm-themes { margin: 4px 0; padding-left: 18px; }
+.lpm-theme-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.lpm-setting { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.lpm-currency { width: 64px; text-transform: uppercase; }
+.lpm-budgets tr.over-budget td { background: var(--warning-bg); }
+.lpm-formula { margin-top: 8px; }

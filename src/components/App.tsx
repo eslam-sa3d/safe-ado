@@ -10,6 +10,7 @@ import { getUserValue, setUserValue } from "../api/data";
 import { Level, LEVEL_LABEL, SafeConfig } from "../api/types";
 import { getAreaTree, getIterationTree, getProgramIncrements } from "../api/wit";
 import { HierarchyView } from "../views/HierarchyView";
+import { LeanPortfolioView } from "../views/LeanPortfolioView";
 import { ObjectivesView } from "../views/ObjectivesView";
 import { OrganizationView } from "../views/OrganizationView";
 import { PiManagementView } from "../views/PiManagementView";
@@ -33,6 +34,7 @@ export type ViewKey =
   | "reports"
   | "roadmap"
   | "kanban"
+  | "lean"
   | "board"
   | "teamboard"
   | "objectives"
@@ -48,6 +50,7 @@ const VIEW_LABEL: Record<ViewKey, string> = {
   reports: "Reports",
   roadmap: "Roadmap",
   kanban: "Portfolio Kanban",
+  lean: "Lean Portfolio",
   board: "ART Planning Board",
   teamboard: "Team Planning Board",
   objectives: "PI Objectives",
@@ -62,7 +65,7 @@ const VIEW_LABEL: Record<ViewKey, string> = {
 
 /** Tabs per SAFe level, mirroring Agile Hive's project navigation (Reports is the landing page). */
 export const LEVEL_VIEWS: Record<Level, ViewKey[]> = {
-  portfolio: ["reports", "roadmap", "kanban", "risks", "workitems", "hierarchy"],
+  portfolio: ["reports", "roadmap", "kanban", "lean", "risks", "workitems", "hierarchy"],
   solution: ["reports", "roadmap", "board", "planning", "objectives", "risks", "workitems", "hierarchy"],
   art: ["reports", "roadmap", "board", "planning", "objectives", "risks", "workitems", "hierarchy"],
   team: ["reports", "teamboard", "objectives", "risks", "workitems", "hierarchy"],
@@ -346,6 +349,8 @@ function ViewSwitch({ view, firstRun }: { view: ViewKey; firstRun: boolean }) {
       return <RoadmapView />;
     case "kanban":
       return <PortfolioKanban />;
+    case "lean":
+      return <LeanPortfolioView />;
     case "teamboard":
       return <TeamBoard />;
     case "workitems":

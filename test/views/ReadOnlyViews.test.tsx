@@ -75,7 +75,7 @@ describe("read-only mode (no planning rights)", () => {
     expect(screen.queryByRole("button", { name: "New Epic" })).toBeNull();
     const card = screen.getByText("Mobile app").closest(".card") as HTMLElement;
     expect(card).toHaveAttribute("draggable", "false");
-    const active = screen.getByRole("group", { name: "Active column" });
+    const active = screen.getByRole("group", { name: "Implementing column" });
     fireEvent.dragOver(active, { dataTransfer: dataTransfer("2") });
     expect(active).not.toHaveClass("drop-over");
     fireEvent.drop(active, { dataTransfer: dataTransfer("2") });

@@ -89,7 +89,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 | ART board: involved teams, unplanned-children warning, critical dependencies, collapse | ✅ | ART Planning Board |
 | Drag-and-drop program board (not in Agile Hive) | 🔀 | ART Planning Board, "feature iteration" mode |
 | **PI Planning** event support | 🟡 | PI Planning tab: confidence vote (fist of five), plan reviews, Inspect & Adapt improvements. Gap: no System Demo or Solution Intent |
-| Portfolio Kanban with WSJF | ✅ | Portfolio Kanban |
+| Portfolio Kanban with WSJF | ✅ | Portfolio Kanban, with the SAFe columns (see [Beyond Agile Hive](#beyond-agile-hive-lean-portfolio-management)) |
 
 ## Work Item List and filters
 
@@ -140,6 +140,22 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 | Involved Units, PI Involvement, Estimated Completion (calculated) | ✅ | Calculated from children |
 | Dependency and risk links | 🔀 | Dependency link type set in Setup; risks and objectives keep their work item ids in the document |
 | Jira permission scheme entries | ➖ | Azure DevOps project and area security applies |
+
+## Beyond Agile Hive: Lean Portfolio Management
+
+These SAFe Lean Portfolio Management features have no Agile Hive counterpart, so they are not counted in the scorecard.
+
+| SAFe practice | SAFe Ado |
+|---|---|
+| Portfolio Kanban states (Funnel, Reviewing, Analyzing, Ready, Implementing, Done) | Portfolio Kanban columns, each mapped onto an Epic state (configurable per portfolio; default: a state named like the column, else by state category). Columns sharing a state remember each Epic's column |
+| WIP limits per Kanban state | WIP limit per column, stored per portfolio; over-limit columns are highlighted, and moving into a full column asks for confirmation |
+| Epic Lean Business Case | Per Epic (`leancases` documents): Epic hypothesis statement (For / who / the / is a / that / unlike / our solution), business outcomes, leading indicators, NFRs, MVP, MVP and full cost estimates, Epic Owner. Edited from the Kanban card and on the Epic's work item form |
+| Go / no-go decision | Pending / Go / No-go / Pivot, recording who decided and when |
+| Guardrail: no Epic past Analyzing without an approved business case | Moving an Epic out of Funnel / Reviewing / Analyzing into Ready or later lists what is missing and asks for confirmation (override possible) |
+| Lean budgets per value stream | Budget per PI for the portfolio, each solution and each ART, in a configurable currency. Forecast spend = cost per story point × planned SP (or cost per team per PI × teams); actual = cost per SP × completed SP (or forecast × share of the PI elapsed). Rates are inherited down the hierarchy |
+| Spending guardrails | A warning when a value stream's forecast exceeds its budget, or when the budgets below a unit add up to more than its own |
+| Epic cost vs. estimate | Actual (completed SP × rate) and forecast (all SP × rate) cost per Epic against its MVP and full estimates |
+| Portfolio canvas | Lean Portfolio view: portfolio vision and strategic themes (Theme work items when the type is mapped, else a simple list) |
 
 ## Adaptation notes
 

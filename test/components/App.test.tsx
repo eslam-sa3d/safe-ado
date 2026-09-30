@@ -17,7 +17,7 @@ describe("App shell", () => {
     expect(screen.getByText("Loading SAFe configuration…")).toBeInTheDocument();
     await screen.findByRole("tab", { name: "Portfolio Kanban" });
     expect(tabs()).toEqual([
-      "Reports", "Roadmap", "Portfolio Kanban", "Risks (ROAM)", "Work Item List", "Work Item Hierarchy",
+      "Reports", "Roadmap", "Portfolio Kanban", "Lean Portfolio", "Risks (ROAM)", "Work Item List", "Work Item Hierarchy",
       "My Organization", "PIs & Iterations", "Setup",
     ]);
     expect(screen.getByRole("tab", { name: "Reports" })).toHaveAttribute("aria-selected", "true");
