@@ -31,17 +31,17 @@ describe("Setup — hierarchy members", () => {
 
     fireEvent.click(within(group).getByRole("button", { name: "Add member" }));
     fireEvent.change(field(group, "Member 1 name"), { target: { value: "Rita" } });
-    fireEvent.change(field(group, "Member 1 role"), { target: { value: "RTE" } });
+    fireEvent.change(field(group, "Member 1 role"), { target: { value: "rte" } });
     fireEvent.click(within(group).getByRole("button", { name: "Add member" }));
     fireEvent.change(field(group, "Member 2 name"), { target: { value: "Paul" } });
-    fireEvent.change(field(group, "Member 2 role"), { target: { value: "Product Manager" } });
+    fireEvent.change(field(group, "Member 2 role"), { target: { value: "productManagement" } });
     expect(screen.getByRole("button", { name: "Members of ART A" })).toHaveTextContent("Members (2)");
 
     fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
     await screen.findByText("Saved ✓");
     expect(findNode(lastSaved(ctx).root, "n-arta")!.members).toEqual([
-      { name: "Rita", role: "RTE" },
-      { name: "Paul", role: "Product Manager" },
+      { name: "Rita", role: "RTE", safeRole: "rte" },
+      { name: "Paul", role: "Product Management", safeRole: "productManagement" },
     ]);
     // collapse again
     fireEvent.click(screen.getByRole("button", { name: "Members of ART A" }));
@@ -98,9 +98,9 @@ describe("Setup — hierarchy members", () => {
     expect(add).toBeDisabled();
     expect(within(group).getByText(/at most 25 members/)).toBeInTheDocument();
 
-    const role = field(group, "Member 25 role");
+    const role = field(group, "Member 25 custom role");
     expect(role).toHaveAttribute("maxLength", "100");
     fireEvent.change(role, { target: { value: "x".repeat(150) } });
-    expect(field(group, "Member 25 role").value).toHaveLength(100);
+    expect(field(group, "Member 25 custom role").value).toHaveLength(100);
   });
 });

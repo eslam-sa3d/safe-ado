@@ -829,3 +829,17 @@ a.member-name:hover { text-decoration: underline; }
 .pill.enabler-pill { margin-left: 6px; background: rgba(119, 59, 147, 0.12); color: #773b93; font-size: 11px; }
 .btn.record-snapshot { white-space: nowrap; }
 .snapshot-note.snapshot-missing { font-style: italic; }
+
+/* ---------- data governance: unverified permissions, history, audit log, backup ---------- */
+.msg-warning { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: var(--warning-bg); }
+.msg-warning::before { content: "\f3ef"; color: var(--warn); }
+.history-button { margin-right: 8px; white-space: nowrap; }
+.audit-table td { vertical-align: top; }
+.audit-changes { margin: 0; padding-left: 16px; }
+.audit-changes code { font-size: 12px; }
+.audit-from { text-decoration: line-through; opacity: 0.7; }
+.audit-log .toolbar { gap: 8px; }
+.nowrap { white-space: nowrap; }
+.bv-hint, .bv-by { margin-top: 2px; }
+.import-summary { margin: 8px 0; max-width: 320px; }
+.import-mode .check { display: block; margin: 6px 0; }

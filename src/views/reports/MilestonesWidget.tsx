@@ -4,7 +4,7 @@ import { findNode, pathTo } from "../../api/org";
 import { dayIso, milestonesInWindow, relativeDays, toDay } from "../../api/reports";
 import { Milestone } from "../../api/types";
 import { ErrorBar, Field, fmtDate, Modal, Icon } from "../../components/common";
-import { useCan, useSafe } from "../../components/context";
+import { useDataCan, useSafe } from "../../components/context";
 import { ReportData } from "./data";
 import { AddButton, SelectPi, Widget } from "./Widget";
 
@@ -16,7 +16,7 @@ const PREF = "milestonesIncludeParents";
  */
 export function MilestonesWidget({ data, today }: { data: ReportData; today: number }) {
   const { config, node, pi } = useSafe();
-  const can = useCan();
+  const can = useDataCan();
   const [includeParents, setIncludeParents] = useState(false);
   const [created, setCreated] = useState<Milestone[]>([]);
   const [adding, setAdding] = useState(false);

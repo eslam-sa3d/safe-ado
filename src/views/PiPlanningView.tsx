@@ -32,7 +32,8 @@ import {
 import { LEVEL_LABEL, OrgNode, ProgramIncrement } from "../api/types";
 import { createWorkItem, openWorkItem } from "../api/wit";
 import { Empty, ErrorBar, fmtDate, Icon, Info, Progress, Spinner, useAsync } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useDataCan, useSafe } from "../components/context";
+import { PermissionNotice } from "../components/PermissionNotice";
 import { predictability } from "./ObjectivesView";
 
 interface Store<T> {
@@ -93,7 +94,7 @@ export function PiPlanningView() {
 }
 
 function PiPlanning({ node, pi }: { node: OrgNode; pi: ProgramIncrement }) {
-  const can = useCan();
+  const can = useDataCan();
   const readOnly = !can.plan;
   const [error, setError] = useState<string>();
   const reviews = useDocs(planReviewsStore, "plan review", setError);
@@ -121,6 +122,7 @@ function PiPlanning({ node, pi }: { node: OrgNode; pi: ProgramIncrement }) {
   return (
     <div className="pi-planning">
       <ErrorBar message={error ?? loadError} onClose={() => setError(undefined)} />
+      <PermissionNotice needs="plan" />
       {readOnly && (
         <div className="readonly-banner">
           <Info>You can view the PI Planning event but not change it (requires "Edit work items in this node").</Info>

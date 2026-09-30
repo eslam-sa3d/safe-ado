@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { DepSource, toDay } from "../api/reports";
 import { Level } from "../api/types";
 import { ErrorBar, Spinner, useAsync } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useDataCan, useSafe } from "../components/context";
+import { PermissionNotice } from "../components/PermissionNotice";
 import { FlowWidget } from "./reports/FlowWidget";
 import { BurnupWidget } from "./reports/BurnupWidget";
 import { BusinessValueWidget } from "./reports/BusinessValueWidget";
@@ -107,7 +108,7 @@ function render(key: WidgetKey, data: ReportData, today: number, shared: Shared)
 export function ReportsView() {
   const { config, node, pi, pis } = useSafe();
   const today = useMemo(() => toDay(localToday()), []);
-  const can = useCan();
+  const can = useDataCan();
   const [depSource, setDepSource] = useDepSource(node.level);
   const { data, loading, error, reload } = useAsync(
     () => loadReportData(config, node, pi, { today, persist: can.plan && can.known !== false, pis }),
@@ -117,6 +118,7 @@ export function ReportsView() {
 
   return (
     <div className="reports-dashboard">
+      <PermissionNotice needs="plan" />
       <div className="reports-grid">
         <HeaderWidget today={today} />
         {error ? (

@@ -4,7 +4,8 @@ import { childLevels, findNode, flatten, LEVEL_COLOR, parentOf, pathTo, effectiv
 import { Level, LEVEL_LABEL, OrgNode, SafeConfig } from "../api/types";
 import { getAreaPaths } from "../api/wit";
 import { ErrorBar, Field, Info, Modal, Spinner, useAsync, Icon, LevelPill } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useDataCan, useSafe } from "../components/context";
+import { PermissionNotice } from "../components/PermissionNotice";
 
 export const LAYERS: Level[] = ["portfolio", "solution", "art", "team"];
 
@@ -67,7 +68,7 @@ interface Line {
 /** Agile Hive's "My Organization": layered canvas of units with editing and chain highlighting. */
 export function OrganizationView() {
   const { config, saveConfig, node: selected, selectNode } = useSafe();
-  const readOnly = !useCan().admin;
+  const readOnly = !useDataCan().admin;
   const root = config.root;
   const detached = config.detached ?? [];
   const [attaching, setAttaching] = useState<OrgNode>();
@@ -244,6 +245,7 @@ export function OrganizationView() {
 
   return (
     <div className="org-view">
+      <PermissionNotice needs="admin" />
       {readOnly ? (
         <div className="msg msg-info readonly-banner" role="note">
           Read-only: only project administrators can change the organization. Hover a unit to highlight its chain; click it to open it.

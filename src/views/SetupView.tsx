@@ -2,6 +2,7 @@ import { useState } from "react";
 import { newId } from "../api/data";
 import { DEFAULT_DEPENDENCY_LINK } from "../api/dependencies";
 import { childLevels, flatten } from "../api/org";
+import { memberRole, SAFE_ROLES, SafeRole, withRole } from "../api/roles";
 import { DEFAULT_RROE_FIELD } from "../api/rules";
 import { Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
 import {
@@ -19,7 +20,9 @@ import {
   RelationType,
 } from "../api/wit";
 import { ErrorBar, Field, Info, Spinner, useAsync, Icon, LevelPill } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useDataCan, useSafe } from "../components/context";
+import { PermissionNotice } from "../components/PermissionNotice";
+import { AuditSection, BackupPanel } from "./SetupData";
 
 function updateNode(root: OrgNode, id: string, fn: (n: OrgNode) => OrgNode): OrgNode {
   if (root.id === id) return fn(root);
@@ -61,7 +64,7 @@ function scrollToSection(id: string) {
 
 export function SetupView({ firstRun }: { firstRun: boolean }) {
   const { config, saveConfig } = useSafe();
-  const readOnly = !useCan().admin;
+  const readOnly = !useDataCan().admin;
   const [draft, setDraft] = useState<SafeConfig>(config);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -167,6 +170,7 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
         </div>
       )}
       <ErrorBar message={meta.error ?? error} onClose={() => setError(undefined)} />
+      <PermissionNotice needs="admin" />
 
       {!readOnly && (
         <div className="savebar">
@@ -350,6 +354,26 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
             onRemove={(id) => setDraft((d) => ({ ...d, root: removeNode(d.root, id) }))}
           />
         </ul>
+      </section>
+
+      <section className="panel" id="setup-backup">
+        <div className="panel-header">
+          <h3>Backup &amp; restore</h3>
+        </div>
+        <BackupPanel
+          canImport={!readOnly}
+          onConfigRestored={async (restored) => {
+            await saveConfig(restored);
+            setDraft(restored);
+          }}
+        />
+      </section>
+
+      <section className="panel" id="setup-audit">
+        <div className="panel-header">
+          <h3>Audit log</h3>
+        </div>
+        <AuditSection />
       </section>
     </div>
   );
@@ -558,18 +582,37 @@ function NodeEditor(props: {
                 value={m.name}
                 disabled={readOnly}
                 // Typing a name makes it a free-text member: the picked identity no longer applies.
-                onChange={(e) => updateMembers((list) => list.map((x, j) => (j === i ? { name: e.target.value, role: x.role } : x)))}
-              />
-              <input
-                aria-label={`Member ${i + 1} role`}
-                placeholder="Role (e.g. RTE, Product Owner)"
-                maxLength={MAX_ROLE_LENGTH}
-                value={m.role}
-                disabled={readOnly}
                 onChange={(e) =>
-                  updateMembers((list) => list.map((x, j) => (j === i ? { ...x, role: e.target.value.slice(0, MAX_ROLE_LENGTH) } : x)))
+                  updateMembers((list) =>
+                    list.map((x, j) => (j === i ? { name: e.target.value, role: x.role, ...(x.safeRole ? { safeRole: x.safeRole } : {}) } : x))
+                  )
                 }
               />
+              <select
+                aria-label={`Member ${i + 1} role`}
+                value={memberRole(m)}
+                disabled={readOnly}
+                onChange={(e) => updateMembers((list) => list.map((x, j) => (j === i ? withRole(x, e.target.value as SafeRole) : x)))}
+              >
+                {SAFE_ROLES.map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              {memberRole(m) === "other" && (
+                // "Other" keeps a custom label (and older free-text roles that match no SAFe role).
+                <input
+                  aria-label={`Member ${i + 1} custom role`}
+                  placeholder="Role name"
+                  maxLength={MAX_ROLE_LENGTH}
+                  value={m.role}
+                  disabled={readOnly}
+                  onChange={(e) =>
+                    updateMembers((list) => list.map((x, j) => (j === i ? withRole(x, "other", e.target.value.slice(0, MAX_ROLE_LENGTH)) : x)))
+                  }
+                />
+              )}
               {m.uniqueName && <span className="muted small member-identity">{m.uniqueName}</span>}
               {!readOnly && (
                 <>

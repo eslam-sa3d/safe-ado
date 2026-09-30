@@ -4,8 +4,11 @@ import { flatten, subtreeIds } from "../api/org";
 import { exposure, Exposure, EXPOSURE_COLOR, EXPOSURE_RANK, ImpactLevel, IMPACTS, PROBABILITIES, Probability } from "../api/risk";
 import { LEVEL_LABEL, Risk, ROAM_STATUSES, RoamStatus } from "../api/types";
 import { openWorkItem } from "../api/wit";
+import { stampText } from "../api/audit";
 import { ErrorBar, Field, Info, Modal, Spinner, useAsync, Icon } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useDataCan, useSafe } from "../components/context";
+import { HistoryButton } from "../components/History";
+import { PermissionNotice } from "../components/PermissionNotice";
 
 const ROAM_HINT: Record<RoamStatus, string> = {
   Unroamed: "Raised, not yet discussed",
@@ -56,7 +59,8 @@ function ExposureChip({ label, value }: { label: string; value: Exposure }) {
 /** ROAM board for PI risks, scoped to the selected node and its descendants. */
 export function RisksView() {
   const { node, pi, config } = useSafe();
-  const canPlan = useCan().plan;
+  // Risks live only in extension data: an unverified permission means read-only.
+  const canPlan = useDataCan().plan;
   const [allPis, setAllPis] = useState(false);
   const [editing, setEditing] = useState<Risk | null>(null);
   const [error, setError] = useState<string>();
@@ -126,6 +130,7 @@ export function RisksView() {
         )}
       </div>
       <ErrorBar message={loadError ?? error} onClose={() => setError(undefined)} />
+      <PermissionNotice needs="plan" />
       {!canPlan && <Info>You have read-only access: risks can be viewed but not changed.</Info>}
       <div className="roam">
         {ROAM_STATUSES.map((status) => {
@@ -232,6 +237,7 @@ function RiskDialog(props: {
       footer={
         readOnly ? (
           <>
+            <HistoryButton collection="risks" docId={props.risk.id} title={props.risk.title} />
             <span className="spacer" />
             <button className="btn" onClick={props.onClose}>
               Close
@@ -244,6 +250,7 @@ function RiskDialog(props: {
               Delete
             </button>
           )}
+          {!props.isNew && <HistoryButton collection="risks" docId={props.risk.id} title={props.risk.title} />}
           <span className="spacer" />
           <button className="btn" onClick={props.onClose}>
             Cancel
@@ -346,6 +353,12 @@ function RiskDialog(props: {
         <input value={links} placeholder="e.g. 123, 456" onChange={(e) => setLinks(e.target.value)} />
       </Field>
       </fieldset>
+      {(props.risk.createdBy || props.risk.modifiedBy) && (
+        <p className="muted small risk-stamps">
+          {props.risk.createdBy && <>Raised by {stampText(props.risk.createdBy, props.risk.createdAt)}. </>}
+          {props.risk.modifiedBy && <>Last changed by {stampText(props.risk.modifiedBy, props.risk.modifiedAt)}.</>}
+        </p>
+      )}
     </Modal>
   );
 }

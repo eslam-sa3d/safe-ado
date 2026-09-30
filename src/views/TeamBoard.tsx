@@ -76,7 +76,8 @@ import {
 } from "../api/wit";
 import { FilterBar } from "../components/FilterBar";
 import { CATEGORY_COLOR, ErrorBar, fmtDate, Icon, Info, lastSegment, RefreshContext, Spinner, storage, typeColor, useAsync } from "../components/common";
-import { useCan, useSafe } from "../components/context";
+import { useCan, useDataCan, useSafe } from "../components/context";
+import { PermissionNotice } from "../components/PermissionNotice";
 
 /**
  * Team Planning Board (Agile Hive's "breakout board"). Columns are the PI's iterations with
@@ -282,6 +283,8 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const { config, pis, piRoot } = useSafe();
   const can = useCan();
   const readOnly = !can.plan;
+  // Capacity lives only in extension data: an unverified permission locks it (fail closed).
+  const capacityReadOnly = readOnly || !useDataCan().plan;
   const art = parentOf(config.root, team.id);
   const siblings = (art?.children ?? []).filter((c) => c.id !== team.id && c.level === "team");
   const artAreas = art ? scopeAreas(art) : scopeAreas(team);
@@ -580,6 +583,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
           ))}
         </div>
         <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
+        <PermissionNotice needs="plan" />
         {rolled.error && <ErrorBar message={`Could not load rolled-over items: ${rolled.error}`} />}
         {readOnly && (
           <div className="tb-readonly">
@@ -606,7 +610,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                 key={s.path}
                 sprint={s}
                 status={status[i]}
-                readOnly={readOnly}
+                readOnly={capacityReadOnly}
                 load={loads[i]}
                 capacity={findCapacity(data.caps, team.id, s)?.capacity}
                 onSave={(c) => saveCapacity(s, c)}
