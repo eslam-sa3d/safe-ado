@@ -88,7 +88,9 @@ export const LEVEL_COLOR: Record<Level, string> = {
 
 /** The PI root iteration that applies to a node: its own cadence, the nearest ancestor's, or the project's. */
 export function effectivePiRoot(config: SafeConfig, nodeId: string): string {
-  const chain = pathTo(config.root, nodeId);
+  // Detached units keep their own chain (detached root -> node).
+  const tree = [config.root, ...(config.detached ?? [])].find((t) => findNode(t, nodeId)) ?? config.root;
+  const chain = pathTo(tree, nodeId);
   for (let i = chain.length - 1; i >= 0; i--) if (chain[i].piRootIteration) return chain[i].piRootIteration!;
   return config.piRootIteration;
 }

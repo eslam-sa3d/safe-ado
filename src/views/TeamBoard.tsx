@@ -1,5 +1,5 @@
 import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { capacityId, capacityStore, emptyMeta, metaStore } from "../api/data";
+import { capacityId, capacityStore, emptyMeta, findCapacity, metaStore } from "../api/data";
 import { CRITICALITY_COLOR, CRITICALITY_LABEL, dependencyLinkTypes, DependencyLinkTypes, sprintIndex } from "../api/dependencies";
 import { applyFilter, EMPTY_FILTER, ExtraFacet, facetOptions, isFilterActive, ItemFilter, wiqlSuffix, withWiqlFilter } from "../api/filters";
 import { findNode, parentOf, scopeAreas } from "../api/org";
@@ -243,7 +243,7 @@ async function loadRolledOver(ctx: Ctx, team: OrgNode, past: boolean[]): Promise
 }
 
 function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }) {
-  const { config, pis } = useSafe();
+  const { config, pis, piRoot } = useSafe();
   const can = useCan();
   const readOnly = !can.plan;
   const art = parentOf(config.root, team.id);
@@ -277,7 +277,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
     const metas = new Map(metaDocs.map((m) => [m.workItemId, m]));
     const ctx: Ctx = { config, pi, pis, types, category, metas, artAreas, link: dependencyLinkTypes(config) };
     const block = await loadBlock(ctx, team, filter);
-    return { ctx, block, caps: new Map(caps.map((c) => [c.id, c])) };
+    return { ctx, block, caps };
   }, [team.id, pi.path, wiqlKey]);
 
   const block = data?.block;
@@ -382,7 +382,8 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
     run(`Could not remove swimlane "${lane.title}"`, () => saveMeta(lane.feature!.id, (m) => unassignMeta(m, team.id, pi.path)));
 
   const removeFromBoard = (item: WorkItem) =>
-    run(`Could not remove #${item.id} from the board`, () => setFields(item.id, { [F.iteration]: config.piRootIteration }));
+    // Back to the unit's cadence root (its own PI root, an ancestor's, or the project's).
+    run(`Could not remove #${item.id} from the board`, () => setFields(item.id, { [F.iteration]: piRoot ?? config.piRootIteration }));
 
   const open = (id: number) => run(`Could not open #${id}`, () => openWorkItem(id));
 
@@ -402,12 +403,16 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
     });
 
   const saveCapacity = async (sprint: Sprint, capacity: number) => {
-    const id = capacityId(team.id, sprint.path);
-    const existing = data!.caps.get(id);
-    const doc: IterationCapacity = { ...(existing ?? { id, nodeId: team.id, iterationPath: sprint.path }), capacity };
+    const existing = findCapacity(data!.caps, team.id, sprint);
+    const doc: IterationCapacity = {
+      ...(existing ?? { id: capacityId(team.id, sprint.identifier), nodeId: team.id, iterationPath: sprint.path }),
+      iterationPath: sprint.path,
+      iterationId: sprint.identifier,
+      capacity,
+    };
     try {
       const saved = await capacityStore.save(doc);
-      setData((d) => (d ? { ...d, caps: new Map(d.caps).set(id, saved) } : d));
+      setData((d) => (d ? { ...d, caps: [...d.caps.filter((c) => c.id !== saved.id), saved] } : d));
     } catch (e: any) {
       setActionError(`Could not save capacity: ${e?.message ?? e}`);
     }
@@ -537,7 +542,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                 status={status[i]}
                 readOnly={readOnly}
                 load={loads[i]}
-                capacity={data.caps.get(capacityId(team.id, s.path))?.capacity}
+                capacity={findCapacity(data.caps, team.id, s)?.capacity}
                 onSave={(c) => saveCapacity(s, c)}
                 onError={setActionError}
               />

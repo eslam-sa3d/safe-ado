@@ -1,6 +1,6 @@
 import { capacityStore, metaStore, milestonesStore, objectivesStore, risksStore, snapshotsStore } from "../../api/data";
 import { dependenciesOf, DependencyLinkTypes, dependencyLinkTypes } from "../../api/dependencies";
-import { flatten, scopeAreas } from "../../api/org";
+import { flatten, scopeAreas, effectivePiRoot } from "../../api/org";
 import { scopeQuery, typeChain } from "../../api/queries";
 import {
   Burnup,
@@ -115,7 +115,8 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
   } else if (pi) {
     const flowTypes = [story, feature, capability, enabler].filter((t): t is string => !!t);
     const [stories, planning, history] = await Promise.all([
-      queryWorkItems(scopeQuery([story], areas, config.piRootIteration), [], true),
+      // Stories of the unit's own cadence (its PI root, an ancestor's, or the project's).
+      queryWorkItems(scopeQuery([story], areas, effectivePiRoot(config, node.id)), [], true),
       queryWorkItems(scopeQuery([feature, capability, enabler].filter((t): t is string => !!t), areas, pi.path), [], true),
       // History for the burnup and flow time; the report still works without it.
       getRevisions(flowTypes, historyFields(config.storyPointsField)).catch((e) => {

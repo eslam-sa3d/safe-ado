@@ -192,10 +192,11 @@ export function businessValue(objectives: PiObjective[]): BusinessValue {
 }
 
 /** Sum of capacity documents of `nodeIds` for the given iterations. */
-export function capacityTotal(docs: IterationCapacity[], nodeIds: Set<string>, sprintPaths: string[]): number {
+export function capacityTotal(docs: IterationCapacity[], nodeIds: Set<string>, sprintPaths: string[], sprintIds: string[] = []): number {
   const paths = new Set(sprintPaths.map((p) => p.toLowerCase()));
+  const ids = new Set(sprintIds);
   return docs
-    .filter((d) => nodeIds.has(d.nodeId) && paths.has(d.iterationPath.toLowerCase()))
+    .filter((d) => nodeIds.has(d.nodeId) && ((d.iterationId && ids.has(d.iterationId)) || paths.has(d.iterationPath.toLowerCase())))
     .reduce((s, d) => s + (Number(d.capacity) || 0), 0);
 }
 

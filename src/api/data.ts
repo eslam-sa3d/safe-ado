@@ -142,7 +142,14 @@ export const planReviewsStore = docStore<PlanReview>("planreviews");
 export const inspectAdaptStore = docStore<ImprovementItem>("improvements");
 export const snapshotsStore = docStore<PiSnapshot>("snapshots");
 
-export const capacityId = (nodeId: string, iterationPath: string) => `${nodeId}|${iterationPath}`;
+/** Capacity document id: team node + the iteration's stable id (older documents used the path). */
+export const capacityId = (nodeId: string, iterationKey: string) => `${nodeId}|${iterationKey}`;
+
+/** Finds a team's capacity for a sprint by iteration id, falling back to the (older) path key. */
+export function findCapacity(docs: IterationCapacity[], nodeId: string, sprint: { identifier: string; path: string }): IterationCapacity | undefined {
+  const mine = docs.filter((d) => d.nodeId === nodeId);
+  return mine.find((d) => d.iterationId === sprint.identifier) ?? mine.find((d) => d.iterationPath.toLowerCase() === sprint.path.toLowerCase());
+}
 
 export function emptyMeta(workItemId: number): WorkItemMeta {
   return { id: String(workItemId), workItemId, assignedNodeIds: [], assignedPiPaths: [] };

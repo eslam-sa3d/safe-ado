@@ -460,10 +460,19 @@ export interface Revision {
  * Work item revisions from the reporting API (history for burnups and rolled-over items).
  * Pages through continuation tokens; limited to the given types and fields.
  */
-export async function getRevisions(types: string[], fields: string[], startDateTime?: string): Promise<Revision[]> {
-  const out: Revision[] = [];
+/** Revisions plus whether the page limit cut the history short (then the newest revisions are missing). */
+export type RevisionList = Revision[] & { truncated?: boolean };
+
+export const revisionPaging = { maxPages: 50 };
+
+export async function getRevisions(types: string[], fields: string[], startDateTime?: string): Promise<RevisionList> {
+  const out: RevisionList = [];
   let token: string | undefined;
-  for (let page = 0; page < 50; page++) {
+  for (let page = 0; ; page++) {
+    if (page >= revisionPaging.maxPages) {
+      out.truncated = true;
+      break;
+    }
     const qs = [token ? `continuationToken=${encodeURIComponent(token)}` : "", startDateTime ? `startDateTime=${encodeURIComponent(startDateTime)}` : ""].filter(Boolean).join("&");
     const res = await api<{ values: Revision[]; isLastBatch?: boolean; continuationToken?: string }>(
       `${p()}/_apis/wit/reporting/workitemrevisions${qs ? `?${qs}` : ""}`,
