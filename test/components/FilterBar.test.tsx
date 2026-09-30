@@ -195,7 +195,7 @@ describe("FilterBar — extended facets, validation and quick filters", () => {
           value={f}
           options={OPTIONS}
           onChange={setF}
-          extraFacets={[{ key: "team", label: "Team", options: ["Red"] }]}
+          extraFacets={[{ key: "team", label: "Team", options: ["Red"], values: () => [] }]}
           showWiql={false}
           quickFilters={false}
           compact
