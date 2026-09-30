@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { flatten, pathTo } from "../api/org";
+import { effectivePiRoot, flatten, pathTo } from "../api/org";
 import { localToday } from "../api/rules";
 import {
   addDays,
@@ -62,7 +62,10 @@ export function PiManagementView() {
   const cadenceOwner = [...pathTo(config.root, node.id)].reverse().find((n) => n.piRootIteration);
   const cadenceLabel =
     cadenceOwner && cadenceOwner.piRootIteration === piRoot ? `PIs of ${cadenceOwner.name}'s cadence` : "PIs of the project cadence";
-  const teams = flatten(config.root).filter((n) => n.teamId);
+  // Teams that plan in this cadence: every unit (incl. detached) whose effective PI root is this one.
+  const teams = [config.root, ...(config.detached ?? [])]
+    .flatMap(flatten)
+    .filter((n) => n.teamId && effectivePiRoot(config, n.id) === piRoot);
 
   const [name, setName] = useState(suggestName(pis));
   const [start, setStart] = useState(nextStart(pis));
@@ -438,7 +441,12 @@ function PiDetails(props: {
     });
 
   const deletePi = async () => {
-    if (!window.confirm(`Delete ${pi.name} and its ${pi.sprints.length} iterations? Work items in them move to ${props.piRoot}.`)) return;
+    if (
+      !window.confirm(
+        `Delete ${pi.name} and its ${pi.sprints.length} iterations? Work items in them move to ${props.piRoot}, and teams lose these sprints (sprint history on those items is kept only in their revisions).`
+      )
+    )
+      return;
     await run(async () => {
       const reclassifyId = await getIterationNodeId(props.piRoot);
       if (reclassifyId === undefined) throw new Error(`Could not find the iteration ${props.piRoot}.`);
@@ -523,7 +531,7 @@ function IterationRow(props: { pi: ProgramIncrement; sprint: Sprint; busy: boole
   const ip = isIp(sprint.name);
 
   const remove = async () => {
-    if (!window.confirm(`Delete ${sprint.name}? Work items in it move to ${pi.name}.`)) return;
+    if (!window.confirm(`Delete ${sprint.name}? Work items in it move to ${pi.name}, and teams lose this sprint.`)) return;
     await run(async () => {
       const reclassifyId = await getIterationNodeId(pi.path);
       if (reclassifyId === undefined) throw new Error(`Could not find the iteration ${pi.path}.`);

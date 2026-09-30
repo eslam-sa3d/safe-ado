@@ -248,14 +248,18 @@ describe("Roadmap", () => {
     await waitFor(() => expect(savedMeta(10)?.lane).toBe(0));
   });
 
-  it("disables lane moves while a filter is active but still allows time moves", async () => {
+  it("allows only resizing while a filter is active (like Agile Hive)", async () => {
     seedPlan();
     await renderRoadmap();
     fireEvent.change(within(mainBar()).getByLabelText("Filter text"), { target: { value: "Payment" } });
-    expect(screen.getByText(/cards can be moved and resized in time, but not between lanes/)).toBeInTheDocument();
+    expect(screen.getByText(/cards can be resized but not moved/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^#11 / })).not.toBeInTheDocument();
+    const etag = savedMeta(10).__etag;
     dragCard(card(10), 2 * PPD, 3 * LANE_H);
-    await waitFor(() => expect(savedMeta(10).plannedStart).toBe(D(2)));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(savedMeta(10).__etag).toBe(etag); // the move was ignored
+    dragCard(screen.getByLabelText("Resize end of #10"), 6 * PPD);
+    await waitFor(() => expect(savedMeta(10).plannedEnd).toBe(D(15)));
     expect(savedMeta(10).lane).toBe(0);
   });
 

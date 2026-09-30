@@ -227,7 +227,7 @@ describe("PIs & Iterations — delete an iteration", () => {
     const { panel, ctx } = await manage("PI 2");
     vi.mocked(window.confirm).mockReturnValueOnce(false);
     fireEvent.click(within(panel).getByRole("button", { name: "Delete PI 2 IP" }));
-    expect(window.confirm).toHaveBeenCalledWith("Delete PI 2 IP? Work items in it move to PI 2.");
+    expect(window.confirm).toHaveBeenCalledWith("Delete PI 2 IP? Work items in it move to PI 2, and teams lose this sprint.");
     expect(callsTo(/classificationnodes/, "DELETE")).toHaveLength(0);
 
     fireEvent.click(within(panel).getByRole("button", { name: "Delete PI 2 IP" }));

@@ -349,7 +349,9 @@ function Roadmap() {
     const moved = d.moved || Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD;
     const days = Math.round(dx / d.ppd);
     if (d.mode !== "move") return { ...d, moved, range: resizeRange(d.orig, d.mode, days) };
-    const lane = d.lanesLocked ? d.origLane : Math.max(0, d.origLane + Math.round(dy / d.laneH));
+    // Like Agile Hive: while filters are active, cards can only be resized, not moved.
+    if (d.lanesLocked) return { ...d, moved, range: d.orig, lane: d.origLane };
+    const lane = Math.max(0, d.origLane + Math.round(dy / d.laneH));
     return { ...d, moved, range: shiftRange(d.orig, days), lane };
   };
 
@@ -484,7 +486,7 @@ function Roadmap() {
       <FilterBar value={filter} onChange={setFilter} options={facetOptions(items)} />
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
       {readOnly && <Info>You have read-only access to this area: planned dates, lanes and milestones can't be changed here.</Info>}
-      {filterActive && !readOnly && <Info>Filters are active: cards can be moved and resized in time, but not between lanes.</Info>}
+      {filterActive && !readOnly && <Info>Filters are active: cards can be resized but not moved. Clear the filters to move cards.</Info>}
       {items.length === 0 && !loading && (
         <Empty title={`No ${type}s in scope`}>
           <p>

@@ -142,7 +142,7 @@ describe("PIs & Iterations — edit and delete PI", () => {
     const { panel, ctx } = await manage("PI 1");
     (window.confirm as any).mockReturnValueOnce(false);
     fireEvent.click(within(panel).getByRole("button", { name: "Delete PI" }));
-    expect(window.confirm).toHaveBeenCalledWith("Delete PI 1 and its 2 iterations? Work items in them move to Fabrikam\\PIs.");
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Delete PI 1 and its 2 iterations? Work items in them move to Fabrikam\\PIs, and teams lose these sprints"));
     expect(callsTo(/classificationnodes/, "DELETE")).toHaveLength(0);
 
     fireEvent.click(within(panel).getByRole("button", { name: "Delete PI" }));
