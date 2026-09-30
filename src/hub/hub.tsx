@@ -11,6 +11,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  document.body.textContent = `SAFe Ado failed to load: ${e?.message ?? e}`;
+  document.body.textContent = `ScaleLane failed to load: ${e?.message ?? e}`;
   SDK.notifyLoadFailed(e);
 });

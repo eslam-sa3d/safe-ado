@@ -12,7 +12,7 @@ async function freshSdk(): Promise<SdkMock> {
   vi.doMock("azure-devops-extension-sdk", async () => ({
     ...(await import("../sdkMock")),
     register: vi.fn(),
-    getContributionId: vi.fn(() => "SAFeADO.safe-ado.safe-work-item-form-group"),
+    getContributionId: vi.fn(() => "ScaleLane.scalelane.safe-work-item-form-group"),
   }));
   document.body.innerHTML = '<div id="root"></div>';
   return (await import("azure-devops-extension-sdk")) as unknown as SdkMock;
@@ -24,7 +24,7 @@ describe("form entry point", () => {
     await import("../../src/form/form");
     await waitFor(() => expect(sdk.notifyLoadSucceeded).toHaveBeenCalled());
     expect(sdk.init).toHaveBeenCalledWith({ loaded: false, applyTheme: true });
-    expect(sdk.register).toHaveBeenCalledWith("SAFeADO.safe-ado.safe-work-item-form-group", expect.objectContaining({ onLoaded: expect.any(Function) }));
+    expect(sdk.register).toHaveBeenCalledWith("ScaleLane.scalelane.safe-work-item-form-group", expect.objectContaining({ onLoaded: expect.any(Function) }));
     expect(sdk.notifyLoadFailed).not.toHaveBeenCalled();
     await waitFor(() => expect(document.getElementById("root")!.textContent).not.toBe(""));
   });
@@ -35,13 +35,13 @@ describe("form entry point", () => {
     await import("../../src/form/form");
     await waitFor(() => expect(sdk.notifyLoadFailed).toHaveBeenCalled());
     expect(sdk.register).not.toHaveBeenCalled();
-    expect(document.body.textContent).toBe("SAFe Ado failed to load: handshake failed");
+    expect(document.body.textContent).toBe("ScaleLane failed to load: handshake failed");
   });
 
   it("handles non-Error failures", async () => {
     const sdk = await freshSdk();
     sdk.init.mockRejectedValueOnce("timeout");
     await import("../../src/form/form");
-    await waitFor(() => expect(document.body.textContent).toBe("SAFe Ado failed to load: timeout"));
+    await waitFor(() => expect(document.body.textContent).toBe("ScaleLane failed to load: timeout"));
   });
 });

@@ -121,10 +121,10 @@ describe("work item form SAFe panel", () => {
     await waitFor(() => expect(screen.getByText(/Area path \(none\)/)).toBeInTheDocument());
   });
 
-  it("explains when SAFe Ado is not configured", async () => {
+  it("explains when ScaleLane is not configured", async () => {
     dataStore.values.clear();
     await renderPanel();
-    expect(screen.getByText("SAFe Ado is not configured for this project.")).toBeInTheDocument();
+    expect(screen.getByText("ScaleLane is not configured for this project.")).toBeInTheDocument();
   });
 
   it("shows load errors", async () => {

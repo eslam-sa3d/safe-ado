@@ -140,7 +140,7 @@ describe("effective capacity", () => {
   const missing: DerivedResult = { derived: null, reason: "No capacity is set up for the team in Azure DevOps.", capacityUrl: "https://x/cap" };
 
   it("manual: uses the stored story points and ignores Azure DevOps", () => {
-    expect(resolveCapacity({ source: "manual" }, 12, ok)).toMatchObject({ value: 12, origin: "manual", explanation: "Manual: 12 SP entered in SAFe Ado." });
+    expect(resolveCapacity({ source: "manual" }, 12, ok)).toMatchObject({ value: 12, origin: "manual", explanation: "Manual: 12 SP entered in ScaleLane." });
     expect(resolveCapacity({ source: "manual" }, undefined, ok)).toMatchObject({ value: undefined, origin: "none" });
   });
 

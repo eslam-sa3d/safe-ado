@@ -278,7 +278,7 @@ export function FormPanel() {
 
   if (error) return <ErrorBar message={`Could not load SAFe details: ${error}`} />;
   if (!data) return <Spinner label="Loading SAFe details…" />;
-  if (!data.config) return <div className="safe-form muted">SAFe Ado is not configured for this project.</div>;
+  if (!data.config) return <div className="safe-form muted">ScaleLane is not configured for this project.</div>;
   if (!data.unit) {
     return (
       <div className="safe-form">
@@ -353,7 +353,7 @@ export function FormPanel() {
     try {
       await openInNewTab(await hubUrl(`node=${unit.id}&view=workitems`));
     } catch (e: any) {
-      setSaveError(`Could not open SAFe Ado: ${e?.message ?? e}`);
+      setSaveError(`Could not open ScaleLane: ${e?.message ?? e}`);
     }
   };
 
@@ -372,7 +372,7 @@ export function FormPanel() {
           ))}
           <LevelPill level={unit.level} />
           <button className="link safe-form-open" onClick={() => void openHub()}>
-            Open in SAFe Ado
+            Open in ScaleLane
           </button>
         </span>
       </div>

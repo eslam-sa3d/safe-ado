@@ -1,44 +1,93 @@
 {
   "manifestVersion": 1,
-  "id": "safe-ado",
-  "publisher": "SAFeADO",
+  "id": "scalelane",
+  "publisher": "ScaleLane",
   "version": "1.3.0",
   "public": true,
-  "name": "SAFe Ado",
+  "name": "ScaleLane",
   "description": "Scaled agile planning for SAFe® in Azure Boards (Services and Server 2022.1): ART and team planning boards, roadmap, PI Objectives, ROAM risks, PI Planning and reports.",
-  "categories": ["Azure Boards"],
-  "tags": ["SAFe", "PI Planning", "ART", "Program Board", "Portfolio", "Scaled Agile"],
+  "categories": [
+    "Azure Boards"
+  ],
+  "tags": [
+    "SAFe",
+    "PI Planning",
+    "ART",
+    "Program Board",
+    "Portfolio",
+    "Scaled Agile"
+  ],
   "targets": [
-    { "id": "Microsoft.VisualStudio.Services" }
+    {
+      "id": "Microsoft.VisualStudio.Services"
+    }
   ],
-  "icons": { "default": "images/logo.png" },
-  "content": { "details": { "path": "overview.md" } },
-  "screenshots": [
-    { "path": "images/screenshots/reports-art.png" },
-    { "path": "images/screenshots/art-planning-board.png" },
-    { "path": "images/screenshots/team-planning-board.png" },
-    { "path": "images/screenshots/roadmap.png" },
-    { "path": "images/screenshots/pi-planning.png" },
-    { "path": "images/screenshots/pi-objectives.png" },
-    { "path": "images/screenshots/risks-roam.png" }
-  ],
-  "repository": { "type": "git", "uri": "https://github.com/eslam-sa3d/safe-ado" },
-  "links": {
-    "repository": { "uri": "https://github.com/eslam-sa3d/safe-ado" },
-    "support": { "uri": "https://github.com/eslam-sa3d/safe-ado/issues" }
+  "icons": {
+    "default": "images/logo.png"
   },
-  "scopes": ["vso.work_write", "vso.project"],
+  "content": {
+    "details": {
+      "path": "overview.md"
+    }
+  },
+  "screenshots": [
+    {
+      "path": "images/screenshots/reports-art.png"
+    },
+    {
+      "path": "images/screenshots/art-planning-board.png"
+    },
+    {
+      "path": "images/screenshots/team-planning-board.png"
+    },
+    {
+      "path": "images/screenshots/roadmap.png"
+    },
+    {
+      "path": "images/screenshots/pi-planning.png"
+    },
+    {
+      "path": "images/screenshots/pi-objectives.png"
+    },
+    {
+      "path": "images/screenshots/risks-roam.png"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "uri": "https://github.com/eslam-sa3d/safe-ado"
+  },
+  "links": {
+    "repository": {
+      "uri": "https://github.com/eslam-sa3d/safe-ado"
+    },
+    "support": {
+      "uri": "https://github.com/eslam-sa3d/safe-ado/issues"
+    }
+  },
+  "scopes": [
+    "vso.work_write",
+    "vso.project"
+  ],
   "files": [
-    { "path": "dist", "addressable": true },
-    { "path": "images", "addressable": true }
+    {
+      "path": "dist",
+      "addressable": true
+    },
+    {
+      "path": "images",
+      "addressable": true
+    }
   ],
   "contributions": [
     {
       "id": "safe-hub",
       "type": "ms.vss-web.hub",
-      "targets": ["ms.vss-work-web.work-hub-group"],
+      "targets": [
+        "ms.vss-work-web.work-hub-group"
+      ],
       "properties": {
-        "name": "SAFe",
+        "name": "ScaleLane",
         "uri": "dist/hub.html",
         "iconName": "Org",
         "order": 99
@@ -48,9 +97,11 @@
       "id": "safe-work-item-form-group",
       "type": "ms.vss-work-web.work-item-form-group",
       "description": "SAFe unit, PI, hierarchy and planning data of the work item.",
-      "targets": ["ms.vss-work-web.work-item-form"],
+      "targets": [
+        "ms.vss-work-web.work-item-form"
+      ],
       "properties": {
-        "name": "SAFe",
+        "name": "ScaleLane",
         "uri": "dist/form.html",
         "height": 260
       }

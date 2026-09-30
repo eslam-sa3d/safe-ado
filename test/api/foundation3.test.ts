@@ -49,7 +49,7 @@ describe("shared helpers for the parity work", () => {
     expect(await teamBacklogUrl("Team Red")).toBe("https://dev.azure.com/org/Fabrikam/_backlogs/backlog/Team%20Red");
     expect(await teamBoardUrl("Team Red")).toBe("https://dev.azure.com/org/Fabrikam/_boards/board/t/Team%20Red");
     expect(await queryUrl("SELECT [System.Id] FROM WorkItems")).toContain("/_queries/query/?wiql=SELECT%20");
-    expect(await hubUrl("node=n-red")).toBe("https://dev.azure.com/org/Fabrikam/_apps/hub/SAFeADO.safe-ado.safe-hub#node=n-red");
+    expect(await hubUrl("node=n-red")).toBe("https://dev.azure.com/org/Fabrikam/_apps/hub/ScaleLane.scalelane.safe-hub#node=n-red");
     expect(await hubUrl("")).not.toContain("#");
   });
 

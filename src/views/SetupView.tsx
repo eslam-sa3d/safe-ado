@@ -195,7 +195,7 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
     <div className="setup">
       {firstRun && (
         <Info>
-          <strong>Welcome to SAFe Ado.</strong> Map your process's work item types, choose where PIs live in the iteration tree, and
+          <strong>Welcome to ScaleLane.</strong> Map your process's work item types, choose where PIs live in the iteration tree, and
           model your Portfolio → Large Solution → ART → Team hierarchy. The quickest start is <em>Generate from area paths</em>.
         </Info>
       )}

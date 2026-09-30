@@ -215,7 +215,7 @@ export async function setUserValue<T>(key: string, value: T): Promise<T> {
 
 // ---------------------------------------------------------------------------------------------
 // Change log (audit-<projectId>). The Extension Data Service keeps no history, so this log is
-// the record of who changed SAFe Ado's data. It never blocks the change it describes.
+// the record of who changed ScaleLane's data. It never blocks the change it describes.
 // ---------------------------------------------------------------------------------------------
 
 const auditCollection = collection("audit");
@@ -261,7 +261,7 @@ export const auditIdle = () => pruning;
 
 // ---------------------------------------------------------------------------------------------
 // Backup / restore. One JSON file with the configuration and every document collection of this
-// project — the only way to keep SAFe Ado's data when the extension is uninstalled.
+// project — the only way to keep ScaleLane's data when the extension is uninstalled.
 // ---------------------------------------------------------------------------------------------
 
 /** Every per-project document collection by name. Features that add a collection add it here. */

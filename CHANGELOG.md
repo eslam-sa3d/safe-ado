@@ -9,6 +9,12 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
 
 ## [Unreleased]
 
+### Changed
+- **Renamed to ScaleLane.** New Marketplace listing: publisher `ScaleLane`, extension id
+  `scalelane`, hub *Boards → ScaleLane*. Extension data does not carry over between listings;
+  move it with Export / Import ([docs/MIGRATION.md](docs/MIGRATION.md)). Backups made by SAFe Ado
+  import unchanged.
+
 ### Added
 - **Cross-project portfolios**: units may point to areas and teams in other projects of the same
   collection; collection-level queries, PI matching by name or dates, writes mapped to each

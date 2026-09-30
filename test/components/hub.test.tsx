@@ -28,13 +28,13 @@ describe("hub entry point", () => {
     await import("../../src/hub/hub");
     await waitFor(() => expect(sdk.notifyLoadFailed).toHaveBeenCalled());
     expect(sdk.notifyLoadSucceeded).not.toHaveBeenCalled();
-    expect(document.body.textContent).toBe("SAFe Ado failed to load: handshake failed");
+    expect(document.body.textContent).toBe("ScaleLane failed to load: handshake failed");
   });
 
   it("handles non-Error failures", async () => {
     const sdk = await freshSdk();
     sdk.init.mockRejectedValueOnce("timeout");
     await import("../../src/hub/hub");
-    await waitFor(() => expect(document.body.textContent).toBe("SAFe Ado failed to load: timeout"));
+    await waitFor(() => expect(document.body.textContent).toBe("ScaleLane failed to load: timeout"));
   });
 });

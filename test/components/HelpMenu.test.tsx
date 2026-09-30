@@ -54,7 +54,7 @@ describe("Help menu", () => {
     const url = new URL(opened()[0]);
     expect(url.origin + url.pathname).toBe("https://github.com/eslam-sa3d/safe-ado/issues/new");
     const body = url.searchParams.get("body")!;
-    expect(body).toContain("SAFe Ado version: 1.4.2");
+    expect(body).toContain("ScaleLane version: 1.4.2");
     expect(body).toContain("Host: https://dev.azure.com");
     expect(body).toContain(`Project id: ${fake.projectId}`);
     expect(body).not.toContain(fake.projectName);
@@ -95,6 +95,6 @@ describe("Help menu", () => {
     const fresh = await import("../../src/components/HelpMenu");
     const body = new URL(await fresh.issueUrl("9.9.9")).searchParams.get("body")!;
     expect(body).toContain("Host: unknown");
-    expect(body).toContain("SAFe Ado version: 9.9.9");
+    expect(body).toContain("ScaleLane version: 9.9.9");
   });
 });

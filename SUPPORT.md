@@ -13,7 +13,7 @@
 
 1. **Azure DevOps flavour and version:** Azure DevOps Services, or Azure DevOps Server (for example
    2022.1). On Server, give the version from *Help → About*.
-2. **SAFe Ado version.** It is in *Organization / Collection settings → Extensions* and in the
+2. **ScaleLane version.** It is in *Organization / Collection settings → Extensions* and in the
    Marketplace listing.
 3. **Process:** Agile, Scrum, CMMI or an inherited process (name the base process).
 4. **Where it happens:** the view (for example Team Planning Board) and the unit level (Portfolio,

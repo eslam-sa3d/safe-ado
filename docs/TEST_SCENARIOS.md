@@ -1,4 +1,4 @@
-# SAFe Ado: Test Scenarios
+# ScaleLane: Test Scenarios
 
 This catalogue lists every scenario the extension must satisfy. For each one it says where it is verified:
 
@@ -26,7 +26,7 @@ Test data: a project with Portfolio → ART A (Team Red, Team Blue) and ART B (T
 | INS-02 | Install from the Marketplace on Services | Installs; the consent screen lists Work items (read & write) and Project and team (read) | Manual |
 | INS-03 | Open Boards → **SAFe** | The hub appears in the Boards group and loads with no console errors | Manual |
 | INS-04 | SDK init runs with theming, then signals load success | `init({loaded:false, applyTheme:true})`, then `ready`, then `notifyLoadSucceeded` | Auto: `components/hub.test.tsx` |
-| INS-05 | SDK handshake fails | `notifyLoadFailed` is called and the page shows "SAFe Ado failed to load: …" | Auto: `components/hub.test.tsx` |
+| INS-05 | SDK handshake fails | `notifyLoadFailed` is called and the page shows "ScaleLane failed to load: …" | Auto: `components/hub.test.tsx` |
 | INS-06 | The loading spinner shows while config loads | "Loading SAFe configuration…" | Auto: `components/App.test.tsx` |
 | INS-07 | Upgrade 1.0.x → newer version | Saved config, objectives and risks are kept | Manual |
 
@@ -301,7 +301,7 @@ The configuration lives in the host project; units may point to an area path and
 | SEC-02 | User without "Edit project-level information" creates a PI | Iteration creation fails with the server message |
 | SEC-03 | Project A's data is not visible from project B | Config, objectives and risks are isolated per project |
 | SEC-04 | Scopes are minimal | Only `vso.work_write` and `vso.project` are requested |
-| SEC-05 | A member writes an objective through the Extension Data REST API directly | The write succeeds (there is no server-side ACL) and does not appear in the audit log, which records writes made through SAFe Ado only. The next SAFe Ado write to that document logs the difference |
+| SEC-05 | A member writes an objective through the Extension Data REST API directly | The write succeeds (there is no server-side ACL) and does not appear in the audit log, which records writes made through ScaleLane only. The next ScaleLane write to that document logs the difference |
 
 ## 13. Regression bugs caught by this suite
 

@@ -375,7 +375,7 @@ export function App() {
             )}
             <Tour view={activeView} suppressed={firstRun && activeView === "setup"} restartKey={tourKey} />
             {firstRun && activeView !== "setup" && (
-              <div className="msg msg-info">SAFe Ado is not configured for this project yet. Open Setup to get started.</div>
+              <div className="msg msg-info">ScaleLane is not configured for this project yet. Open Setup to get started.</div>
             )}
             {!crossReady ? (
               <Spinner label="Loading other projects…" />

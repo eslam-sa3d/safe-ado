@@ -1,6 +1,6 @@
 # Privacy and data handling
 
-SAFe Ado runs entirely inside Azure DevOps, as a web extension in the browser of the person using
+ScaleLane runs entirely inside Azure DevOps, as a web extension in the browser of the person using
 it. It has no backend service. Its publisher does not receive your planning data.
 
 ## Where your data lives
@@ -31,7 +31,7 @@ areas) and `vso.project` (read projects and teams).
 
 ## Usage telemetry (opt-in, off by default)
 
-SAFe Ado can send anonymous usage events to help its maintainers see which views are used. It sends
+ScaleLane can send anonymous usage events to help its maintainers see which views are used. It sends
 nothing unless **both** conditions are met:
 
 1. **The build has a telemetry endpoint.** It is set with the `SAFE_ADO_TELEMETRY_URL` environment

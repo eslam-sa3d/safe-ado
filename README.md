@@ -1,8 +1,10 @@
-# SAFe Ado for Azure DevOps
+# ScaleLane for Azure DevOps
 
-An Azure DevOps extension that adds a **SAFe** hub under **Boards**. Its navigation is modeled on Agile Hive for Jira: a sidebar with the Portfolio → Large Solution → ART → Team hierarchy, and a set of SAFe views scoped to the node you select.
+An Azure DevOps extension for running SAFe® in Azure Boards. It adds a **ScaleLane** hub under **Boards**. Its navigation is modeled on Agile Hive for Jira: a sidebar with the Portfolio → Large Solution → ART → Team hierarchy, and a set of SAFe views scoped to the node you select.
 
-It supports **Azure DevOps Services** and **Azure DevOps Server 2022.1**.
+It supports **Azure DevOps Server 2022.1** (on-premises) and **Azure DevOps Services**.
+
+Formerly **SAFe Ado**; see [docs/MIGRATION.md](docs/MIGRATION.md) to move existing data. Business decisions are in [docs/BUSINESS_PLAN.md](docs/BUSINESS_PLAN.md); rollout services in [docs/SERVICES.md](docs/SERVICES.md).
 
 ## Features
 
@@ -31,7 +33,7 @@ Every board and list has the shared filter bar: text search, Type / State / Assi
 
 | SAFe concept | Azure DevOps |
 |---|---|
-| Portfolio / Large Solution / ART / Team | Nodes in the SAFe Ado hierarchy; each has an **Area Path** and optionally a **Team** |
+| Portfolio / Large Solution / ART / Team | Nodes in the ScaleLane hierarchy; each has an **Area Path** and optionally a **Team** |
 | Epic / Capability / Feature / Story | Work item types, mapped in Setup (Capability is optional) |
 | PI | A child iteration of the configured *PI root iteration* |
 | Iteration / IP iteration | Children of the PI iteration |
@@ -57,11 +59,11 @@ With a derived or hybrid source, capacity values carry a small marker (*manual*,
 
 ## Data governance and permissions
 
-SAFe Ado's own data (PI objectives, ROAM risks, milestones, capacity, planning metadata, confidence votes, plan reviews, improvements and the configuration) lives in the **Extension Data Service**. Azure DevOps keeps no history of it and has no permissions for it: **any project member can write it through the REST API, and it cannot be ACL-protected server-side.** SAFe Ado therefore:
+ScaleLane's own data (PI objectives, ROAM risks, milestones, capacity, planning metadata, confidence votes, plan reviews, improvements and the configuration) lives in the **Extension Data Service**. Azure DevOps keeps no history of it and has no permissions for it: **any project member can write it through the REST API, and it cannot be ACL-protected server-side.** ScaleLane therefore:
 
 - **Hides edit controls** from users without the matching Azure DevOps permission (planning rights in the unit's area; project administrator for the configuration). This is a UX guard, not an access control.
 - **Fails closed for extension data.** If a permission check cannot be answered (an error rather than "denied"), objectives, risks, milestones, capacity, votes, reviews and the configuration are read-only, with a message explaining why and a **Retry**. Work item edits stay available, because Azure DevOps enforces those itself.
-- **Keeps an audit log, which is the control.** Every write through SAFe Ado is stamped (`createdBy`/`createdAt`, `modifiedBy`/`modifiedAt`) and appended to a per-project change log (`audit-<projectId>`) with the changed fields. Objectives and risks have a **History** dialog; **Setup → Audit log** shows every change, filterable by data and user. The log keeps the latest 2000 changes of the last 180 days. Writes made outside SAFe Ado (directly through the REST API) are not logged.
+- **Keeps an audit log, which is the control.** Every write through ScaleLane is stamped (`createdBy`/`createdAt`, `modifiedBy`/`modifiedAt`) and appended to a per-project change log (`audit-<projectId>`) with the changed fields. Objectives and risks have a **History** dialog; **Setup → Audit log** shows every change, filterable by data and user. The log keeps the latest 2000 changes of the last 180 days. Writes made outside ScaleLane (directly through the REST API) are not logged.
 - **Lets Business Owners own Actual BV.** When a unit or one of its ancestors has members with the *Business Owner* role, only those people (matched by their Azure DevOps identity, so pick them from the team) can enter Actual BV on PI objectives. Who entered it and when is shown.
 - **Backs up and restores.** Azure DevOps deletes extension data when the extension is uninstalled. **Setup → Export SAFe data** downloads one JSON file with the configuration and every document collection (with a schema version); **Import** (administrators) validates it, shows a summary, and merges or overwrites. Export before uninstalling or moving to another collection.
 
@@ -85,7 +87,7 @@ Large enterprises often keep ARTs or solutions in separate projects. A portfolio
 ```bash
 npm install
 npm run typecheck
-npm run package          # typecheck + tests + build -> out/SAFeADO.safe-ado-<version>.vsix
+npm run package          # typecheck + tests + build -> out/ScaleLane.scalelane-<version>.vsix
 ```
 
 The Marketplace publisher is `SAFeADO` (set in [vss-extension.json](vss-extension.json)). Bump `version` there before each publish.
@@ -125,7 +127,7 @@ Tests run each view end to end against an in-memory fake of the Azure DevOps RES
 1. Go to *Collection settings → Extensions → Browse local extensions → Manage extensions → Upload extension* and select the VSIX.
 2. Install it into the collection.
 
-After installing, open **Boards → SAFe** and go to **Setup**:
+After installing, open **Boards → ScaleLane** and go to **Setup**:
 1. Check the work item type mapping. It is auto-detected for Agile, Scrum and CMMI.
 2. Choose the PI root iteration, for example a `PIs` iteration under the project.
 3. Click **Generate from area paths**, or build the hierarchy by hand, and link Azure DevOps teams.

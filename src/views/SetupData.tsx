@@ -7,7 +7,7 @@ import { ErrorBar, Icon, Info, Modal } from "../components/common";
 import { AuditLogPanel } from "../components/History";
 
 /**
- * Setup sections for data governance: backup / restore of all SAFe Ado data of the project and
+ * Setup sections for data governance: backup / restore of all ScaleLane data of the project and
  * the project-wide change log. Extension data is removed with the extension, so the backup file
  * is the way to keep it across an uninstall (or to move it to another project).
  */
@@ -38,7 +38,7 @@ export function BackupPanel({ canImport, onConfigRestored }: { canImport: boolea
     try {
       const backup = await exportData();
       const day = backup.exportedAt.slice(0, 10);
-      download(`safe-ado-backup-${backup.project.name}-${day}.json`, JSON.stringify(backup, null, 1));
+      download(`scalelane-backup-${backup.project.name}-${day}.json`, JSON.stringify(backup, null, 1));
       const total = Object.values(backup.collections).reduce((s, d) => s + d.length, 0);
       setDone(`Exported the configuration and ${total} document${total === 1 ? "" : "s"}.`);
     } catch (e: any) {
@@ -91,7 +91,7 @@ export function BackupPanel({ canImport, onConfigRestored }: { canImport: boolea
   return (
     <div className="pad form backup-panel">
       <p className="muted small">
-        SAFe Ado's data (objectives, risks, milestones, capacity, planning records, settings) lives in the Extension Data Service of
+        ScaleLane's data (objectives, risks, milestones, capacity, planning records, settings) lives in the Extension Data Service of
         this project. Azure DevOps removes it when the extension is uninstalled and keeps no history of it: export a backup regularly.
       </p>
       <ErrorBar message={error} onClose={() => setError(undefined)} />
@@ -198,7 +198,7 @@ export function AuditSection() {
   return (
     <div className="audit-section">
       <p className="muted small pad-x">
-        Every change to SAFe Ado's data is recorded here: who, when, and which fields changed. Azure DevOps cannot restrict who
+        Every change to ScaleLane's data is recorded here: who, when, and which fields changed. Azure DevOps cannot restrict who
         changes extension data, so this log is the control. It keeps the latest 2000 changes of the last 180 days.
       </p>
       {open ? (

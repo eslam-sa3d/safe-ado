@@ -84,20 +84,20 @@ describe("form panel: SAFe details", () => {
     expect(row("Estimated completion")).toHaveTextContent("Unknown");
   });
 
-  it("opens the SAFe Ado hub on the item's unit", async () => {
+  it("opens the ScaleLane hub on the item's unit", async () => {
     await renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Open in SAFe Ado" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open in ScaleLane" }));
     await waitFor(() =>
       expect(sdk.hostNavigation.openNewWindow).toHaveBeenCalledWith(
-        "https://dev.azure.com/org/Fabrikam/_apps/hub/SAFeADO.safe-ado.safe-hub#node=n-red&view=workitems",
+        "https://dev.azure.com/org/Fabrikam/_apps/hub/ScaleLane.scalelane.safe-hub#node=n-red&view=workitems",
         ""
       )
     );
     sdk.hostNavigation.openNewWindow.mockImplementationOnce(() => {
       throw new Error("popup blocked");
     });
-    fireEvent.click(screen.getByRole("button", { name: "Open in SAFe Ado" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not open SAFe Ado: popup blocked");
+    fireEvent.click(screen.getByRole("button", { name: "Open in ScaleLane" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not open ScaleLane: popup blocked");
   });
 
   it("lists the PIs of the unit's own cadence", async () => {
@@ -233,6 +233,6 @@ describe("form panel: editing", () => {
     );
     expect(screen.getByLabelText("Owning team")).toBeDisabled();
     expect(screen.getByLabelText("PI 1")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Open in SAFe Ado" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Open in ScaleLane" })).toBeEnabled();
   });
 });

@@ -12,7 +12,7 @@ private contact. Put no details in it.
 
 Please include:
 
-- The affected version of SAFe Ado, and whether you use Azure DevOps Services or Server (with its version).
+- The affected version of ScaleLane, and whether you use Azure DevOps Services or Server (with its version).
 - A description of the issue and its impact. For example: cross-site scripting through a work item
   field, data exposure across projects, or privilege escalation through extension data.
 - Steps to reproduce or a proof of concept. Use test data, not real customer data.

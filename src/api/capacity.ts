@@ -6,7 +6,7 @@ import { getTeams } from "./wit";
 
 /**
  * Team capacity has two possible sources:
- *  - manual story points per team and iteration, stored by SAFe Ado (IterationCapacity documents);
+ *  - manual story points per team and iteration, stored by ScaleLane (IterationCapacity documents);
  *  - Azure DevOps' own team capacity (hours per person per day, activities, days off), converted
  *    to story points with SAFe normalized estimation: every available person-day is worth
  *    `pointsPerPersonDay` points (0.8 by default, so a full-time member in a 2-week iteration
@@ -304,8 +304,8 @@ export function resolveCapacity(settings: Pick<CapacitySettings, "source">, manu
   const base = { source, manual, derived: d, reason: derived?.reason, capacityUrl: derived?.capacityUrl };
   if (source === "manual") {
     return manual === undefined
-      ? { ...base, value: undefined, origin: "none", explanation: "Not set: no capacity entered in SAFe Ado." }
-      : { ...base, value: manual, origin: "manual", explanation: `Manual: ${manual} SP entered in SAFe Ado.` };
+      ? { ...base, value: undefined, origin: "none", explanation: "Not set: no capacity entered in ScaleLane." }
+      : { ...base, value: manual, origin: "manual", explanation: `Manual: ${manual} SP entered in ScaleLane.` };
   }
   if (source === "hybrid" && manual !== undefined) {
     const from = d ? `derived from Azure DevOps: ${d.points} SP` : `no derived value${derived?.reason ? ` — ${derived.reason}` : ""}`;

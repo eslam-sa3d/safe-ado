@@ -25,7 +25,7 @@ export const getWebContext = vi.fn(() => ({ project: { id: fake.projectId, name:
 export const getHost = vi.fn(() => ({ id: "coll-0000-test", name: "fabrikam", isHosted: true }));
 /** The signed-in user (fake.user); tests switch users by changing it. */
 export const getUser = vi.fn(() => ({ ...fake.user, descriptor: `aad.${fake.user.id}`, imageUrl: "" }));
-export const getExtensionContext = vi.fn(() => ({ id: "SAFeADO.safe-ado", publisherId: "SAFeADO", extensionId: "safe-ado" }));
+export const getExtensionContext = vi.fn(() => ({ id: "ScaleLane.scalelane", publisherId: "ScaleLane", extensionId: "scalelane" }));
 
 export const getService = vi.fn(async (id: string) => {
   switch (id) {

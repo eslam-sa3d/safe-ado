@@ -1,7 +1,7 @@
-# SAFe Ado: scaled agile planning for SAFe® in Azure Boards
+# ScaleLane: scaled agile planning for SAFe® in Azure Boards
 
-**Works on Azure DevOps Server 2022.1 on-premises and on Azure DevOps Services.** SAFe Ado adds a
-**SAFe** hub under **Boards**, so your Agile PMO, Release Train Engineers and Lean Portfolio Management
+**Works on Azure DevOps Server 2022.1 on-premises and on Azure DevOps Services.** ScaleLane adds a
+**ScaleLane** hub under **Boards**, so your Agile PMO, Release Train Engineers and Lean Portfolio Management
 team can run PI Planning, ART sync and portfolio flow in the Azure DevOps you already use. You don't
 need a second tool, a sync connector or a separate licence server.
 
@@ -82,7 +82,7 @@ and **Inspect & Adapt** improvement items.
 - A shared filter bar on every board and list, with a WIQL clause, saved quick filters and Copy WIQL.
 - Light, Dark and High-contrast themes that follow Azure DevOps.
 
-SAFe Ado works with the Agile, Scrum and CMMI processes and with inherited processes based on them.
+ScaleLane works with the Agile, Scrum and CMMI processes and with inherited processes based on them.
 The UI respects Azure DevOps permissions, and users without edit rights get a read-only view.
 
 ## Getting started
@@ -90,7 +90,7 @@ The UI respects Azure DevOps permissions, and users without edit rights get a re
 1. **Install.** On Azure DevOps Services, install from this page into your organization. On Azure
    DevOps Server 2022.1, download the VSIX and upload it under *Collection settings → Extensions →
    Browse local extensions → Manage extensions*, then install it into the collection.
-2. **Open Boards → SAFe → Setup** as a project administrator. The work item types are detected for
+2. **Open Boards → ScaleLane → Setup** as a project administrator. The work item types are detected for
    Agile, Scrum and CMMI. Pick the iteration that will hold your PIs.
 3. **Build the hierarchy.** Click **Generate from area paths**, or add portfolios, solutions, ARTs
    and teams by hand. Then link your Azure DevOps teams and save.
@@ -98,6 +98,16 @@ The UI respects Azure DevOps permissions, and users without edit rights get a re
    the teams.
 5. **Plan.** Teams plan on the Team Planning Board, the RTE follows along on the ART Planning Board,
    and everyone sees the results in Reports.
+
+## Rollout services
+
+ScaleLane is free. If you want help getting a train running, rollout and coaching packages are
+available, on-premises or in the cloud: Quick start, PI Planning launch, Portfolio and governance
+setup, and a coaching retainer
+([services](https://github.com/eslam-sa3d/safe-ado/blob/main/docs/SERVICES.md)).
+
+**Coming from SAFe Ado?** ScaleLane is its new name. Move your data with Export / Import
+([migration guide](https://github.com/eslam-sa3d/safe-ado/blob/main/docs/MIGRATION.md)).
 
 ## Support
 

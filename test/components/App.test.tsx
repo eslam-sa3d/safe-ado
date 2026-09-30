@@ -125,13 +125,13 @@ describe("App shell", () => {
   it("starts in Setup with a banner on first run, and leaves first-run mode after saving", async () => {
     await renderApp({ config: null, view: "board" });
     expect(screen.getByRole("tab", { name: "Setup" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(/Welcome to SAFe Ado/)).toBeInTheDocument();
+    expect(screen.getByText(/Welcome to ScaleLane/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Work Item Hierarchy" }));
-    expect(screen.getByText(/SAFe Ado is not configured for this project yet/)).toBeInTheDocument();
+    expect(screen.getByText(/ScaleLane is not configured for this project yet/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Setup" }));
     fireEvent.click(await screen.findByRole("button", { name: "Save configuration" }));
     await waitFor(() => expect(dataStore.values.get("config-p1")).toBeTruthy());
-    await waitFor(() => expect(screen.queryByText(/Welcome to SAFe Ado/)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/Welcome to ScaleLane/)).not.toBeInTheDocument());
   });
 
   it("refreshes the PI picker after creating a PI (end to end)", async () => {

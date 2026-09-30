@@ -37,7 +37,7 @@ export async function issueUrl(version: string = extensionVersion()): Promise<st
     "1. ",
     "",
     "---",
-    `SAFe Ado version: ${version}`,
+    `ScaleLane version: ${version}`,
     `Host: ${origin}`,
     `Project id: ${getProject().id}`,
   ].join("\n");

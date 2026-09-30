@@ -68,7 +68,7 @@ export interface SafeConfig {
 }
 
 /**
- * Capacity source: "manual" = story points entered in SAFe Ado (the original behaviour);
+ * Capacity source: "manual" = story points entered in ScaleLane (the original behaviour);
  * "derived" = computed from Azure DevOps team capacity (SAFe normalized estimation);
  * "hybrid" = derived by default, a manual value overrides it.
  */

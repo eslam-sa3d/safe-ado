@@ -183,7 +183,7 @@ describe("Permissions fail closed for extension data", () => {
     seedDocs("objectives", [objective()]);
     const { unmount } = await renderObjectives({ can: UNVERIFIED_PLAN });
     expect(screen.getByRole("status")).toHaveTextContent("Your permissions could not be verified");
-    expect(screen.getByRole("status")).toHaveTextContent("Azure DevOps cannot protect SAFe Ado's own data");
+    expect(screen.getByRole("status")).toHaveTextContent("Azure DevOps cannot protect ScaleLane's own data");
     // Outside the shell there is nothing to retry with.
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(screen.queryByRole("button", { name: /New objective/ })).toBeNull();
@@ -281,7 +281,7 @@ describe("Setup — backup and restore", () => {
     fireEvent.click(within(backupPanel()).getByRole("button", { name: /Export SAFe data/ }));
     expect(await within(backupPanel()).findByText("Exported the configuration and 1 document.")).toBeInTheDocument();
     const backup = JSON.parse(await blobs[0].text());
-    expect(backup).toMatchObject({ format: "safe-ado-backup", schemaVersion: 1, project: { id: "p1" } });
+    expect(backup).toMatchObject({ format: "scalelane-backup", schemaVersion: 1, project: { id: "p1" } });
     expect(backup.collections.objectives).toHaveLength(1);
     expect(click).toHaveBeenCalled();
     click.mockRestore();
@@ -299,7 +299,7 @@ describe("Setup — backup and restore", () => {
     await pickFile("{not json", "broken.json");
     expect(within(backupPanel()).getByText("broken.json is not a valid JSON file.")).toBeInTheDocument();
     await pickFile(JSON.stringify({ format: "something-else" }));
-    expect(within(backupPanel()).getByText("This is not a SAFe Ado backup file.")).toBeInTheDocument();
+    expect(within(backupPanel()).getByText("This is not a ScaleLane backup file.")).toBeInTheDocument();
     // Choosing nothing does nothing.
     await act(async () => {
       fireEvent.change(within(backupPanel()).getByLabelText("Backup file"), { target: { files: [] } });

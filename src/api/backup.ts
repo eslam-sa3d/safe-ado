@@ -2,10 +2,12 @@ import type { AuditUser } from "./audit";
 import type { SafeConfig } from "./types";
 
 /**
- * Backup file of SAFe Ado's data for one project (see exportData / importData in data.ts).
+ * Backup file of ScaleLane's data for one project (see exportData / importData in data.ts).
  * schemaVersion changes only when the file layout changes; new collections don't need a bump.
  */
-export const BACKUP_FORMAT = "safe-ado-backup";
+export const BACKUP_FORMAT = "scalelane-backup";
+/** Backups made before the rename (SAFe Ado) import unchanged; that is the migration path. */
+export const LEGACY_BACKUP_FORMATS: readonly string[] = ["safe-ado-backup"];
 export const BACKUP_SCHEMA_VERSION = 1;
 
 export type BackupDoc = { id: string; __etag?: number } & Record<string, unknown>;
@@ -51,10 +53,10 @@ function validConfig(c: unknown): boolean {
  * in words an administrator can act on.
  */
 export function validateBackup(value: unknown): { backup?: SafeBackup; error?: string } {
-  if (!isObject(value) || value.format !== BACKUP_FORMAT) return { error: "This is not a SAFe Ado backup file." };
+  if (!isObject(value) || (value.format !== BACKUP_FORMAT && !LEGACY_BACKUP_FORMATS.includes(String(value.format)))) return { error: "This is not a ScaleLane backup file." };
   if (typeof value.schemaVersion !== "number" || value.schemaVersion < 1) return { error: "The backup has no valid schema version." };
   if (value.schemaVersion > BACKUP_SCHEMA_VERSION) {
-    return { error: `The backup was made by a newer version of SAFe Ado (schema ${value.schemaVersion}). Update the extension first.` };
+    return { error: `The backup was made by a newer version of ScaleLane (schema ${value.schemaVersion}). Update the extension first.` };
   }
   if (!isObject(value.project) || typeof value.project.id !== "string") return { error: "The backup does not say which project it came from." };
   if (value.config !== null && !validConfig(value.config)) return { error: "The configuration in the backup is damaged." };

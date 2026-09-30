@@ -264,7 +264,7 @@ describe("backup / restore", () => {
     seedDocs("risks", [{ id: "r1", title: "Risk" }]);
     const backup = await exportData();
     expect(backup).toMatchObject({
-      format: "safe-ado-backup",
+      format: "scalelane-backup",
       schemaVersion: BACKUP_SCHEMA_VERSION,
       project: { id: "p1", name: "Fabrikam" },
       exportedBy: { displayName: "Ada Lovelace" },
@@ -306,7 +306,7 @@ describe("backup / restore", () => {
 
   it("validates the file before anything is written", () => {
     const good = {
-      format: "safe-ado-backup",
+      format: "scalelane-backup",
       schemaVersion: 1,
       exportedAt: "2026-01-01T00:00:00Z",
       project: { id: "p1", name: "Fabrikam" },
@@ -315,10 +315,12 @@ describe("backup / restore", () => {
     };
     expect(validateBackup(good).backup).toBe(good);
     expect(validateBackup({ ...good, config: null }).backup).toBeDefined();
+    // Backups made under the old name (SAFe Ado) still import: that is how installs migrate.
+    expect(validateBackup({ ...good, format: "safe-ado-backup" }).backup).toBeDefined();
     const bad: [unknown, RegExp][] = [
-      [null, /not a SAFe Ado backup/],
-      [[], /not a SAFe Ado backup/],
-      [{ ...good, format: "x" }, /not a SAFe Ado backup/],
+      [null, /not a ScaleLane backup/],
+      [[], /not a ScaleLane backup/],
+      [{ ...good, format: "x" }, /not a ScaleLane backup/],
       [{ ...good, schemaVersion: "1" }, /no valid schema version/],
       [{ ...good, schemaVersion: 0 }, /no valid schema version/],
       [{ ...good, schemaVersion: 99 }, /newer version .*schema 99/],
@@ -337,7 +339,7 @@ describe("backup / restore", () => {
 
   it("summarises what a restore would do", () => {
     const backup = {
-      format: "safe-ado-backup",
+      format: "scalelane-backup",
       schemaVersion: 1,
       exportedAt: "2026-01-01T00:00:00Z",
       exportedBy: { id: "u", displayName: "Ada" },

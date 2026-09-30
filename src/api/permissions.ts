@@ -9,7 +9,7 @@ import { foreignProjectOf } from "./projects";
  * - admin: "Edit project-level information"; managePis: "Create child nodes" on the iteration
  *   root. These use the Security API, which may be unavailable to the extension's token.
  *
- * IMPORTANT: SAFe Ado's own data (configuration, objectives, risks, capacity, planning metadata)
+ * IMPORTANT: ScaleLane's own data (configuration, objectives, risks, capacity, planning metadata)
  * lives in the Extension Data Service, which Azure DevOps does not permission per area. The
  * read-only mode is a UI safeguard, not an access control; the change log (audit) is the control.
  *
@@ -71,7 +71,7 @@ export async function checkPlanIn(areaPath: string, type: string): Promise<boole
       method: "POST",
       contentType: "application/json-patch+json",
       body: [
-        { op: "add", path: "/fields/System.Title", value: "SAFe Ado permission check" },
+        { op: "add", path: "/fields/System.Title", value: "ScaleLane permission check" },
         { op: "add", path: "/fields/System.AreaPath", value: areaPath },
       ],
     });

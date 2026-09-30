@@ -1,5 +1,5 @@
 {
-  "name": "safe-ado",
+  "name": "scalelane",
   "version": "1.3.0",
   "private": true,
   "description": "Scaled agile planning for SAFe® (Portfolio / Large Solution / ART / Team) on Azure DevOps Services and Azure DevOps Server 2022.1",

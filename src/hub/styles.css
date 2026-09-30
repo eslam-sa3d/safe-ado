@@ -1,5 +1,5 @@
 /*
- * SAFe Ado design layer — follows the Azure DevOps "Formula" design system (azure-devops-ui 2.280:
+ * ScaleLane design layer — follows the Azure DevOps "Formula" design system (azure-devops-ui 2.280:
  * bolt-button, bolt-tabbar, bolt-card, bolt-table, bolt-pill, bolt-messagebar, bolt-dialog, depth-*).
  *
  * Tokens resolve to the theme variables the host injects with SDK.init({ applyTheme: true }), so the

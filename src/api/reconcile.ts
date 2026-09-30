@@ -5,7 +5,7 @@ import { ClassificationNode, nodePathToFieldPath } from "./wit";
 
 /**
  * Self-healing keys. SAFe records store both a readable path and the stable node id of their
- * area / iteration. On load we match by id and rewrite paths that were renamed (in SAFe Ado or
+ * area / iteration. On load we match by id and rewrite paths that were renamed (in ScaleLane or
  * directly in Azure DevOps), and fill in ids for older records that only have a path.
  */
 export interface NodeIndex {

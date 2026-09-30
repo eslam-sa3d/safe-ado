@@ -24,7 +24,7 @@ export async function queryUrl(wiql: string): Promise<string> {
   return `${await getBaseUrl()}${enc(getProject().name)}/_queries/query/?wiql=${enc(wiql)}`;
 }
 
-/** The SAFe Ado hub, deep-linked to a unit / view / PI. */
+/** The ScaleLane hub, deep-linked to a unit / view / PI. */
 export async function hubUrl(hash: string): Promise<string> {
   const ctx = SDK.getExtensionContext();
   return `${await getBaseUrl()}${enc(getProject().name)}/_apps/hub/${ctx.id}.safe-hub${hash ? `#${hash}` : ""}`;

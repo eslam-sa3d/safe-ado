@@ -87,7 +87,7 @@ describe("Setup", () => {
 
   it("allows saving immediately on first run and shows the welcome banner", async () => {
     await renderSetup({ firstRun: true });
-    expect(screen.getByText(/Welcome to SAFe Ado/)).toBeInTheDocument();
+    expect(screen.getByText(/Welcome to ScaleLane/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save configuration" })).toBeEnabled();
   });
 

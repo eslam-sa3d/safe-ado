@@ -1,6 +1,6 @@
-# Agile Hive → SAFe Ado feature parity
+# Agile Hive → ScaleLane feature parity
 
-This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side comes from its Cloud documentation (all 166 pages, including the 2023–2026 changelog), its Atlassian Marketplace listing and agile-hive.com. The statuses come from three independent code audits of this release. Each audit read the source and checked every claim against the code and tests.
+This document compares Agile Hive Cloud with ScaleLane 1.3.0. The Agile Hive side comes from its Cloud documentation (all 166 pages, including the 2023–2026 changelog), its Atlassian Marketplace listing and agile-hive.com. The statuses come from three independent code audits of this release. Each audit read the source and checked every claim against the code and tests.
 
 **Status legend**
 
@@ -13,7 +13,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 **How Jira concepts map to Azure DevOps**
 
-| Agile Hive (Jira) | SAFe Ado (Azure DevOps) |
+| Agile Hive (Jira) | ScaleLane (Azure DevOps) |
 |---|---|
 | One Jira project per unit (Portfolio / Solution / ART / Team) | One hierarchy node per unit, mapped to an **Area Path** and optionally an **Azure DevOps team** |
 | Work item hierarchy property | Native **Parent/Child** links |
@@ -27,7 +27,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 ## Navigation and shell
 
-| Agile Hive | Status | SAFe Ado |
+| Agile Hive | Status | ScaleLane |
 |---|---|---|
 | Sidebar with the 4-layer hierarchy, colour-coded by layer | ✅ | Sidebar with keyboard navigation and a section for unattached units |
 | Starred projects section | ✅ | Star any unit. Stars are stored per user |
@@ -44,7 +44,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 ## My Organization and administration
 
-| Agile Hive | Status | SAFe Ado |
+| Agile Hive | Status | ScaleLane |
 |---|---|---|
 | Layered canvas (Portfolio / Solution / ART / Team) with hover highlighting | ✅ | My Organization view |
 | Add a unit to a layer, add a connected parent or child | ✅ | My Organization view and Setup |
@@ -58,7 +58,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 ## PI and iteration management
 
-| Agile Hive | Status | SAFe Ado |
+| Agile Hive | Status | ScaleLane |
 |---|---|---|
 | Create a PI with iterations; one sprint per team | 🟡 | Creates the PI and an editable iteration plan, and subscribes the teams on that cadence. Gap: iterations are shared (`<PI> Sprint n`), not one per team |
 | IP iteration | ✅ | Optional IP iteration, detected by name |
@@ -70,7 +70,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 ## Planning views
 
-| Agile Hive | Status | SAFe Ado |
+| Agile Hive | Status | ScaleLane |
 |---|---|---|
 | **Roadmap**: timeline, PI/iteration bands, milestones, Today button, zoom | 🟡 | Roadmap with a windowed timeline. Gap: the range is fixed by the data (±14/30 days) rather than extended by month as you scroll |
 | Roadmap: drag/resize writes the planned date; default durations 60/30/21 days | ✅ | Roadmap |
@@ -93,7 +93,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 ## Work Item List and filters
 
-| Agile Hive | Status | SAFe Ado |
+| Agile Hive | Status | ScaleLane |
 |---|---|---|
 | Table of the unit's items with inline edit of title, priority, assignee and parent | ✅ | Work Item List |
 | Parent type check (Feature under Capability, or directly under Epic) | 🟡 | Checked in the parent column. Gap: not checked on board drag or native links |
@@ -128,13 +128,13 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 ## Entities and fields
 
-| Agile Hive | Status | SAFe Ado |
+| Agile Hive | Status | ScaleLane |
 |---|---|---|
 | Work types (Capability, Enabler, Theme, Objective, Risk, Milestone, Improvement) | 🔀 | Capability, Enabler and Theme are mapped work item types; the rest are extension-data documents |
 | WSJF: (UBV + TC + RROE) ÷ Job Size | 🟡 | One shared formula, `rules.wsjfScore`: (Business Value + Time Criticality + RR/OE) ÷ job size (Effort). It is used by the Portfolio Kanban, the Reports PI / Epic Overview and the Team board's ART-backlog WSJF sort. RR/OE is read from the field chosen in Setup (default `Custom.RROEValue` when the process has it). A missing input counts as 0. There is no score without a job size or without any cost-of-delay input. Gap: the modified Fibonacci scale is defined (`WSJF_SCALE`) but not enforced on input |
 | Enablers | 🟡 | Shown in reports and flow. Gap: team board lanes and the list's type chain use the Feature type only |
 | Objective fields: Plan BV, Actual BV, Uncommitted | ✅ | PI Objectives, with parent-objective links. When a unit (or an ancestor) has Business Owners, only they can enter Actual BV; who entered it and when is shown |
-| Work item history of objectives, risks and other planning records | 🔀 | Extension data has no history in Azure DevOps: SAFe Ado stamps every write and keeps its own change log (History dialog on objectives and risks, Audit log in Setup) |
+| Work item history of objectives, risks and other planning records | 🔀 | Extension data has no history in Azure DevOps: ScaleLane stamps every write and keeps its own change log (History dialog on objectives and risks, Audit log in Setup) |
 | Risk fields: probability, impact, residual values, exposure matrix | ✅ | Risks (ROAM) |
 | Milestones with a date | ✅ | Roadmap, Reports, ART board |
 | Assigned PIs (max 5), Assigned Units (max 30), Owning Unit | 🟡 | `wimeta` documents. Gap: Involved Units is not shown on the work item form |
@@ -146,7 +146,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 
 These SAFe Lean Portfolio Management features have no Agile Hive counterpart, so they are not counted in the scorecard.
 
-| SAFe practice | SAFe Ado |
+| SAFe practice | ScaleLane |
 |---|---|
 | Portfolio Kanban states (Funnel, Reviewing, Analyzing, Ready, Implementing, Done) | Portfolio Kanban columns, each mapped onto an Epic state (configurable per portfolio; default: a state named like the column, else by state category). Columns sharing a state remember each Epic's column |
 | WIP limits per Kanban state | WIP limit per column, stored per portfolio; over-limit columns are highlighted, and moving into a full column asks for confirmation |
@@ -169,7 +169,7 @@ These SAFe Lean Portfolio Management features have no Agile Hive counterpart, so
 
 ## Limitations
 
-- **Extension data is not protected by Azure DevOps security.** Planning data (objectives, risks, capacity, PI assignments, milestones, votes) is stored in the extension's data service, which every project member can write through the REST API. SAFe Ado hides edit controls from users without the matching Azure DevOps permissions, but that is a UI rule, not a server-side one. The control is the change log: every write through SAFe Ado is stamped and logged (Setup → Audit log). Work item changes are always checked by Azure DevOps.
+- **Extension data is not protected by Azure DevOps security.** Planning data (objectives, risks, capacity, PI assignments, milestones, votes) is stored in the extension's data service, which every project member can write through the REST API. ScaleLane hides edit controls from users without the matching Azure DevOps permissions, but that is a UI rule, not a server-side one. The control is the change log: every write through ScaleLane is stamped and logged (Setup → Audit log). Work item changes are always checked by Azure DevOps.
 - **Permission checks fail closed for extension data.** If a permission check cannot be answered, objectives, risks, milestones, capacity, votes, reviews and the configuration are read-only (with a Retry) until it can. Work item edits stay available, because Azure DevOps rejects them itself if the user lacks rights.
 - **Uninstalling removes extension data.** Export a backup from Setup first; importing it restores the configuration and every document.
 - **Azure DevOps Server 2022.1**: every call uses REST api-version 7.0.

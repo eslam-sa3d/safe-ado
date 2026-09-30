@@ -190,7 +190,7 @@ export function PiManagementView() {
         <div className="msg msg-info cross-project-teams" role="note">
           Teams in other projects ({foreignTeams.map((t) => `${t.name} (${nodeProject(t).name})`).join(", ")}) can't be assigned these
           iterations from here: each project has its own iteration tree. Create the matching PI and sprints in their project (same name
-          or dates) and map the team's sprints there; SAFe Ado matches them to this cadence.
+          or dates) and map the team's sprints there; ScaleLane matches them to this cadence.
         </div>
       )}
       <div className="two-col">

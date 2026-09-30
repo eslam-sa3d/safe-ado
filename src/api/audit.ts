@@ -1,7 +1,7 @@
 import * as SDK from "azure-devops-extension-sdk";
 
 /**
- * Governance helpers for SAFe Ado's own data. The Extension Data Service keeps no history and
+ * Governance helpers for ScaleLane's own data. The Extension Data Service keeps no history and
  * has no ACLs, so every write through the document stores (see data.ts) is stamped with who
  * changed it and appended to a per-project change log. This file holds the pure parts: the
  * current user, the field-level diff and the retention rules.
