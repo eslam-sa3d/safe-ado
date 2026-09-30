@@ -1,14 +1,52 @@
 import { useMemo, useState } from "react";
-import { boardType, scopeAreas } from "../api/org";
-import { loadTree, TreeNode } from "../api/queries";
-import { F } from "../api/types";
-import { openWorkItem } from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, lastSegment, Progress, Spinner, typeColor, useAsync, Icon } from "../components/common";
-import { useSafe } from "../components/context";
+import { queryUrl } from "../api/links";
+import { boardType, flatten, scopeAreas } from "../api/org";
+import { loadTree, TreeNode, typeChain } from "../api/queries";
+import { openInNewTab } from "../api/urlState";
+import { F, OrgNode, SafeConfig, WorkItem } from "../api/types";
+import { isUnder, openWorkItem } from "../api/wit";
+import { CATEGORY_COLOR, Empty, ErrorBar, Info, lastSegment, Progress, Spinner, typeColor, useAsync, Icon } from "../components/common";
+import { useCan, useSafe } from "../components/context";
+
+/** The unit that owns an area path: the configured unit with the longest matching area path. */
+export function owningUnit(units: OrgNode[], area: string | undefined): OrgNode | undefined {
+  let best: OrgNode | undefined;
+  for (const u of units) {
+    if (u.areaPath && isUnder(area, u.areaPath) && (!best || u.areaPath.length > best.areaPath!.length)) best = u;
+  }
+  return best;
+}
+
+/**
+ * H2 hierarchy hints: a child should sit on the SAFe level right below its parent (e.g. a
+ * Story under a Feature, not directly under an Epic when the process has Features), and in
+ * the parent's unit or one of its sub-units.
+ */
+export function hierarchyHints(config: SafeConfig, units: OrgNode[], parent: WorkItem, child: WorkItem): string[] {
+  const hints: string[] = [];
+  const chain = typeChain(config);
+  const p = chain.indexOf(parent.fields[F.type]);
+  const c = chain.indexOf(child.fields[F.type]);
+  if (p >= 0 && c > p + 1) {
+    hints.push(`${child.fields[F.type]} is linked directly under a ${parent.fields[F.type]}; expected a ${chain[p + 1]} in between.`);
+  }
+  const unit = owningUnit(units, parent.fields[F.area]);
+  if (unit && child.fields[F.area] && !isUnder(child.fields[F.area], unit.areaPath!)) {
+    hints.push(`Area ${child.fields[F.area]} is outside ${unit.name}, the unit of its parent #${parent.id}.`);
+  }
+  return hints;
+}
+
+/** WIQL listing the given work items (for "Open children in query"). */
+export function idsQuery(ids: number[]): string {
+  return `SELECT [System.Id], [System.WorkItemType], [System.Title], [System.State], [System.AreaPath], [System.IterationPath] FROM WorkItems WHERE [System.Id] IN (${ids.join(", ")})`;
+}
 
 /** Epic > Capability > Feature > Story tree with story-point roll-up, scoped to the selected node. */
 export function HierarchyView() {
   const { config, node, pi } = useSafe();
+  const canPlan = useCan().plan;
+  const units = useMemo(() => flatten(config.root), [config]);
   const rootType = boardType(config, node.level);
   const areas = scopeAreas(node);
   // Epics span PIs, so the PI filter is only offered below portfolio level.
@@ -68,6 +106,7 @@ export function HierarchyView() {
         </button>
       </div>
       <ErrorBar message={error} />
+      {!canPlan && <Info>You have read-only access to this project's planning data.</Info>}
       {loading && !data ? (
         <Spinner label="Loading hierarchy…" />
       ) : visible.length === 0 ? (
@@ -94,7 +133,7 @@ export function HierarchyView() {
           </thead>
           <tbody>
             {visible.map((n) => (
-              <TreeRows key={n.item.id} node={n} depth={0} expanded={expanded} toggle={toggle} />
+              <TreeRows key={n.item.id} node={n} depth={0} expanded={expanded} toggle={toggle} hint={(p, c) => hierarchyHints(config, units, p, c)} />
             ))}
           </tbody>
         </table>
@@ -108,11 +147,16 @@ function TreeRows({
   depth,
   expanded,
   toggle,
+  hint,
+  hints = [],
 }: {
   node: TreeNode;
   depth: number;
   expanded: Set<number>;
   toggle: (id: number) => void;
+  hint: (parent: WorkItem, child: WorkItem) => string[];
+  /** Problems with how this item is linked to its parent (H2). */
+  hints?: string[];
 }) {
   const f = node.item.fields;
   const open = expanded.has(node.item.id);
@@ -135,6 +179,25 @@ function TreeRows({
               {f[F.title]}
             </button>
             <span className="muted small">#{node.item.id}</span>
+            {hints.length > 0 && (
+              <span className="hier-hint" role="img" aria-label={`Hierarchy hint: ${hints.join(" ")}`} title={hints.join("\n")}>
+                <Icon name="Warning" />
+              </span>
+            )}
+            {node.children.length > 0 && (
+              <button
+                className="link hier-query"
+                title="Open children in an Azure Boards query"
+                aria-label={`Open children of #${node.item.id} in query`}
+                onClick={() =>
+                  queryUrl(idsQuery(node.children.map((c) => c.item.id)))
+                    .then(openInNewTab)
+                    .catch(() => undefined)
+                }
+              >
+                <Icon name="OpenInNewTab" />
+              </button>
+            )}
           </div>
         </td>
         <td>
@@ -155,7 +218,17 @@ function TreeRows({
         </td>
       </tr>
       {open &&
-        node.children.map((c) => <TreeRows key={c.item.id} node={c} depth={depth + 1} expanded={expanded} toggle={toggle} />)}
+        node.children.map((c) => (
+          <TreeRows
+            key={c.item.id}
+            node={c}
+            depth={depth + 1}
+            expanded={expanded}
+            toggle={toggle}
+            hint={hint}
+            hints={hint(node.item, c.item)}
+          />
+        ))}
     </>
   );
 }

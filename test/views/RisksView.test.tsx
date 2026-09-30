@@ -118,7 +118,7 @@ describe("ROAM board", () => {
     ]);
     fireEvent.change(owner, { target: { value: "n-blue" } });
     fireEvent.change(within(dialog).getByLabelText("Owner"), { target: { value: "Priya" } });
-    fireEvent.change(within(dialog).getByLabelText("Linked work item ID (optional)"), { target: { value: "14" } });
+    fireEvent.change(within(dialog).getByLabelText("Linked work item IDs (optional)"), { target: { value: "14" } });
     fireEvent.click(save);
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -182,7 +182,7 @@ describe("ROAM board", () => {
     fireEvent.click(card("Vendor API delay"));
     const dialog = screen.getByRole("dialog", { name: "Edit risk" });
     expect(within(dialog).getByLabelText("Title")).toHaveValue("Vendor API delay");
-    fireEvent.change(within(dialog).getByLabelText("Linked work item ID (optional)"), { target: { value: "" } });
+    fireEvent.change(within(dialog).getByLabelText("Linked work item IDs (optional)"), { target: { value: "" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(docs("risks").find((r) => r.id === "r1").workItemId).toBeUndefined();
