@@ -33,9 +33,9 @@ describe("permissions", () => {
     ]);
   });
 
-  it("allows actions when the check itself fails or roots are unknown", async () => {
+  it("allows actions but marks them unverified when the check itself fails; unknown roots are not checked", async () => {
     fake.failures.push({ match: /permissions/, status: 500, message: "x" });
-    expect(await loadCapabilities()).toEqual({ admin: true, managePis: true, plan: true, known: true });
+    expect(await loadCapabilities()).toEqual({ admin: true, managePis: true, plan: true, known: true, unverified: ["admin"] });
   });
 
   it("probes planning rights with a validate-only create that saves nothing", async () => {

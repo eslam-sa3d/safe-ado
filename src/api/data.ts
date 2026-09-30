@@ -1,5 +1,7 @@
 import * as SDK from "azure-devops-extension-sdk";
 import type { IExtensionDataManager, IExtensionDataService } from "azure-devops-extension-api/Common/CommonServices";
+import { AuditEntry, auditPolicy, AuditStamps, AuditUser, byNewest, currentUser, diffFields, docLabel, entriesToPrune } from "./audit";
+import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, BackupDoc, ImportMode, SafeBackup } from "./backup";
 import { getProject, ServiceIds } from "./client";
 import type { QuickFilter } from "./filters";
 import type { ConfidenceVote, ImprovementItem, PlanReview } from "./planning";
@@ -47,7 +49,12 @@ export async function loadConfig(): Promise<SafeConfig | null> {
 
 export async function saveConfig(config: SafeConfig): Promise<SafeConfig> {
   const m = await manager();
-  return m.setValue<SafeConfig>(configKey(), config, { scopeType: "Default" });
+  // The previous value gives the change log its diff; failing to read it never blocks the save.
+  const before = await loadConfig().catch(() => null);
+  const saved = await m.setValue<SafeConfig>(configKey(), config, { scopeType: "Default" });
+  const changes = diffFields(before ?? undefined, config);
+  if (!before || changes.length) await appendAudit({ collection: "config", docId: "config", action: before ? "update" : "create", changes });
+  return saved;
 }
 
 /** Picks sensible type/field defaults from whichever process (Agile, Scrum, CMMI, custom) the project uses. */
@@ -88,28 +95,56 @@ async function getDocs<T>(collection: string): Promise<T[]> {
   }
 }
 
-async function setDoc<T extends { id: string }>(collection: string, doc: T): Promise<T> {
+/**
+ * Writes a document. Audited collections (everything people edit) are stamped with
+ * createdBy/createdAt (kept from the stored version) and modifiedBy/modifiedAt, and each change
+ * is appended to the change log. This is the one place stamping happens: views never stamp.
+ */
+async function setDoc<T extends { id: string }>(collection: string, doc: T, audited?: string): Promise<T> {
   const m = await manager();
-  return m.setDocument(collection, doc, { scopeType: "Default" });
+  if (!audited) return m.setDocument(collection, doc, { scopeType: "Default" });
+  const user = currentUser();
+  const at = new Date().toISOString();
+  // The stored version keeps the creation stamps and gives the diff; an unreadable one counts as new.
+  const before = await getDoc<T & AuditStamps>(collection, doc.id).catch(() => undefined);
+  const incoming = doc as T & AuditStamps;
+  // Older documents have no creation stamps: those stay unknown rather than credited to this user.
+  const createdBy = before ? before.createdBy : incoming.createdBy ?? user;
+  const createdAt = before ? before.createdAt ?? incoming.createdAt : incoming.createdAt ?? at;
+  const stamped = {
+    ...doc,
+    ...(createdBy ? { createdBy } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    modifiedBy: user,
+    modifiedAt: at,
+  };
+  const saved = await m.setDocument(collection, stamped, { scopeType: "Default" });
+  const changes = diffFields(before, doc);
+  if (!before || changes.length) {
+    await appendAudit({ collection: audited, docId: doc.id, action: before ? "update" : "create", label: docLabel(doc), changes }, user, at);
+  }
+  return saved;
 }
 
-async function deleteDoc(collection: string, id: string): Promise<void> {
+async function deleteDoc(collection: string, id: string, audited?: string): Promise<void> {
   const m = await manager();
+  const before = audited ? await getDoc<object>(collection, id).catch(() => undefined) : undefined;
   await m.deleteDocument(collection, id, { scopeType: "Default" });
+  if (audited) await appendAudit({ collection: audited, docId: id, action: "delete", label: docLabel(before), changes: diffFields(before, undefined) });
 }
 
 export const objectivesStore = {
   list: () => getDocs<PiObjective>(objectivesCollection()),
   get: (id: string) => getDoc<PiObjective>(objectivesCollection(), id),
-  save: (o: PiObjective) => setDoc(objectivesCollection(), o),
-  remove: (id: string) => deleteDoc(objectivesCollection(), id),
+  save: (o: PiObjective) => setDoc(objectivesCollection(), o, "objectives"),
+  remove: (id: string) => deleteDoc(objectivesCollection(), id, "objectives"),
 };
 
 export const risksStore = {
   list: () => getDocs<Risk>(risksCollection()),
   get: (id: string) => getDoc<Risk>(risksCollection(), id),
-  save: (r: Risk) => setDoc(risksCollection(), r),
-  remove: (id: string) => deleteDoc(risksCollection(), id),
+  save: (r: Risk) => setDoc(risksCollection(), r, "risks"),
+  remove: (id: string) => deleteDoc(risksCollection(), id, "risks"),
 };
 
 async function getDoc<T>(collection: string, id: string): Promise<T | undefined> {
@@ -122,14 +157,16 @@ async function getDoc<T>(collection: string, id: string): Promise<T | undefined>
   }
 }
 
-function docStore<T extends { id: string }>(name: string) {
+/** A per-project document collection. People's edits are audited unless `audited` is false (system records). */
+function docStore<T extends { id: string }>(name: string, audited = true) {
   const coll = collection(name);
+  const log = audited ? name : undefined;
   return {
     list: () => getDocs<T>(coll()),
     /** One document by id (undefined when missing) — avoids loading the whole collection. */
     get: (id: string) => getDoc<T>(coll(), id),
-    save: (doc: T) => setDoc(coll(), doc),
-    remove: (id: string) => deleteDoc(coll(), id),
+    save: (doc: T) => setDoc(coll(), doc, log),
+    remove: (id: string) => deleteDoc(coll(), id, log),
   };
 }
 
@@ -140,7 +177,8 @@ export const metaStore = docStore<WorkItemMeta>("wimeta");
 export const votesStore = docStore<ConfidenceVote>("votes");
 export const planReviewsStore = docStore<PlanReview>("planreviews");
 export const inspectAdaptStore = docStore<ImprovementItem>("improvements");
-export const snapshotsStore = docStore<PiSnapshot>("snapshots");
+// Snapshots are recorded by the reports themselves, not edited by people: not audited.
+export const snapshotsStore = docStore<PiSnapshot>("snapshots", false);
 
 /** Capacity document id: team node + the iteration's stable id (older documents used the path). */
 export const capacityId = (nodeId: string, iterationKey: string) => `${nodeId}|${iterationKey}`;
@@ -168,4 +206,122 @@ export async function getUserValue<T>(key: string, fallback: T): Promise<T> {
 export async function setUserValue<T>(key: string, value: T): Promise<T> {
   const m = await manager();
   return m.setValue<T>(`${key}-${getProject().id}`, value, { scopeType: "User" });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Change log (audit-<projectId>). The Extension Data Service keeps no history, so this log is
+// the record of who changed SAFe Ado's data. It never blocks the change it describes.
+// ---------------------------------------------------------------------------------------------
+
+const auditCollection = collection("audit");
+let pruning: Promise<void> = Promise.resolve();
+let auditSeq = 0;
+
+/** Appends one entry; failures are swallowed. Now and then, prunes old entries in the background. */
+async function appendAudit(entry: Omit<AuditEntry, "id" | "user" | "at">, user: AuditUser = currentUser(), at = new Date().toISOString()) {
+  try {
+    const m = await manager();
+    // Ids start with the timestamp and a per-session counter so they sort chronologically.
+    const seq = (auditSeq++ % 1296).toString(36).padStart(2, "0");
+    const id = `${Date.parse(at).toString(36).padStart(9, "0")}-${seq}${Math.random().toString(36).slice(2, 8)}`;
+    await m.setDocument(auditCollection(), { id, ...entry, user, at }, { scopeType: "Default" });
+    if (Math.random() < auditPolicy.pruneChance) pruning = pruneAuditLog().then(() => undefined);
+  } catch {
+    /* the change log is best effort: the change itself has been saved */
+  }
+}
+
+/** The change log, newest first. */
+export async function listAudit(filter: { collection?: string; docId?: string } = {}): Promise<AuditEntry[]> {
+  const all = await getDocs<AuditEntry>(auditCollection());
+  return all
+    .filter((e) => (!filter.collection || e.collection === filter.collection) && (!filter.docId || e.docId === filter.docId))
+    .sort(byNewest);
+}
+
+/** Deletes entries beyond the retention policy (capped per pass). Returns how many were removed. */
+export async function pruneAuditLog(now = Date.now()): Promise<number> {
+  try {
+    const m = await manager();
+    const drop = entriesToPrune(await getDocs<AuditEntry>(auditCollection()), now);
+    for (const e of drop) await m.deleteDocument(auditCollection(), e.id, { scopeType: "Default" });
+    return drop.length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Resolves when a background pruning pass (if any) has finished. */
+export const auditIdle = () => pruning;
+
+// ---------------------------------------------------------------------------------------------
+// Backup / restore. One JSON file with the configuration and every document collection of this
+// project — the only way to keep SAFe Ado's data when the extension is uninstalled.
+// ---------------------------------------------------------------------------------------------
+
+/** Every per-project document collection by name. Features that add a collection add it here. */
+export const DATA_COLLECTIONS = [
+  "objectives",
+  "risks",
+  "milestones",
+  "quickfilters",
+  "capacity",
+  "wimeta",
+  "votes",
+  "planreviews",
+  "improvements",
+  "snapshots",
+  "audit",
+];
+
+export async function exportData(): Promise<SafeBackup> {
+  const project = getProject();
+  const lists = await Promise.all(DATA_COLLECTIONS.map((name) => getDocs<BackupDoc>(collection(name)())));
+  const collections: Record<string, BackupDoc[]> = {};
+  // Etags belong to this organization's copy; a restore writes fresh ones.
+  DATA_COLLECTIONS.forEach((name, i) => (collections[name] = lists[i].map(({ __etag, ...doc }) => doc as BackupDoc)));
+  return {
+    format: BACKUP_FORMAT,
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    exportedBy: currentUser(),
+    project: { id: project.id, name: project.name },
+    config: await loadConfig(),
+    collections,
+  };
+}
+
+/**
+ * Restores the documents of a validated backup (the configuration is saved separately, through
+ * the shell, so every view picks it up). "merge" adds and replaces documents by id; "overwrite"
+ * also deletes documents missing from the backup. The change log is merged, never deleted.
+ */
+export async function importData(backup: SafeBackup, mode: ImportMode): Promise<{ written: number; deleted: number }> {
+  const m = await manager();
+  let written = 0;
+  let deleted = 0;
+  for (const name of DATA_COLLECTIONS) {
+    const docs = backup.collections[name] ?? [];
+    const coll = collection(name)();
+    if (mode === "overwrite" && name !== "audit") {
+      const keep = new Set(docs.map((d) => d.id));
+      for (const existing of await getDocs<BackupDoc>(coll)) {
+        if (keep.has(existing.id)) continue;
+        await m.deleteDocument(coll, existing.id, { scopeType: "Default" });
+        deleted++;
+      }
+    }
+    // __etag -1 overwrites whatever version is stored.
+    for (const doc of docs) {
+      await m.setDocument(coll, { ...doc, __etag: -1 }, { scopeType: "Default" });
+      written++;
+    }
+  }
+  await appendAudit({
+    collection: "backup",
+    docId: "import",
+    action: "import",
+    label: `Restored ${written} document${written === 1 ? "" : "s"} (${mode}) from ${backup.project.name} · ${backup.exportedAt}`,
+  });
+  return { written, deleted };
 }

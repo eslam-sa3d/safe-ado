@@ -63,6 +63,8 @@ export const fake = {
   hash: "",
   /** Areas where the current user may not save work items (validate-only create answers 403). */
   denyWriteAreas: [] as string[],
+  /** The signed-in user (SDK.getUser). */
+  user: { id: "u-ada", name: "ada@fabrikam.com", displayName: "Ada Lovelace" },
 };
 
 /** The reverse of each link type Azure DevOps keeps in sync automatically. */
@@ -269,6 +271,7 @@ export function resetFake() {
   };
   fake.hash = "";
   fake.denyWriteAreas = [];
+  fake.user = { id: "u-ada", name: "ada@fabrikam.com", displayName: "Ada Lovelace" };
 
   dataStore.values.clear();
   dataStore.collections.clear();
@@ -301,13 +304,13 @@ export function seedConfig(config: SafeConfig = makeConfig()) {
   return config;
 }
 
-export function seedDocs(collection: "objectives" | "risks" | "milestones" | "capacity" | "wimeta" | "quickfilters" | "votes" | "snapshots", docs: Json[]) {
+export function seedDocs(collection: "objectives" | "risks" | "milestones" | "capacity" | "wimeta" | "quickfilters" | "votes" | "snapshots" | "planreviews" | "improvements" | "audit", docs: Json[]) {
   const map = new Map<string, Json>();
   docs.forEach((d) => map.set(d.id, { ...clone(d), __etag: 1 }));
   dataStore.collections.set(`${collection}-${fake.projectId}`, map);
 }
 
-export function docs(collection: "objectives" | "risks" | "milestones" | "capacity" | "wimeta" | "quickfilters" | "votes" | "snapshots"): Json[] {
+export function docs(collection: "objectives" | "risks" | "milestones" | "capacity" | "wimeta" | "quickfilters" | "votes" | "snapshots" | "planreviews" | "improvements" | "audit"): Json[] {
   return Array.from(dataStore.collections.get(`${collection}-${fake.projectId}`)?.values() ?? []);
 }
 
@@ -790,7 +793,8 @@ export const dataManager = {
     if (!dataStore.collections.has(collection)) dataStore.collections.set(collection, new Map());
     const c = dataStore.collections.get(collection)!;
     const existing = c.get(doc.id);
-    if (existing && doc.__etag !== undefined && doc.__etag !== existing.__etag) {
+    // __etag -1 overwrites whatever is stored, like the Extension Data Service.
+    if (existing && doc.__etag !== undefined && doc.__etag !== -1 && doc.__etag !== existing.__etag) {
       throw Object.assign(new Error("The document has been modified (etag mismatch)"), { status: 409 });
     }
     const saved = { ...clone(doc), __etag: (existing?.__etag ?? 0) + 1 };

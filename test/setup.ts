@@ -1,10 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { beforeEach, vi } from "vitest";
+import { auditPolicy } from "../src/api/audit";
 import { retryPolicy } from "../src/api/client";
 import { dataManager, fetchMock, resetFake } from "./fakeAdo";
 
 // Retry throttled requests immediately in tests.
 retryPolicy.baseDelayMs = 0;
+// Pruning of the change log is random in production; tests trigger it explicitly.
+auditPolicy.pruneChance = 0;
 import * as sdk from "./sdkMock";
 
 vi.mock("azure-devops-extension-sdk", () => import("./sdkMock"));
