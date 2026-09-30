@@ -8,7 +8,9 @@ import {
   sprintIndex,
 } from "./dependencies";
 import type { ExtraFacet } from "./filters";
-import { isUnder, relationTargetId } from "./wit";
+import { getBaseUrl } from "./client";
+import { getStates, isUnder, relationTargetId, removeLink, updateWorkItem } from "./wit";
+import { MAX_ASSIGNED_PIS, PI_LIMIT_MESSAGE } from "../form/planning";
 import { localToday, wsjfOf } from "./rules";
 
 /**
@@ -135,17 +137,40 @@ export function buildLanes(
   return [...sorted, independent];
 }
 
-/** Adds the team and PI to the meta's assignments. */
-export function assignMeta(meta: WorkItemMeta, nodeId: string, piPath: string): WorkItemMeta {
-  const add = (xs: string[], x: string) => (xs.includes(x) ? xs : [...xs, x]);
-  return { ...meta, assignedNodeIds: add(meta.assignedNodeIds, nodeId), assignedPiPaths: add(meta.assignedPiPaths, piPath) };
+type PiRef = Pick<Sprint, "path" | "identifier">;
+
+/** Index of the PI among the meta's Assigned PIs: by stable id first, then by path. */
+function piIndex(meta: WorkItemMeta, pi: PiRef): number {
+  const ids = meta.assignedPiIds ?? [];
+  return meta.assignedPiPaths.findIndex((path, i) => (!!ids[i] && ids[i] === pi.identifier) || path.toLowerCase() === pi.path.toLowerCase());
 }
 
-/** Removes the team; the PI goes too when no other team remains assigned. */
-export function unassignMeta(meta: WorkItemMeta, nodeId: string, piPath: string): WorkItemMeta {
+/** Assigned PI ids aligned with the paths (legacy metas without ids get blanks). */
+const alignedIds = (meta: WorkItemMeta) => meta.assignedPiPaths.map((_, i) => meta.assignedPiIds?.[i] ?? "");
+
+/**
+ * Adds the team and PI to the meta's assignments, keeping `assignedPiIds` in step with
+ * `assignedPiPaths`. Throws when the item already has the maximum number of Assigned PIs.
+ */
+export function assignMeta(meta: WorkItemMeta, nodeId: string, pi: PiRef): WorkItemMeta {
+  const assignedNodeIds = meta.assignedNodeIds.includes(nodeId) ? meta.assignedNodeIds : [...meta.assignedNodeIds, nodeId];
+  if (piIndex(meta, pi) >= 0) return { ...meta, assignedNodeIds };
+  if (meta.assignedPiPaths.length >= MAX_ASSIGNED_PIS) throw new Error(PI_LIMIT_MESSAGE);
+  return {
+    ...meta,
+    assignedNodeIds,
+    assignedPiPaths: [...meta.assignedPiPaths, pi.path],
+    assignedPiIds: [...alignedIds(meta), pi.identifier],
+  };
+}
+
+/** Removes the team; the PI (path and id) goes too when no other team remains assigned. */
+export function unassignMeta(meta: WorkItemMeta, nodeId: string, pi: PiRef): WorkItemMeta {
   const assignedNodeIds = meta.assignedNodeIds.filter((n) => n !== nodeId);
-  const assignedPiPaths = assignedNodeIds.length ? meta.assignedPiPaths : meta.assignedPiPaths.filter((p) => p !== piPath);
-  return { ...meta, assignedNodeIds, assignedPiPaths };
+  const i = piIndex(meta, pi);
+  if (assignedNodeIds.length || i < 0) return { ...meta, assignedNodeIds };
+  const keep = (_: string, j: number) => j !== i;
+  return { ...meta, assignedNodeIds, assignedPiPaths: meta.assignedPiPaths.filter(keep), assignedPiIds: alignedIds(meta).filter(keep) };
 }
 
 /** WSJF (shared formula in api/rules.ts), or undefined when not computable. */
@@ -476,4 +501,49 @@ export function boardFacets(
     { key: "parent", label: "Parent feature", options: uniq(stories.map(parentLabel)), values: (i) => [parentLabel(i)] },
     { key: "pis", label: "Assigned PIs", options: uniq(stories.flatMap(piNames)), values: piNames },
   ];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Parent changes and server-side open-state filtering
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Moves `item` (fetched with relations) from parent `from` to parent `to` (null = none) and
+ * writes `fields`. When the old link is on the item, removal, addition and fields go in ONE
+ * json-patch request, so the change is atomic. When the old link exists only on the parent's
+ * side, the new link (and fields) are written first and the old link removed afterwards; if that
+ * removal fails, the new link is rolled back and the error rethrown.
+ */
+export async function changeParent(item: WorkItem, from: number | null, to: number | null, fields: Record<string, unknown> = {}): Promise<void> {
+  const same = from === to;
+  const ops: Parameters<typeof updateWorkItem>[1] = Object.entries(fields).map(([k, v]) => ({ op: "add" as const, path: `/fields/${k}`, value: v }));
+  const own = from === null || same ? -1 : (item.relations ?? []).findIndex((r) => r.rel === LINK.parent && relationTargetId(r.url) === from);
+  if (own >= 0) ops.push({ op: "remove", path: `/relations/${own}` });
+  if (to !== null && !same) {
+    const base = await getBaseUrl();
+    ops.push({ op: "add", path: "/relations/-", value: { rel: LINK.parent, url: `${base}_apis/wit/workItems/${to}`, attributes: {} } });
+  }
+  if (ops.length) await updateWorkItem(item.id, ops);
+  if (from === null || same || own >= 0) return;
+  try {
+    await removeLink(from, item.id, LINK.child);
+  } catch (e) {
+    if (to !== null) await removeLink(item.id, to, LINK.parent).catch(() => undefined);
+    throw e;
+  }
+}
+
+/**
+ * WIQL clause keeping only items whose state is not in the Completed or Removed category, per
+ * type (state names differ between types). Types without such states are kept as a whole.
+ */
+export async function openStatesClause(types: string[]): Promise<string> {
+  const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+  const parts = await Promise.all(
+    types.filter(Boolean).map(async (t) => {
+      const closed = (await getStates(t)).filter((s) => s.category === "Completed" || s.category === "Removed").map((s) => q(s.name));
+      return closed.length ? `([System.WorkItemType] = ${q(t)} AND [System.State] NOT IN (${closed.join(", ")}))` : `[System.WorkItemType] = ${q(t)}`;
+    })
+  );
+  return parts.length ? parts.join(" OR ") : "[System.Id] < 0";
 }

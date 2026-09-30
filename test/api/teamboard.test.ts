@@ -117,10 +117,11 @@ describe("teamboard logic", () => {
 
   it("assigns and unassigns metadata", () => {
     const m: WorkItemMeta = { id: "1", workItemId: 1, assignedNodeIds: ["a"], assignedPiPaths: ["PI"] };
-    expect(assignMeta(m, "a", "PI")).toEqual(m);
-    expect(assignMeta(m, "b", "PI2")).toMatchObject({ assignedNodeIds: ["a", "b"], assignedPiPaths: ["PI", "PI2"] });
-    expect(unassignMeta({ ...m, assignedNodeIds: ["a", "b"] }, "a", "PI")).toMatchObject({ assignedNodeIds: ["b"], assignedPiPaths: ["PI"] });
-    expect(unassignMeta(m, "a", "PI")).toMatchObject({ assignedNodeIds: [], assignedPiPaths: [] });
+    const pi = (path: string) => ({ path, identifier: `id-${path}` });
+    expect(assignMeta(m, "a", pi("PI"))).toEqual(m);
+    expect(assignMeta(m, "b", pi("PI2"))).toMatchObject({ assignedNodeIds: ["a", "b"], assignedPiPaths: ["PI", "PI2"], assignedPiIds: ["", "id-PI2"] });
+    expect(unassignMeta({ ...m, assignedNodeIds: ["a", "b"] }, "a", pi("PI"))).toMatchObject({ assignedNodeIds: ["b"], assignedPiPaths: ["PI"] });
+    expect(unassignMeta(m, "a", pi("PI"))).toMatchObject({ assignedNodeIds: [], assignedPiPaths: [], assignedPiIds: [] });
   });
 
   it("computes WSJF", () => {

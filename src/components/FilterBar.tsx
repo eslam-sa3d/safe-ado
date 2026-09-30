@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { newId, quickFiltersStore } from "../api/data";
-import { EMPTY_FILTER, ExtraFacet, filterToWiql, isFilterActive, ItemFilter, QuickFilter } from "../api/filters";
+import { describeWiql, EMPTY_FILTER, ExtraFacet, isFilterActive, ItemFilter, QuickFilter, wiqlClauseProblem } from "../api/filters";
 import { validateWiqlClause } from "../api/wit";
 import { Icon, useAsync } from "./common";
 import { useCanSafe } from "./useCanSafe";
@@ -15,6 +15,8 @@ const FACET_LABEL: Record<Facet, string> = {
   priorities: "Priority",
   iterations: "Iteration",
 };
+
+const OMITTED_TITLE = "Some filters (Iteration, SAFe facets) aren't part of the copied WIQL";
 
 /**
  * Shared filter toolbar (Agile Hive's JQL box, "More filters" and quick filters):
@@ -59,16 +61,19 @@ export function FilterBar({
   const applyWiql = async () => {
     const clause = wiqlDraft.trim();
     if (clause) {
-      const error = await validate(clause);
+      // Reject clauses that could escape the scope before asking the server.
+      const error = wiqlClauseProblem(clause) ?? (await validate(clause));
       setWiqlError(error);
       if (error) return;
     } else setWiqlError(null);
     onChange({ ...value, wiql: clause });
   };
 
+  const exported = describeWiql(value);
+
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(filterToWiql(value));
+      await navigator.clipboard.writeText(exported.wiql);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -128,7 +133,7 @@ export function FilterBar({
           )}
         </span>
       )}
-      <button className="btn" onClick={copy} disabled={!isFilterActive(value)} title="Copy the filter as a WIQL clause">
+      <button className="btn" onClick={copy} disabled={!isFilterActive(value)} title={exported.omitted ? OMITTED_TITLE : "Copy the filter as a WIQL clause"}>
         {copied ? (
           <>
             <Icon name="CheckMark" /> Copied

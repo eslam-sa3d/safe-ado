@@ -184,7 +184,13 @@ describe("Team Planning Board", () => {
     drop(cell("Payment API / PI 2 Sprint 2"), "story:106");
 
     await waitFor(() => expect(within(cell("Payment API / PI 2 Sprint 2")).getByText("Backlog story")).toBeInTheDocument());
-    expect(patches(106)[0]).toEqual([{ op: "add", path: "/fields/System.IterationPath", value: PI2_S2 }]);
+    // Iteration and parent link in one request
+    expect(patches(106)).toEqual([
+      [
+        { op: "add", path: "/fields/System.IterationPath", value: PI2_S2 },
+        { op: "add", path: "/relations/-", value: { rel: PARENT, url: url(10), attributes: {} } },
+      ],
+    ]);
     expect(fake.workItems.get(106)!.relations!.map((r) => [r.rel, r.url])).toEqual([[PARENT, url(10)]]);
     await waitFor(() => expect(within(screen.getByRole("tabpanel", { name: "Team backlog" })).queryByText("Backlog story")).toBeNull());
   });

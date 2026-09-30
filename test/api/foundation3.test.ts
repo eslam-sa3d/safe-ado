@@ -101,7 +101,7 @@ describe("extended filters", () => {
     const f = { ...EMPTY_FILTER, wiql: "[System.State] = 'New'", quick, priorities: ["1", "None"], iterations: ["S1"] };
     expect(withWiqlFilter("SELECT x WHERE a ORDER BY b", f)).toBe("SELECT x WHERE a AND ([System.State] = 'New') AND ([System.Tags] CONTAINS 'MVP') ORDER BY b");
     expect(filterToWiql(f)).toBe(
-      "[Microsoft.VSTS.Common.Priority] IN (1) AND ([System.IterationPath] UNDER 'S1') AND ([System.State] = 'New') AND ([System.Tags] CONTAINS 'MVP')"
+      "[Microsoft.VSTS.Common.Priority] IN (1) AND ([System.State] = 'New') AND ([System.Tags] CONTAINS 'MVP')"
     );
   });
 });
