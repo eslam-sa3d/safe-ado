@@ -11,10 +11,13 @@ export function Sidebar({
   root,
   selectedId,
   onSelect,
+  detached = [],
 }: {
   root: OrgNode;
   selectedId: string;
   onSelect: (id: string) => void;
+  /** Units detached from the hierarchy (My Organization), listed below the tree. */
+  detached?: OrgNode[];
 }) {
   const [starred, setStarred] = useState<string[]>([]);
 
@@ -93,7 +96,7 @@ export function Sidebar({
     e.stopPropagation();
   };
 
-  const all = flatten(root);
+  const all = [root, ...detached].flatMap(flatten);
   const starredNodes = starred.map((id) => all.find((n) => n.id === id)).filter((n): n is OrgNode => !!n);
 
   return (
@@ -137,6 +140,29 @@ export function Sidebar({
           tree={{ isOpen, setOpen, tabbable, onKey, setFocusId, rows: rows.current }}
         />
       </ul>
+      {detached.length > 0 && (
+        <>
+          <div className="sidebar-title">Unattached units</div>
+          <ul className="starred" aria-label="Unattached units">
+            {detached.flatMap(flatten).map((n) => (
+              <li key={n.id}>
+                <div
+                  className={"tree-row" + (n.id === selectedId ? " selected" : "")}
+                  style={{ paddingLeft: 12 }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelect(n.id)}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(n.id))}
+                  title={`${LEVEL_LABEL[n.level]} · not attached to the hierarchy`}
+                >
+                  <i className="level-square" style={{ background: LEVEL_COLOR[n.level] }} />
+                  <span className="tree-label">{n.name}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div className="legend">
         {(Object.keys(LEVEL_LABEL) as (keyof typeof LEVEL_LABEL)[]).map((l) => (
           <span key={l}>

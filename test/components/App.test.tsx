@@ -212,6 +212,14 @@ describe("App shell", () => {
     expect(dataStore.values.get("config-p1").root.children[0].areaId).toBeUndefined();
   });
 
+  it("opens a detached unit from the sidebar", async () => {
+    const config = makeConfig();
+    config.detached = [{ id: "n-loose", name: "Loose team", level: "team", areaPath: "Fabrikam\\ART B", children: [] }];
+    await renderApp({ nodeId: "n-root", view: "reports", config });
+    fireEvent.click(within(screen.getByRole("list", { name: "Unattached units" })).getByText("Loose team"));
+    await waitFor(() => expect(document.querySelector(".header .level-badge")).toHaveTextContent("Team"));
+  });
+
   it("shows a load error when configuration cannot be read", async () => {
     dataStore.failures.push({ op: "getValue", error: new Error("storage offline") });
     render(<App />);

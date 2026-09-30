@@ -151,7 +151,8 @@ export function App() {
     if (urlReady.current && config) void writeUrlState({ node: nodeId || undefined, view, pi: pi?.identifier });
   }, [nodeId, view, pi?.identifier, config]);
 
-  const shortcutNode = config ? findNode(config.root, nodeId) ?? config.root : undefined;
+  const findAny = (c: SafeConfig) => findNode(c.root, nodeId) ?? (c.detached ?? []).map((d) => findNode(d, nodeId)).find(Boolean);
+  const shortcutNode = config ? findAny(config) ?? config.root : undefined;
   useNewItemShortcut({ config: config!, node: shortcutNode!, pi, enabled: !!config && can.plan });
 
   const saveConfig = useCallback(async (next: SafeConfig) => {
@@ -163,7 +164,7 @@ export function App() {
   if (loadError) return <ErrorBar message={`Could not load SAFe configuration: ${loadError}`} />;
   if (!config) return <Spinner label="Loading SAFe configuration…" />;
 
-  const node = findNode(config.root, nodeId) ?? config.root;
+  const node = findAny(config) ?? config.root;
   const levelViews = LEVEL_VIEWS[node.level];
   const activeView: ViewKey = levelViews.includes(view) || GLOBAL_VIEWS.includes(view) ? view : levelViews[0];
 
@@ -186,7 +187,7 @@ export function App() {
     <RefreshContext.Provider value={tick}>
     <SafeContext.Provider value={ctx}>
       <div className="layout">
-        <Sidebar root={config.root} selectedId={node.id} onSelect={setNodeId} />
+        <Sidebar root={config.root} detached={config.detached} selectedId={node.id} onSelect={setNodeId} />
         <main className="main">
           <header className="header">
             <div className="breadcrumb">

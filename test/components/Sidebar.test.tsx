@@ -119,3 +119,30 @@ describe("Sidebar", () => {
     });
   });
 });
+
+describe("Sidebar — unattached units", () => {
+  it("lists detached units (and their children) and selects them by click or keyboard", async () => {
+    const { render, screen, fireEvent, within } = await import("@testing-library/react");
+    const { Sidebar } = await import("../../src/components/Sidebar");
+    const { makeConfig } = await import("../fakeAdo");
+    const onSelect = vi.fn();
+    const detached = [{ id: "d1", name: "Loose ART", level: "art" as const, children: [{ id: "d2", name: "Loose team", level: "team" as const, children: [] }] }];
+    render(<Sidebar root={makeConfig().root} detached={detached} selectedId="d2" onSelect={onSelect} />);
+    const list = screen.getByRole("list", { name: "Unattached units" });
+    expect(within(list).getByText("Loose team").closest(".tree-row")).toHaveClass("selected");
+    fireEvent.click(within(list).getByText("Loose ART"));
+    expect(onSelect).toHaveBeenCalledWith("d1");
+    fireEvent.keyDown(within(list).getByText("Loose team").closest(".tree-row")!, { key: "Enter" });
+    expect(onSelect).toHaveBeenLastCalledWith("d2");
+    fireEvent.keyDown(within(list).getByText("Loose team").closest(".tree-row")!, { key: "x" });
+    expect(onSelect).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides the section when nothing is detached", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { Sidebar } = await import("../../src/components/Sidebar");
+    const { makeConfig } = await import("../fakeAdo");
+    render(<Sidebar root={makeConfig().root} selectedId="n-root" onSelect={() => {}} />);
+    expect(screen.queryByRole("list", { name: "Unattached units" })).toBeNull();
+  });
+});
