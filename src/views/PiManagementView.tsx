@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
-import { flatten } from "../api/org";
+import { flatten, pathTo } from "../api/org";
 import {
   addDays,
   dayOf,
   isIp,
   MAX_ITERATIONS,
+  nameError,
   overlaps,
   piStatus,
   PiStatus,
+  PlannedIteration,
   toIso,
   validateIteration,
   validatePi,
+  validatePlan,
 } from "../api/piRules";
+import { localToday } from "../api/rules";
 import { OrgNode, ProgramIncrement, Sprint } from "../api/types";
 import {
   addTeamIteration,
@@ -23,7 +27,7 @@ import {
   updateIteration,
 } from "../api/wit";
 import { ErrorBar, Field, fmtDate, Info, Spinner, useAsync } from "../components/common";
-import { useSafe } from "../components/context";
+import { useCan, useSafe } from "../components/context";
 
 const DAY = 86_400_000;
 
@@ -47,12 +51,17 @@ export function planSprints(piName: string, start: string, weeks: number, devSpr
 const STATUS_LABEL: Record<PiStatus, string> = { planned: "Planned", current: "Current", completed: "Completed" };
 const STATUS_ORDER: PiStatus[] = ["planned", "current", "completed"];
 
-const today = () => new Date().toISOString().slice(0, 10);
+/** Iteration dates are calendar days: compare them with the user's local date, not UTC. */
+const today = () => localToday();
 
 export function PiManagementView() {
-  const { config, pis, reloadPis, piRoot: cadenceRoot } = useSafe();
+  const { config, pis, reloadPis, piRoot: cadenceRoot, node } = useSafe();
+  const readOnly = !useCan().managePis;
   // PIs belong to the selected unit's cadence (its own, an ancestor's, or the project's).
   const piRoot = cadenceRoot ?? config.piRootIteration;
+  const cadenceOwner = [...pathTo(config.root, node.id)].reverse().find((n) => n.piRootIteration);
+  const cadenceLabel =
+    cadenceOwner && cadenceOwner.piRootIteration === piRoot ? `PIs of ${cadenceOwner.name}'s cadence` : "PIs of the project cadence";
   const teams = flatten(config.root).filter((n) => n.teamId);
 
   const [name, setName] = useState(suggestName(pis));
@@ -73,13 +82,39 @@ export function PiManagementView() {
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string>();
+  // Hand-edited plan; it applies only while the settings it was made from are unchanged.
+  const [custom, setCustom] = useState<{ key: string; rows: PlannedIteration[] }>();
 
-  const plan = start && name ? planSprints(name, start, weeks, sprints, withIp) : [];
-  const duplicate = pis.some((p) => p.name === name);
-  const tooMany = plan.length > MAX_ITERATIONS;
-  const clash = plan.length ? pis.find((p) => overlaps({ start: plan[0].start, finish: plan[plan.length - 1].finish }, p)) : undefined;
+  const generated = start && name ? planSprints(name, start, weeks, sprints, withIp) : [];
+  const genKey = [name, start, weeks, sprints, withIp].join("|");
+  const customized = custom?.key === genKey;
+  const plan: PlannedIteration[] = customized
+    ? custom!.rows
+    : generated.map((g) => ({ name: g.name, start: dayOf(g.start), finish: dayOf(g.finish) }));
+  const piRange = generated.length ? { start: dayOf(generated[0].start), finish: dayOf(generated[generated.length - 1].finish) } : undefined;
+  const check = validatePlan(plan, { name, start: piRange?.start ?? "", finish: piRange?.finish ?? "" });
+  const planInvalid = check.errors.length > 0 || check.rows.some((r) => r.length > 0);
+  const invalidName = nameError(name);
+  const duplicate = pis.some((p) => p.name.toLowerCase() === name.trim().toLowerCase());
+  const clash = piRange ? pis.find((p) => overlaps(piRange, p)) : undefined;
   const selected = pis.find((p) => p.path === selectedPath);
   const now = today();
+
+  const editRow = (i: number, patch: Partial<PlannedIteration>) =>
+    setCustom({ key: genKey, rows: plan.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+
+  /** Removes a partially created PI (its iterations go with it) so a retry starts clean. */
+  const rollback = async (piPath: string, failure: string, iterations: number, push: (m: string) => void) => {
+    try {
+      const reclassifyId = await getIterationNodeId(piRoot);
+      if (reclassifyId === undefined) throw new Error(`Could not find the iteration ${piRoot}.`);
+      await deleteIteration(piPath, reclassifyId);
+      push(`Rolled back: removed the PI and ${iterations} created iteration${iterations === 1 ? "" : "s"}`);
+      setError(`Could not create the PI: ${failure}. Nothing was left behind; fix the problem and try again.`);
+    } catch (e: any) {
+      setError(`Could not create the PI: ${failure}. Rolling back failed too (${e.message}); delete "${piPath}" manually.`);
+    }
+  };
 
   const create = async () => {
     setBusy(true);
@@ -90,40 +125,44 @@ export function PiManagementView() {
       out.push(m);
       setLog([...out]);
     };
+    const piName = name.trim();
+    const piPath = `${piRoot}\\${piName}`;
+    let piCreated = false;
+    const created: { identifier: string }[] = [];
     try {
-      await createIteration(piRoot, name, plan[0].start, plan[plan.length - 1].finish);
-      push(`Created PI iteration "${name}"`);
-      const piPath = `${piRoot}\\${name}`;
-      const created = [];
-      for (const s of plan) {
-        created.push(await createIteration(piPath, s.name, s.start, s.finish));
-        push(`Created ${s.name} (${fmtDate(s.start)} – ${fmtDate(s.finish)})`);
+      await createIteration(piRoot, piName, toIso(piRange!.start), toIso(piRange!.finish));
+      piCreated = true;
+      push(`Created PI iteration "${piName}"`);
+      for (const r of plan) {
+        const rowName = r.name.trim();
+        created.push(await createIteration(piPath, rowName, r.start ? toIso(r.start) : undefined, r.finish ? toIso(r.finish) : undefined));
+        push(r.start ? `Created ${rowName} (${fmtDate(r.start)} – ${fmtDate(r.finish)})` : `Created ${rowName}`);
       }
-      // Teams get the sprints only; the PI node itself would otherwise show up as a sprint.
-      if (subscribe) await subscribeTeams(teams, created.map((c) => c.identifier), push);
-      reloadPis();
-      setName(suggestName([...pis, { name } as ProgramIncrement]));
     } catch (e: any) {
-      setError(e.message);
-    } finally {
+      if (piCreated) {
+        await rollback(piPath, e.message, created.length, push);
+        reloadPis();
+      } else setError(e.message);
       setBusy(false);
+      return;
     }
+    // Teams get the sprints only; the PI node itself would otherwise show up as a sprint.
+    if (subscribe) await subscribeTeams(teams, created.map((c) => c.identifier), push);
+    reloadPis();
+    setCustom(undefined);
+    setName(suggestName([...pis, { name: piName } as ProgramIncrement]));
+    setBusy(false);
   };
 
   const subscribeExisting = async (pi: ProgramIncrement) => {
     setBusy(true);
     setError(undefined);
     const out: string[] = [];
-    try {
-      await subscribeTeams(teams, pi.sprints.map((s) => s.identifier), (m) => {
-        out.push(m);
-        setLog([...out]);
-      });
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
+    await subscribeTeams(teams, pi.sprints.map((s) => s.identifier), (m) => {
+      out.push(m);
+      setLog([...out]);
+    });
+    setBusy(false);
   };
 
   const groups = STATUS_ORDER.map((status) => ({
@@ -133,16 +172,22 @@ export function PiManagementView() {
 
   return (
     <div className="pi-management">
+      {readOnly && (
+        <div className="msg msg-info readonly-banner" role="note">
+          Read-only: you can view PIs and iterations, but changing them needs the “Create child nodes” permission on the iteration
+          root.
+        </div>
+      )}
       <div className="two-col">
         <section className="panel">
           <div className="panel-header">
             <h3>Program Increments</h3>
-            <span className="muted small">
-              under <code>{piRoot}</code>
+            <span className="muted small pi-cadence">
+              {cadenceLabel} · under <code>{piRoot}</code>
             </span>
           </div>
           {pis.length === 0 ? (
-            <p className="muted pad">No PIs yet. Create one on the right.</p>
+            <p className="muted pad">{readOnly ? "No PIs yet." : "No PIs yet. Create one on the right."}</p>
           ) : (
             <table className="grid">
               <thead>
@@ -181,11 +226,11 @@ export function PiManagementView() {
                       </td>
                       <td className="actions">
                         <button className="link small" onClick={() => setSelectedPath(p.path === selectedPath ? null : p.path)}>
-                          {p.path === selectedPath ? "Close" : "Manage"}
+                          {p.path === selectedPath ? "Close" : readOnly ? "View" : "Manage"}
                         </button>
                         <button
                           className="link small"
-                          disabled={busy || !teams.length}
+                          disabled={busy || !teams.length || readOnly}
                           onClick={() => subscribeExisting(p)}
                           title="Add this PI's iterations to every team in the hierarchy"
                         >
@@ -204,7 +249,7 @@ export function PiManagementView() {
           <div className="panel-header">
             <h3>Create a PI</h3>
           </div>
-          <div className="pad form">
+          <fieldset className="pad form plain-fieldset" disabled={readOnly}>
             <div className="field-row">
               <Field label="PI name">
                 <input
@@ -250,30 +295,47 @@ export function PiManagementView() {
             </label>
 
             {plan.length > 0 && (
-              <table className="grid compact">
-                <tbody>
-                  {plan.map((s) => (
-                    <tr key={s.name}>
-                      <td>{s.name}</td>
-                      <td className="muted">
-                        {fmtDate(s.start)} – {fmtDate(s.finish)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="pi-plan">
+                <div className="pi-plan-header">
+                  <span className="muted small">
+                    PI {fmtDate(piRange!.start)} – {fmtDate(piRange!.finish)}. Adjust the planned iterations before creating.
+                  </span>
+                  <span className="spacer" />
+                  {customized && (
+                    <button type="button" className="link small" onClick={() => setCustom(undefined)}>
+                      Reset plan
+                    </button>
+                  )}
+                </div>
+                <table className="grid compact pi-plan-table">
+                  <tbody>
+                    {plan.map((r, i) => (
+                      <PlanRow key={i} index={i} row={r} errors={check.rows[i]} onChange={(patch) => editRow(i, patch)} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-            <button
-              className="btn primary"
-              disabled={busy || !name.trim() || !start || duplicate || tooMany || !!clash}
-              onClick={create}
-            >
-              {busy ? "Working…" : "Create PI"}
-            </button>
+            <div>
+              <button
+                className="btn primary"
+                disabled={busy || !name.trim() || !start || !!invalidName || duplicate || planInvalid || !!clash}
+                onClick={create}
+              >
+                {busy ? "Working…" : "Create PI"}
+              </button>
+            </div>
+            {invalidName && <p className="danger small">{invalidName}</p>}
             {duplicate && <p className="danger small">A PI with this name already exists.</p>}
-            {tooMany && <p className="danger small">A PI can have at most {MAX_ITERATIONS} iterations.</p>}
+            {check.errors.map((e) => (
+              <p key={e} className="danger small">
+                {e}
+              </p>
+            ))}
             {clash && <p className="danger small">The dates overlap {clash.name}.</p>}
-            <ErrorBar message={error} />
+          </fieldset>
+          <div className="pad-x pi-create-result">
+            <ErrorBar message={error} onClose={() => setError(undefined)} />
             {log.length > 0 && (
               <Info>
                 {log.map((l, i) => (
@@ -292,6 +354,7 @@ export function PiManagementView() {
           pis={pis}
           teams={teams}
           piRoot={piRoot}
+          readOnly={readOnly}
           onRenamed={(path) => setSelectedPath(path)}
           onDeleted={() => setSelectedPath(null)}
           reloadPis={reloadPis}
@@ -301,16 +364,45 @@ export function PiManagementView() {
   );
 }
 
+/** One editable row of the create form's iteration plan. */
+function PlanRow(props: { index: number; row: PlannedIteration; errors: string[]; onChange: (patch: Partial<PlannedIteration>) => void }) {
+  const { row, errors, onChange } = props;
+  const n = props.index + 1;
+  return (
+    <>
+      <tr className={isIp(row.name) ? "ip-iteration-row" : undefined}>
+        <td>
+          <input aria-label={`Planned iteration ${n} name`} value={row.name} onChange={(e) => onChange({ name: e.target.value })} />
+        </td>
+        <td>
+          <input aria-label={`Planned iteration ${n} start`} type="date" value={row.start} onChange={(e) => onChange({ start: e.target.value })} />
+        </td>
+        <td>
+          <input aria-label={`Planned iteration ${n} finish`} type="date" value={row.finish} onChange={(e) => onChange({ finish: e.target.value })} />
+        </td>
+      </tr>
+      {errors.length > 0 && (
+        <tr>
+          <td colSpan={3} className="danger small" data-plan-error={n}>
+            {errors.join(" ")}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function PiDetails(props: {
   pi: ProgramIncrement;
   pis: ProgramIncrement[];
   teams: OrgNode[];
   piRoot: string;
+  readOnly: boolean;
   onRenamed: (path: string) => void;
   onDeleted: () => void;
   reloadPis: () => void;
 }) {
-  const { pi, pis } = props;
+  const { pi, pis, readOnly } = props;
   const [values, setValues] = useState({ name: pi.name, start: dayOf(pi.start), finish: dayOf(pi.finish) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -361,33 +453,39 @@ function PiDetails(props: {
         <h3>{pi.name}</h3>
         <span className={`pi-status pi-status-${piStatus(pi, today())}`}>{STATUS_LABEL[piStatus(pi, today())]}</span>
         <span className="spacer" />
-        <button className="btn danger" disabled={busy} onClick={deletePi}>
-          Delete PI
-        </button>
+        {!readOnly && (
+          <button className="btn danger" disabled={busy} onClick={deletePi}>
+            Delete PI
+          </button>
+        )}
       </div>
       <div className="pad form">
-        <div className="field-row">
-          <Field label="Name">
-            <input value={values.name} onChange={(e) => setValues({ ...values, name: e.target.value })} />
-          </Field>
-          <Field label="Start">
-            <input type="date" value={values.start} onChange={(e) => setValues({ ...values, start: e.target.value })} />
-          </Field>
-          <Field label="Finish">
-            <input type="date" value={values.finish} onChange={(e) => setValues({ ...values, finish: e.target.value })} />
-          </Field>
-        </div>
-        {changed &&
-          errors.map((e) => (
-            <p key={e} className="danger small">
-              {e}
-            </p>
-          ))}
-        <div>
-          <button className="btn primary" disabled={busy || !changed || errors.length > 0} onClick={savePi}>
-            Save PI
-          </button>
-        </div>
+        <fieldset className="plain-fieldset form" disabled={readOnly}>
+          <div className="field-row">
+            <Field label="Name">
+              <input value={values.name} onChange={(e) => setValues({ ...values, name: e.target.value })} />
+            </Field>
+            <Field label="Start">
+              <input type="date" value={values.start} onChange={(e) => setValues({ ...values, start: e.target.value })} />
+            </Field>
+            <Field label="Finish">
+              <input type="date" value={values.finish} onChange={(e) => setValues({ ...values, finish: e.target.value })} />
+            </Field>
+          </div>
+          {changed &&
+            errors.map((e) => (
+              <p key={e} className="danger small">
+                {e}
+              </p>
+            ))}
+          {!readOnly && (
+            <div>
+              <button className="btn primary" disabled={busy || !changed || errors.length > 0} onClick={savePi}>
+                Save PI
+              </button>
+            </div>
+          )}
+        </fieldset>
         <ErrorBar message={error} onClose={() => setError(undefined)} />
         {message && <Info>{message}</Info>}
 
@@ -403,25 +501,36 @@ function PiDetails(props: {
           </thead>
           <tbody>
             {pi.sprints.map((s) => (
-              <IterationRow key={s.path} pi={pi} sprint={s} busy={busy} run={run} />
+              <IterationRow key={s.path} pi={pi} sprint={s} busy={busy} readOnly={readOnly} run={run} />
             ))}
           </tbody>
         </table>
-        <AddIteration pi={pi} busy={busy} run={run} />
+        {!readOnly && <AddIteration pi={pi} busy={busy} run={run} />}
       </div>
-      <SprintMapping pi={pi} teams={props.teams} />
+      <SprintMapping pi={pi} teams={props.teams} readOnly={readOnly} />
     </section>
   );
 }
 
 type Run = (fn: () => Promise<string | void>) => Promise<void>;
 
-function IterationRow({ pi, sprint, busy, run }: { pi: ProgramIncrement; sprint: Sprint; busy: boolean; run: Run }) {
+function IterationRow(props: { pi: ProgramIncrement; sprint: Sprint; busy: boolean; readOnly: boolean; run: Run }) {
+  const { pi, sprint, busy, run } = props;
   const initial = { name: sprint.name, start: dayOf(sprint.start), finish: dayOf(sprint.finish) };
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(initial);
   const errors = validateIteration(values, pi, sprint);
   const ip = isIp(sprint.name);
+
+  const remove = async () => {
+    if (!window.confirm(`Delete ${sprint.name}? Work items in it move to ${pi.name}.`)) return;
+    await run(async () => {
+      const reclassifyId = await getIterationNodeId(pi.path);
+      if (reclassifyId === undefined) throw new Error(`Could not find the iteration ${pi.path}.`);
+      await deleteIteration(sprint.path, reclassifyId);
+      return `Deleted ${sprint.name}`;
+    });
+  };
 
   if (!editing) {
     return (
@@ -431,17 +540,25 @@ function IterationRow({ pi, sprint, busy, run }: { pi: ProgramIncrement; sprint:
         </td>
         <td className="muted">{sprint.start ? fmtDate(sprint.start) : "—"}</td>
         <td className="muted">{sprint.finish ? fmtDate(sprint.finish) : "—"}</td>
-        <td>
-          <button
-            className="link small"
-            aria-label={`Edit ${sprint.name}`}
-            onClick={() => {
-              setValues(initial);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </button>
+        <td className="actions">
+          {!props.readOnly && (
+            <>
+              <button
+                className="link small"
+                aria-label={`Edit ${sprint.name}`}
+                disabled={busy}
+                onClick={() => {
+                  setValues(initial);
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </button>{" "}
+              <button className="link small danger" aria-label={`Delete ${sprint.name}`} disabled={busy} onClick={remove}>
+                Delete
+              </button>
+            </>
+          )}
         </td>
       </tr>
     );
@@ -534,7 +651,7 @@ function AddIteration({ pi, busy, run }: { pi: ProgramIncrement; busy: boolean; 
 }
 
 /** Agile Hive sprint mapping: which of the PI's iterations a team is subscribed to. */
-function SprintMapping({ pi, teams }: { pi: ProgramIncrement; teams: OrgNode[] }) {
+function SprintMapping({ pi, teams, readOnly }: { pi: ProgramIncrement; teams: OrgNode[]; readOnly: boolean }) {
   const [teamId, setTeamId] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string>();
@@ -592,7 +709,7 @@ function SprintMapping({ pi, teams }: { pi: ProgramIncrement; teams: OrgNode[] }
                     <input
                       type="checkbox"
                       checked={isSubscribed(s)}
-                      disabled={pending !== null}
+                      disabled={pending !== null || readOnly}
                       onChange={(e) => toggle(s, e.target.checked)}
                     />{" "}
                     {s.name}
@@ -633,6 +750,5 @@ function suggestName(pis: { name: string }[]): string {
 
 function nextStart(pis: ProgramIncrement[]): string {
   const last = pis[pis.length - 1]?.finish;
-  const d = last ? new Date(new Date(last).getTime() + DAY) : new Date();
-  return d.toISOString().slice(0, 10);
+  return last ? new Date(new Date(last).getTime() + DAY).toISOString().slice(0, 10) : localToday();
 }
