@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { boardType, flatten } from "../../api/org";
-import { inIteration, OverviewRow, overviewRows, RItem, toDay } from "../../api/reports";
-import { Progress, Icon } from "../../components/common";
+import { descendantIterations, estimatedCompletion, inIteration, OverviewRow, overviewIds, overviewRows, RItem, toDay } from "../../api/reports";
+import { fmtDate, Progress, Icon } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { ItemRef, SelectPi, Widget } from "./Widget";
+import { ItemRef, OpenInQuery, SelectPi, Widget } from "./Widget";
 
 /** Epics shown on the portfolio: in progress, or closed within the last 30 days. */
 export function epicInOverview(epic: RItem, today: number): boolean {
@@ -25,9 +25,10 @@ function SplitBar({ row }: { row: OverviewRow }) {
   );
 }
 
-function Row({ row, depth, onTeam }: { row: OverviewRow; depth: number; onTeam: (id: string) => void }) {
+function Row({ row, depth, onTeam, eta }: { row: OverviewRow; depth: number; onTeam: (id: string) => void; eta: (row: OverviewRow) => string | null }) {
   const [open, setOpen] = useState(false);
   const synthetic = row.item.id === 0;
+  const completion = eta(row);
   return (
     <>
       <tr className={depth ? "overview-child" : undefined}>
@@ -61,18 +62,20 @@ function Row({ row, depth, onTeam }: { row: OverviewRow; depth: number; onTeam: 
             ))}
           </span>
         </td>
+        <td className="eta">{completion ? fmtDate(completion) : "—"}</td>
       </tr>
-      {open && row.children.map((c) => <Row key={c.item.id} row={c} depth={depth + 1} onTeam={onTeam} />)}
+      {open && row.children.map((c) => <Row key={c.item.id} row={c} depth={depth + 1} onTeam={onTeam} eta={eta} />)}
     </>
   );
 }
 
 /**
- * PI Overview (Solution / ART): parent items with children planned in the PI.
+ * PI Overview (Solution / ART): parent items with children planned in the PI. On a Large
+ * Solution with Capabilities, Features linked straight to an Epic get their own lane.
  * Epic Overview (Portfolio): epics in progress or closed within the last 30 days.
  */
 export function OverviewWidget({ data, today }: { data: ReportData; today: number }) {
-  const { config, node, pi, selectNode } = useSafe();
+  const { config, node, pi, pis, selectNode } = useSafe();
   const portfolio = node.level === "portfolio";
   const title = portfolio ? "Epic Overview" : "PI Overview";
   if (!portfolio && !pi)
@@ -81,20 +84,44 @@ export function OverviewWidget({ data, today }: { data: ReportData; today: numbe
         <SelectPi />
       </Widget>
     );
+  const items = Array.from(data.items.values());
   const rootType = boardType(config, node.level);
-  const { rows, orphans } = overviewRows({
-    items: Array.from(data.items.values()),
-    rootType,
+  const common = {
+    items,
     storyType: config.types.story,
-    counts: portfolio ? () => true : (s) => inIteration(s, pi!.path) && data.inScope(s),
+    counts: portfolio ? () => true : (s: RItem) => inIteration(s, pi!.path) && data.inScope(s),
     teams: flatten(portfolio ? config.root : node).filter((n) => n.level === "team"),
+  };
+  // Solution level: ART items (Features) whose parent is an Epic, skipping the Capability level.
+  const direct =
+    node.level === "solution" && config.types.capability
+      ? overviewRows({
+          ...common,
+          rootType: config.types.feature,
+          rootFilter: (f) => f.parentId !== undefined && data.items.get(f.parentId)?.type === config.types.epic,
+        })
+      : null;
+  const { rows, orphans } = overviewRows({
+    ...common,
+    rootType,
     keepRoot: portfolio ? (e) => data.inScope(e) && epicInOverview(e, today) : undefined,
+    exclude: direct?.covered,
   });
   const all = orphans && !portfolio ? [...rows, orphans] : rows;
+  const lane = direct?.rows ?? [];
+
+  const sprints = pis.flatMap((p) => p.sprints);
+  const below = descendantIterations(items);
+  const eta = (row: OverviewRow) => {
+    const iterations =
+      row.item.id === 0 ? row.children.map((c) => c.item.iteration) : row.item.type === config.types.story ? [row.item.iteration] : below(row.item.id);
+    return estimatedCompletion(iterations, sprints);
+  };
+  const actions = <OpenInQuery ids={overviewIds([...all, ...lane])} />;
 
   return (
-    <Widget title={title} size="wide">
-      {all.length === 0 ? (
+    <Widget title={title} size="wide" actions={actions}>
+      {all.length === 0 && lane.length === 0 ? (
         <p className="muted widget-hint">{portfolio ? "No epics in progress or recently closed." : `No ${rootType}s with work planned in ${pi!.name}.`}</p>
       ) : (
         <table className="grid compact overview-table">
@@ -107,13 +134,26 @@ export function OverviewWidget({ data, today }: { data: ReportData; today: numbe
               <th>Progress</th>
               <th>Status (SP)</th>
               <th>Teams (SP)</th>
+              <th title="Finish of the latest iteration any child is planned in">Est. completion</th>
             </tr>
           </thead>
           <tbody>
             {all.map((r) => (
-              <Row key={r.item.id} row={r} depth={0} onTeam={selectNode} />
+              <Row key={r.item.id} row={r} depth={0} onTeam={selectNode} eta={eta} />
             ))}
           </tbody>
+          {lane.length > 0 && (
+            <tbody className="overview-lane" aria-label="ART items linked directly to Portfolio">
+              <tr className="overview-lane-header">
+                <th colSpan={8}>
+                  ART items linked directly to Portfolio <span className="count">({lane.length})</span>
+                </th>
+              </tr>
+              {lane.map((r) => (
+                <Row key={r.item.id} row={r} depth={0} onTeam={selectNode} eta={eta} />
+              ))}
+            </tbody>
+          )}
         </table>
       )}
     </Widget>

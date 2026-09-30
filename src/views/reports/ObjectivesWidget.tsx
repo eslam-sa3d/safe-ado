@@ -1,11 +1,14 @@
+import { useState } from "react";
+import { newId, objectivesStore } from "../../api/data";
 import { subtreeIds } from "../../api/org";
 import { businessValue, teamProgress } from "../../api/reports";
 import { PiObjective } from "../../api/types";
 import { Progress } from "../../components/common";
-import { useSafe } from "../../components/context";
+import { useCan, useSafe } from "../../components/context";
 import { bvTone } from "./BusinessValueWidget";
+import { ObjectiveDialog } from "./CreateDialogs";
 import { ReportData } from "./data";
-import { SelectPi, Widget } from "./Widget";
+import { AddButton, SelectPi, Widget } from "./Widget";
 
 function ObjectiveTable({ title, objectives }: { title: string; objectives: PiObjective[] }) {
   const planned = objectives.reduce((s, o) => s + (o.plannedBV || 0), 0);
@@ -50,20 +53,36 @@ function ObjectiveTable({ title, objectives }: { title: string; objectives: PiOb
 /** PI Objectives of this unit, plus the business-value progress of each child unit. */
 export function ObjectivesWidget({ data }: { data: ReportData }) {
   const { node, pi, selectNode } = useSafe();
+  const can = useCan();
+  const [created, setCreated] = useState<PiObjective[]>([]);
+  const [adding, setAdding] = useState(false);
   if (!pi)
     return (
       <Widget title="PI Objectives" size="medium">
         <SelectPi />
       </Widget>
     );
-  const inPi = data.objectives.filter((o) => o.piPath === pi.path);
+  const all = [...data.objectives.filter((o) => !created.some((c) => c.id === o.id)), ...created];
+  const inPi = all.filter((o) => o.piPath === pi.path);
+  const actions = <AddButton label="Add PI objective" canPlan={can.plan} onClick={() => setAdding(true)} />;
   const own = inPi.filter((o) => o.nodeId === node.id).sort((a, b) => b.plannedBV - a.plannedBV || a.title.localeCompare(b.title));
   const bv = businessValue(own);
   const showTeams = node.level === "art" || node.level === "solution";
   const progress = showTeams ? teamProgress(node.children, inPi, subtreeIds) : null;
 
   return (
-    <Widget title="PI Objectives" size="medium">
+    <Widget title="PI Objectives" size="medium" actions={actions}>
+      {adding && (
+        <ObjectiveDialog
+          piName={pi.name}
+          onClose={() => setAdding(false)}
+          onSave={async (draft) => {
+            const saved = await objectivesStore.save({ id: newId(), piPath: pi.path, piId: pi.identifier, nodeId: node.id, actualBV: null, featureIds: [], ...draft });
+            setCreated((prev) => [...prev, saved]);
+            setAdding(false);
+          }}
+        />
+      )}
       <div className="muted small">
         {node.name}: {bv.actual} of {bv.planned} committed BV{bv.pct !== null ? ` (${bv.pct}%)` : ""}
       </div>
