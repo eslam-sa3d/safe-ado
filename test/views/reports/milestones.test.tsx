@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { getProgramIncrements } from "../../../src/api/wit";
-import { dataStore, fake } from "../../fakeAdo";
+import { dataStore, fake, localDate } from "../../fakeAdo";
 import { isoDay, renderReports, seed, userValue, widget } from "./helpers";
 
 const m = (id: string, nodeId: string, offset: number, title = id, description?: string) => ({ id, nodeId, date: isoDay(offset), title, description });
@@ -89,7 +89,7 @@ describe("Milestone Overview", () => {
 
   it("defaults new milestones to the start of a planned PI and reports save errors", async () => {
     const pis = await getProgramIncrements("Fabrikam\\PIs");
-    const start = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+    const start = localDate(Date.now() + 20 * 86_400_000);
     await renderReports({ pi: { ...pis[1], start: `${start}T00:00:00Z`, finish: `${isoDay(50)}T00:00:00Z` } });
     fireEvent.click(within(widget("Milestone Overview")).getByRole("button", { name: "Add milestone" }));
     const dialog = screen.getByRole("dialog", { name: "New milestone" });

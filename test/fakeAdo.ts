@@ -28,7 +28,12 @@ export interface Call {
 }
 
 const DAY = 86_400_000;
-const iso = (t: number) => new Date(t).toISOString().slice(0, 10) + "T00:00:00Z";
+/** Local calendar date of a timestamp (the extension compares iteration dates with the user's local "today"). */
+export const localDate = (t: number) => {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const iso = (t: number) => localDate(t) + "T00:00:00Z";
 
 export const fake = {
   baseUrl: "https://dev.azure.com/org",

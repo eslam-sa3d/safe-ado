@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { flatten } from "../api/org";
+import { localToday } from "../api/rules";
 import {
   addDays,
   dayOf,
@@ -47,7 +48,7 @@ export function planSprints(piName: string, start: string, weeks: number, devSpr
 const STATUS_LABEL: Record<PiStatus, string> = { planned: "Planned", current: "Current", completed: "Completed" };
 const STATUS_ORDER: PiStatus[] = ["planned", "current", "completed"];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localToday();
 
 export function PiManagementView() {
   const { config, pis, reloadPis, piRoot: cadenceRoot } = useSafe();

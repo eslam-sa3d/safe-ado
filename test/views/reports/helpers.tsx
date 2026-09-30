@@ -1,13 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import { expect } from "vitest";
 import { ReportsView } from "../../../src/views/ReportsView";
-import { dataStore, fake } from "../../fakeAdo";
+import { dataStore, fake, localDate } from "../../fakeAdo";
 import { renderView } from "../../utils";
 
 const DAY = 86_400_000;
 
 /** YYYY-MM-DD, `offset` days from now (UTC), matching the fake's relative iteration dates. */
-export const isoDay = (offset: number) => new Date(Date.now() + offset * DAY).toISOString().slice(0, 10);
+export const isoDay = (offset: number) => localDate(Date.now() + offset * DAY);
 
 /** Seeds any extension-data collection (milestones, capacity, wimeta, objectives, risks). */
 export function seed(name: string, docs: Record<string, unknown>[]) {
