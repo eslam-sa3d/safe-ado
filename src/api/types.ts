@@ -55,6 +55,8 @@ export interface SafeConfig {
   detached?: OrgNode[];
   /** Where team capacity comes from (manual story points when unset). See api/capacity.ts. */
   capacity?: CapacitySettings;
+  /** A project admin opted in to anonymous usage telemetry (see docs/PRIVACY.md). Off when unset. */
+  telemetryOptIn?: boolean;
 }
 
 /**

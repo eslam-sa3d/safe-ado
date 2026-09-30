@@ -131,7 +131,7 @@ This document compares Agile Hive Cloud with SAFe Ado 1.3.0. The Agile Hive side
 | Agile Hive | Status | SAFe Ado |
 |---|---|---|
 | Work types (Capability, Enabler, Theme, Objective, Risk, Milestone, Improvement) | 🔀 | Capability, Enabler and Theme are mapped work item types; the rest are extension-data documents |
-| WSJF: (UBV + TC + RROE) ÷ Job Size | 🟡 | One formula everywhere; the RR/OE field is configurable. Gap: the Fibonacci scale is not enforced |
+| WSJF: (UBV + TC + RROE) ÷ Job Size | 🟡 | One shared formula, `rules.wsjfScore`: (Business Value + Time Criticality + RR/OE) ÷ job size (Effort). It is used by the Portfolio Kanban, the Reports PI / Epic Overview and the Team board's ART-backlog WSJF sort. RR/OE is read from the field chosen in Setup (default `Custom.RROEValue` when the process has it). A missing input counts as 0. There is no score without a job size or without any cost-of-delay input. Gap: the modified Fibonacci scale is defined (`WSJF_SCALE`) but not enforced on input |
 | Enablers | 🟡 | Shown in reports and flow. Gap: team board lanes and the list's type chain use the Feature type only |
 | Objective fields: Plan BV, Actual BV, Uncommitted | ✅ | PI Objectives, with parent-objective links |
 | Risk fields: probability, impact, residual values, exposure matrix | ✅ | Risks (ROAM) |

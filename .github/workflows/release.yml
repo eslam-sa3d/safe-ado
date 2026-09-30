@@ -1,0 +1,63 @@
+name: Release
+
+# Push a tag such as v1.3.0 to release. The tag must equal the version in package.json and
+# vss-extension.json, and CHANGELOG.md must have a "## [1.3.0]" section (its text becomes the
+# GitHub Release notes). Marketplace publishing needs the MARKETPLACE_PAT repository secret
+# (an Azure DevOps PAT with the "Marketplace (publish)" scope); without it the step is skipped.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Check tag, versions and changelog
+        run: node scripts/check-release.mjs "$GITHUB_REF_NAME" --notes release-notes.md
+
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run build
+
+      - name: Package VSIX
+        run: npx tfx extension create --manifest-globs vss-extension.json --output-path ./out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: out/*.vsix
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" out/*.vsix \
+            --title "SAFe Ado $VERSION" \
+            --notes-file release-notes.md \
+            --verify-tag
+
+      - name: Publish to the Visual Studio Marketplace
+        env:
+          MARKETPLACE_PAT: ${{ secrets.MARKETPLACE_PAT }}
+        run: |
+          if [ -z "$MARKETPLACE_PAT" ]; then
+            echo "::notice::MARKETPLACE_PAT is not set; skipping Marketplace publish. Upload out/*.vsix manually."
+            exit 0
+          fi
+          npx tfx extension publish --vsix out/*.vsix --auth-type pat --token "$MARKETPLACE_PAT" --no-prompt

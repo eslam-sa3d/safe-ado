@@ -4,6 +4,7 @@ import { newId } from "../api/data";
 import { DEFAULT_DEPENDENCY_LINK } from "../api/dependencies";
 import { childLevels, flatten } from "../api/org";
 import { DEFAULT_RROE_FIELD } from "../api/rules";
+import { telemetryAvailable } from "../api/telemetry";
 import { CapacitySource, Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
 import {
   ClassificationNode,
@@ -366,6 +367,27 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
                 ? "Teams enter their capacity in story points per iteration on the Team Planning Board."
                 : `Capacity is derived from each team's Azure DevOps capacity (Boards → Sprints → Capacity) with SAFe normalized estimation: every working day a member with capacity per day is available (weekends, team and personal days off excluded) counts ${capacity.pointsPerPersonDay} SP, so a full-time member in a 2-week iteration yields ${Math.round(capacity.pointsPerPersonDay * 100) / 10} SP.`}
               {capacity.source === "hybrid" && " A value entered on the Team Planning Board overrides the derived one."}
+            </p>
+          </div>
+        </section>
+
+        <section className="panel setup-telemetry">
+          <div className="panel-header">
+            <h3>Usage data</h3>
+          </div>
+          <div className="pad form">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.telemetryOptIn === true}
+                onChange={(e) => setDraft({ ...draft, telemetryOptIn: e.target.checked })}
+              />{" "}
+              Share anonymous usage data
+            </label>
+            <p className="muted small">
+              Only event names (such as &ldquo;view opened: Reports&rdquo;), the extension version and a salted hash of the
+              collection id. Never titles, names, e-mails or work item data. Off by default.{" "}
+              {telemetryAvailable() ? "" : "This build has no telemetry endpoint, so nothing is sent even when this is on."}
             </p>
           </div>
         </section>
