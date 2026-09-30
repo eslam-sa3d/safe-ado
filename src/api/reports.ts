@@ -1,7 +1,8 @@
 import { calculatedSprintIndex, criticalityByDates, criticalityByIteration, Dependency } from "./dependencies";
 import { EXPOSURE_RANK, exposure, Exposure } from "./risk";
 import { Criticality, F, IterationCapacity, LINK, Milestone, OrgNode, PiObjective, ProgramIncrement, Risk, Sprint, WorkItem, WorkItemMeta } from "./types";
-import { isUnder, relationTargetId } from "./wit";
+import { isUnder, relationTargetId, typeIn, underAny } from "./wit";
+import { wiqlString } from "./client";
 import { DEFAULT_RROE_FIELD, isIpIteration, localToday, wsjfScore } from "./rules";
 
 /**
@@ -63,6 +64,8 @@ export interface RItem {
   effort?: number;
   /** When work started (Microsoft.VSTS.Common.ActivatedDate), for flow time. */
   activatedDate?: string;
+  /** Tags (System.Tags), lower-cased and trimmed. */
+  tags?: string[];
 }
 
 const num = (v: unknown): number | undefined => {
@@ -105,6 +108,7 @@ export function normalize(
     rroe: num(f[rroeField || DEFAULT_RROE_FIELD]),
     effort: num(f[F.effort]),
     activatedDate: f[ACTIVATED_DATE] || undefined,
+    tags: typeof f[F.tags] === "string" && f[F.tags].trim() ? f[F.tags].split(";").map((t: string) => t.trim().toLowerCase()).filter(Boolean) : undefined,
   };
 }
 
@@ -112,6 +116,14 @@ export const isDone = (i: RItem) => i.category === "Completed";
 export const isLive = (i: RItem) => i.category !== "Removed";
 export const points = (i: RItem) => i.sp ?? 0;
 export const inIteration = (i: RItem, path: string) => isUnder(i.iteration, path);
+
+/**
+ * Whether a PI-scoped document (objective, risk) belongs to `pi`: by the PI's stable id when
+ * the document has one (survives renames), else by path (case-insensitive).
+ */
+export function inPi(doc: { piId?: string; piPath: string }, pi: { identifier: string; path: string }): boolean {
+  return doc.piId ? doc.piId === pi.identifier : (doc.piPath ?? "").toLowerCase() === pi.path.toLowerCase();
+}
 
 // ---------------------------------------------------------------------------------------------
 // PI / iteration timing
@@ -230,8 +242,11 @@ export interface Velocity {
 
 const byFinish = (a: Sprint, b: Sprint) => (a.finish ?? "").localeCompare(b.finish ?? "");
 
+/** The PI's iterations without the Innovation & Planning iteration. */
+export const workSprints = (p: ProgramIncrement): Sprint[] => p.sprints.filter((s) => !isIpSprint(s, p.name));
+
 /**
- * Team velocity (average completed SP per iteration):
+ * Team velocity (average completed SP per iteration, IP iterations excluded):
  * planned PI → last 5 completed iterations across PIs; current PI → completed iterations
  * of the PI; completed (or undated) PI → all iterations of the PI.
  */
@@ -241,16 +256,16 @@ export function teamVelocity(pi: ProgramIncrement, pis: ProgramIncrement[], stor
   let basis: string;
   if (status === "planned") {
     sprints = pis
-      .flatMap((p) => p.sprints)
+      .flatMap(workSprints)
       .filter((s) => isCompletedSprint(s, today))
       .sort(byFinish)
       .slice(-5);
     basis = "Ø last 5 completed iterations";
   } else if (status === "current") {
-    sprints = pi.sprints.filter((s) => isCompletedSprint(s, today));
+    sprints = workSprints(pi).filter((s) => isCompletedSprint(s, today));
     basis = "Ø completed iterations of the PI";
   } else {
-    sprints = pi.sprints;
+    sprints = workSprints(pi);
     basis = "Ø all iterations of the PI";
   }
   const value = sprints.length ? round1(sprints.reduce((a, s) => a + doneIn(stories, s.path), 0) / sprints.length) : null;
@@ -376,12 +391,29 @@ interface BurnupInput {
 }
 
 /**
+ * Average SP burned per (non-IP) iteration day over the completed work iterations of the PIs
+ * that finished before `pi` started: the forecast's rate while `pi` has no completed
+ * iteration yet. Null when there is no such iteration.
+ */
+export function historicDailyRate(pi: ProgramIncrement, pis: ProgramIncrement[], stories: RItem[], today: number): number | null {
+  if (!pi.start) return null;
+  const start = toDay(pi.start);
+  const sprints = pis
+    .filter((p) => p.path !== pi.path && !!p.finish && toDay(p.finish) < start)
+    .flatMap(workSprints)
+    .filter((s) => s.start && isCompletedSprint(s, today));
+  const days = sprints.reduce((a, s) => a + toDay(s.finish!) - toDay(s.start!) + 1, 0);
+  return days > 0 ? sprints.reduce((a, s) => a + doneIn(stories, s.path), 0) / days : null;
+}
+
+/**
  * Burnup over the PI's days: scope and burned per day up to today (scope stays at today's
  * value afterwards); ideal = 0 → scope linearly over the non-IP days; forecast = from today
- * at the average daily velocity of completed iterations (or the burn rate so far when no
- * iteration is complete), capped at scope.
+ * at the average daily velocity of the PI's completed iterations, else the historic rate of
+ * previous PIs (`historicRate`), else the burn rate so far; it advances on work days only
+ * (flat during IP, like the ideal line) and is capped at scope.
  */
-function buildBurnup(pi: ProgramIncrement, today: number, input: BurnupInput, source: Burnup["source"]): Burnup | null {
+function buildBurnup(pi: ProgramIncrement, today: number, input: BurnupInput, source: Burnup["source"], historicRate?: number | null): Burnup | null {
   if (!pi.start || !pi.finish) return null;
   const start = toDay(pi.start);
   const end = Math.max(start, toDay(pi.finish));
@@ -399,23 +431,28 @@ function buildBurnup(pi: ProgramIncrement, today: number, input: BurnupInput, so
   const completedDays = completed.reduce((a, s) => a + toDay(s.finish!) - toDay(s.start!) + 1, 0);
   const todayIndex = today >= start && today <= end ? today - start : -1;
   const burnedToday = todayIndex >= 0 ? input.burnedAt(today) : 0;
+  const workDaysUpTo = (d: number) => allDays.filter((x) => x <= d && !ipDay(x)).length;
   const dailyRate =
     completedDays > 0
       ? completed.reduce((a, s) => a + input.sprintDone(s), 0) / completedDays
+      : historicRate !== undefined && historicRate !== null
+      ? historicRate
       : todayIndex >= 0
-      ? burnedToday / (today - start + 1)
+      ? burnedToday / Math.max(1, workDaysUpTo(today))
       : 0;
 
   let workSoFar = 0;
+  let workAtToday = 0;
   const days = allDays.map((d) => {
     if (!ipDay(d)) workSoFar++;
+    if (d === today) workAtToday = workSoFar;
     return {
       day: d,
       date: dayIso(d),
       scope: d <= ref ? input.scopeAt(d) : scope,
       burned: d <= today ? input.burnedAt(d) : null,
       ideal: workDays > 0 ? round1((scope * workSoFar) / workDays) : scope,
-      forecast: todayIndex >= 0 && d >= today ? round1(Math.min(scope, burnedToday + dailyRate * (d - today))) : null,
+      forecast: todayIndex >= 0 && d >= today ? round1(Math.min(scope, burnedToday + dailyRate * (workSoFar - workAtToday))) : null,
     };
   });
 
@@ -432,7 +469,7 @@ function buildBurnup(pi: ProgramIncrement, today: number, input: BurnupInput, so
  * Burnup from the stories' current state: scope = current total SP; burned = cumulative SP
  * of completed stories by closed date.
  */
-export function burnup(pi: ProgramIncrement, stories: RItem[], today: number): Burnup | null {
+export function burnup(pi: ProgramIncrement, stories: RItem[], today: number, historicRate?: number | null): Burnup | null {
   if (!pi.start || !pi.finish) return null;
   const end = Math.max(toDay(pi.start), toDay(pi.finish));
   const live = stories.filter(isLive);
@@ -447,7 +484,8 @@ export function burnup(pi: ProgramIncrement, stories: RItem[], today: number): B
       burnedAt: (d) => done.filter((x) => x.day <= d).reduce((a, x) => a + x.sp, 0),
       sprintDone: (s) => doneIn(live, s.path),
     },
-    "current"
+    "current",
+    historicRate
   );
 }
 
@@ -476,7 +514,13 @@ export function historyFields(spField: string): string[] {
  * that day decides: SCOPE counts its points when it was a live story planned under the PI in
  * the unit's areas; BURNED counts them when it was also in a Completed state.
  */
-export function burnupFromHistory(pi: ProgramIncrement, revisions: RevisionLike[], opts: HistoryOptions, today: number): Burnup | null {
+export function burnupFromHistory(
+  pi: ProgramIncrement,
+  revisions: RevisionLike[],
+  opts: HistoryOptions,
+  today: number,
+  historicRate?: number | null
+): Burnup | null {
   if (!pi.start || !pi.finish) return null;
   type Entry = { day: number; rev: number; scope: number; done: number };
   const byId = new Map<number, Entry[]>();
@@ -520,7 +564,8 @@ export function burnupFromHistory(pi: ProgramIncrement, revisions: RevisionLike[
       burnedAt: (d) => at(d).done,
       sprintDone: (s) => at(toDay(s.finish!)).done - at(toDay(s.start!) - 1).done,
     },
-    "history"
+    "history",
+    historicRate
   );
 }
 
@@ -608,7 +653,10 @@ export function riskRows(risks: Risk[]): RiskRow[] {
 // PI / Epic overview
 // ---------------------------------------------------------------------------------------------
 
-/** WSJF = (Business Value + Time Criticality) ÷ Effort (job size); null without effort. */
+/**
+ * WSJF = Cost of Delay ÷ Job Size = (Business Value + Time Criticality + Risk Reduction /
+ * Opportunity Enablement) ÷ Effort; null without effort (see rules.wsjfScore).
+ */
 export function wsjf(i: RItem): number | null {
   return wsjfScore(i.businessValue, i.timeCriticality, i.rroe, i.effort);
 }
@@ -728,34 +776,38 @@ export function overviewRows(opts: {
   return { rows, orphans, covered };
 }
 
-/**
- * Index over `items` returning the iterations of every live descendant of an item
- * (children, grandchildren, ...). Build once, query per row.
- */
-export function descendantIterations(items: RItem[]): (rootId: number) => (string | undefined)[] {
+/** A node of a work item tree as estimatedCompletion walks it. */
+export interface PlannedNode {
+  id: number;
+  iteration?: string;
+}
+
+/** Live children per parent over `items`, as an accessor for estimatedCompletion. */
+export function childrenIndex(items: RItem[]): (id: number) => PlannedNode[] {
   const kids = new Map<number, RItem[]>();
   for (const i of items) if (i.parentId !== undefined && isLive(i)) kids.set(i.parentId, [...(kids.get(i.parentId) ?? []), i]);
-  return (rootId) => {
-    const out: (string | undefined)[] = [];
-    const seen = new Set<number>([rootId]);
-    const walk = (id: number) => {
-      for (const c of kids.get(id) ?? []) {
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
-        out.push(c.iteration);
-        walk(c.id);
-      }
-    };
-    walk(rootId);
-    return out;
-  };
+  return (id) => kids.get(id) ?? [];
 }
 
 /**
- * Estimated completion: the finish date of the latest sprint any of `iterations` is planned
- * in (items planned on a PI or outside any sprint don't count). Null when none is.
+ * Estimated completion of an item: the finish date of the latest sprint any DESCENDANT
+ * (children, grandchildren, ...) is planned in. Descendants planned on a PI or outside any
+ * sprint don't count; cycles are walked once. Null when no descendant is in a dated sprint.
+ * This is the single implementation behind the Reports, the work item form and the Work
+ * Item List.
  */
-export function estimatedCompletion(iterations: (string | undefined)[], sprints: Sprint[]): string | null {
+export function estimatedCompletion(itemId: number, childrenOf: (id: number) => PlannedNode[], sprints: Sprint[]): string | null {
+  const iterations: (string | undefined)[] = [];
+  const seen = new Set<number>([itemId]);
+  const walk = (id: number) => {
+    for (const c of childrenOf(id)) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      iterations.push(c.iteration);
+      walk(c.id);
+    }
+  };
+  walk(itemId);
   let best: string | null = null;
   for (const s of sprints) {
     if (!s.finish || !iterations.some((it) => isUnder(it, s.path))) continue;
@@ -778,6 +830,39 @@ export function idsQuery(ids: number[]): string | null {
   );
 }
 
+/** "Open in query" lists at most this many ids; larger sets open the widget's scope instead. */
+export const MAX_QUERY_IDS = 200;
+export const TOO_MANY_ITEMS = "Too many items to open as a query";
+
+/** What a widget shows, as a query: types under the areas (and under an iteration path). */
+export interface QueryScope {
+  types: string[];
+  areas: string[];
+  iterationPath?: string;
+}
+
+/** WIQL of a widget's scope (types, areas UNDER, iteration UNDER). */
+export function scopeWiql(scope: QueryScope): string {
+  return (
+    `SELECT [${F.id}], [${F.type}], [${F.title}], [${F.state}], [${F.area}], [${F.iteration}] FROM WorkItems ` +
+    `WHERE [System.TeamProject] = @project AND ${typeIn(scope.types)} AND ${underAny(`[${F.area}]`, scope.areas)}` +
+    (scope.iterationPath ? ` AND [${F.iteration}] UNDER ${wiqlString(scope.iterationPath)}` : "") +
+    ` ORDER BY [${F.id}] ASC`
+  );
+}
+
+/**
+ * The query behind "Open in query": the ids themselves up to MAX_QUERY_IDS (a longer URL
+ * breaks), else the widget's scope when it has one, else nothing with a reason.
+ */
+export function openQueryWiql(ids: number[], scope?: QueryScope): { wiql: string | null; reason?: string; byScope?: boolean } {
+  const unique = new Set(ids.filter((id) => id > 0));
+  if (unique.size === 0) return { wiql: null, reason: "No work items to open" };
+  if (unique.size <= MAX_QUERY_IDS) return { wiql: idsQuery(ids) };
+  if (scope) return { wiql: scopeWiql(scope), byScope: true };
+  return { wiql: null, reason: TOO_MANY_ITEMS };
+}
+
 /** Ids of the rows of an overview tree, including every expanded level (synthetic rows excluded). */
 export function overviewIds(rows: OverviewRow[]): number[] {
   const out: number[] = [];
@@ -793,6 +878,27 @@ export function overviewIds(rows: OverviewRow[]): number[] {
 // Flow metrics (SAFe flow velocity / time / load / distribution)
 // ---------------------------------------------------------------------------------------------
 
+/** SAFe flow distribution: the kind of work an item is. */
+export type FlowKind = "Feature" | "Enabler" | "Defect" | "Debt";
+
+/** Tags that mark technical debt (compared lower-case). */
+export const DEBT_TAGS = ["tech debt", "debt"];
+
+/** The work item types that decide an item's kind (the rest counts as Feature work). */
+export interface KindTypes {
+  enabler?: string;
+  /** The process's defect type (Bug), when it has one. */
+  bug?: string;
+}
+
+/** Defect (bug type) → Debt (tagged "Tech Debt" / "Debt") → Enabler (enabler type) → Feature. */
+export function flowKind(i: RItem, types: KindTypes = {}): FlowKind {
+  if (types.bug && i.type === types.bug) return "Defect";
+  if (i.tags?.some((t) => DEBT_TAGS.includes(t))) return "Debt";
+  if (types.enabler && i.type === types.enabler) return "Enabler";
+  return "Feature";
+}
+
 export interface FlowMetrics {
   /** Items completed per iteration of the PI. */
   velocity: { name: string; path: string; ip: boolean; count: number }[];
@@ -800,10 +906,10 @@ export interface FlowMetrics {
   completed: number;
   /** Days from start (activated) to closed, over completed items with both dates. */
   time: { median: number | null; average: number | null; samples: number; missing: number };
-  /** Work in progress now (InProgress or Resolved category). */
+  /** Work in progress now (InProgress or Resolved category) planned in the PI. */
   load: number;
-  /** Completed items by type, largest share first. */
-  distribution: { type: string; count: number; pct: number }[];
+  /** Completed items by kind of work, largest share first. */
+  distribution: { kind: FlowKind; count: number; pct: number }[];
 }
 
 const within = (iso: string | undefined, s: Sprint) => !!iso && !!s.start && !!s.finish && eventDay(iso) >= toDay(s.start) && eventDay(iso) <= toDay(s.finish);
@@ -822,10 +928,11 @@ export function median(values: number[]): number | null {
 }
 
 /**
- * Flow metrics of `items` (the unit's flow items) for a PI. `firstActive` supplies start
- * dates from revision history for items without an activated date.
+ * Flow metrics of `items` (the unit's flow items, all of one backlog level) for a PI.
+ * `firstActive` supplies start dates from revision history for items without an activated
+ * date; `kinds` decides the flow distribution.
  */
-export function flowMetrics(items: RItem[], pi: ProgramIncrement, firstActive: Map<number, string> = new Map()): FlowMetrics {
+export function flowMetrics(items: RItem[], pi: ProgramIncrement, firstActive: Map<number, string> = new Map(), kinds: KindTypes = {}): FlowMetrics {
   const done = items.filter((i) => completedIn(i, pi));
   const velocity = pi.sprints.map((s) => ({ name: s.name, path: s.path, ip: isIpSprint(s, pi.name), count: items.filter((i) => completedIn(i, s)).length }));
   const durations: number[] = [];
@@ -835,8 +942,8 @@ export function flowMetrics(items: RItem[], pi: ProgramIncrement, firstActive: M
     if (!start || !i.closedDate) missing++;
     else durations.push(Math.max(0, eventDay(i.closedDate) - eventDay(start)));
   }
-  const byType = new Map<string, number>();
-  for (const i of done) byType.set(i.type, (byType.get(i.type) ?? 0) + 1);
+  const byKind = new Map<FlowKind, number>();
+  for (const i of done) byKind.set(flowKind(i, kinds), (byKind.get(flowKind(i, kinds)) ?? 0) + 1);
   return {
     velocity,
     completed: done.length,
@@ -846,15 +953,15 @@ export function flowMetrics(items: RItem[], pi: ProgramIncrement, firstActive: M
       samples: durations.length,
       missing,
     },
-    load: items.filter((i) => isLive(i) && (i.category === "InProgress" || i.category === "Resolved")).length,
-    distribution: Array.from(byType.entries())
-      .map(([type, count]) => ({ type, count, pct: Math.round((count / done.length) * 100) }))
-      .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type)),
+    load: items.filter((i) => isLive(i) && (i.category === "InProgress" || i.category === "Resolved") && inIteration(i, pi.path)).length,
+    distribution: Array.from(byKind.entries())
+      .map(([kind, count]) => ({ kind, count, pct: Math.round((count / done.length) * 100) }))
+      .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind)),
   };
 }
 
 // ---------------------------------------------------------------------------------------------
-// PI snapshots (completed PIs keep the numbers recorded at PI end)
+// PI snapshots (completed PIs keep the numbers recorded within 14 days after PI end, or on demand)
 // ---------------------------------------------------------------------------------------------
 
 export interface PiSnapshot {
@@ -875,6 +982,16 @@ export interface PiSnapshot {
 }
 
 export const snapshotId = (nodeId: string, pi: Sprint) => `${nodeId}|${pi.identifier}`;
+
+/** Days after the PI's finish during which a missing snapshot is still recorded automatically. */
+export const SNAPSHOT_WINDOW_DAYS = 14;
+
+/** Whether `today` lies after the PI's finish but within SNAPSHOT_WINDOW_DAYS of it. */
+export function inSnapshotWindow(pi: Sprint, today: number): boolean {
+  if (!pi.finish) return false;
+  const since = today - toDay(pi.finish);
+  return since > 0 && since <= SNAPSHOT_WINDOW_DAYS;
+}
 
 /** The numbers of a completed PI as the report shows them, for storing at PI end. */
 export function buildSnapshot(opts: {

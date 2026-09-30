@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSnapshot,
   burnupFromHistory,
-  descendantIterations,
+  childrenIndex,
   estimatedCompletion,
   firstActiveDates,
   flowMetrics,
@@ -136,11 +136,9 @@ describe("flowMetrics", () => {
       ["PI 5 IP", 0, true],
     ]);
     expect(m.time).toEqual({ median: 3.5, average: 3.5, samples: 2, missing: 1 });
-    expect(m.load).toBe(2);
-    expect(m.distribution).toEqual([
-      { type: "User Story", count: 2, pct: 67 },
-      { type: "Feature", count: 1, pct: 33 },
-    ]);
+    // Load counts only in-progress work planned in the PI.
+    expect(m.load).toBe(0);
+    expect(m.distribution).toEqual([{ kind: "Feature", count: 3, pct: 100 }]);
   });
 
   it("falls back to iteration paths for undated PIs and has empty results without items", () => {
@@ -158,22 +156,30 @@ describe("flowMetrics", () => {
 });
 
 describe("estimated completion", () => {
-  it("returns the finish of the latest sprint any iteration is planned in", () => {
-    expect(estimatedCompletion([`${PI_PATH}\\S1`, `${PI_PATH}\\S2\\Week 1`, undefined], PI5.sprints)).toBe(d("2026-03-14"));
-    expect(estimatedCompletion([`${PI_PATH}\\S1`], [...PI5.sprints, { ...PI5.sprints[0], finish: undefined }])).toBe(d("2026-03-07"));
-    expect(estimatedCompletion([PI_PATH], PI5.sprints)).toBeNull();
+  const flat = (iterations: (string | undefined)[]) => (id: number) => (id === 0 ? iterations.map((iteration, i) => ({ id: i + 1, iteration })) : []);
+
+  it("returns the finish of the latest sprint any descendant is planned in", () => {
+    expect(estimatedCompletion(0, flat([`${PI_PATH}\\S1`, `${PI_PATH}\\S2\\Week 1`, undefined]), PI5.sprints)).toBe(d("2026-03-14"));
+    expect(estimatedCompletion(0, flat([`${PI_PATH}\\S1`]), [...PI5.sprints, { ...PI5.sprints[0], finish: undefined }])).toBe(d("2026-03-07"));
+    expect(estimatedCompletion(0, flat([PI_PATH]), PI5.sprints)).toBeNull();
+    expect(estimatedCompletion(0, flat([]), PI5.sprints)).toBeNull();
   });
 
-  it("walks live descendants once, surviving cycles", () => {
+  it("walks live descendants (grandchildren too) once, surviving cycles", () => {
+    const s = (n: string) => `${PI_PATH}\\${n}`;
     const a = item({ id: 501 });
-    const b = item({ id: 502, parentId: 501, iteration: "I1" });
-    const c = item({ id: 503, parentId: 502, iteration: "I2" });
-    const removed = item({ id: 504, parentId: 501, iteration: "I3", category: "Removed" });
-    const cyc = item({ id: 505, parentId: 503, iteration: "I4" });
+    const b = item({ id: 502, parentId: 501, iteration: s("S1") });
+    const c = item({ id: 503, parentId: 502, iteration: s("S1") });
+    const removed = item({ id: 504, parentId: 501, iteration: s("PI 5 IP"), category: "Removed" });
+    const cyc = item({ id: 505, parentId: 503, iteration: s("S2") });
     const back = item({ id: 501, parentId: 505 });
-    const below = descendantIterations([a, b, c, removed, cyc, back]);
-    expect(below(501)).toEqual(["I1", "I2", "I4"]);
-    expect(below(999)).toEqual([]);
+    const childrenOf = childrenIndex([a, b, c, removed, cyc, back]);
+    // The grandchild's grandchild (#505) is in S2; the removed child in IP doesn't count.
+    expect(estimatedCompletion(501, childrenOf, PI5.sprints)).toBe(d("2026-03-14"));
+    expect(estimatedCompletion(502, childrenOf, PI5.sprints)).toBe(d("2026-03-14"));
+    // Through the cycle #505 reaches #501, #502 and #503 (all S1) but never itself.
+    expect(estimatedCompletion(505, childrenOf, PI5.sprints)).toBe(d("2026-03-07"));
+    expect(estimatedCompletion(999, childrenOf, PI5.sprints)).toBeNull();
   });
 });
 
@@ -219,7 +225,8 @@ describe("buildSnapshot", () => {
       piName: "PI 5",
       createdAt: "2026-04-01T10:00:00.000Z",
       points: { planned: 5, done: 3, pct: 60, unestimated: 0, count: 2 },
-      velocity: { value: 1, basis: "Ø all iterations of the PI", samples: 3 },
+      // The IP iteration doesn't count towards the velocity.
+      velocity: { value: 1.5, basis: "Ø all iterations of the PI", samples: 2 },
       sprintVelocity: [
         { name: "S1", path: `${PI_PATH}\\S1`, done: 3 },
         { name: "S2", path: `${PI_PATH}\\S2`, done: 0 },

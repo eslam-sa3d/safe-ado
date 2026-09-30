@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { boardType, flatten } from "../../api/org";
-import { descendantIterations, estimatedCompletion, inIteration, OverviewRow, overviewIds, overviewRows, RItem, toDay } from "../../api/reports";
+import { boardType, flatten, scopeAreas } from "../../api/org";
+import { typeChain } from "../../api/queries";
+import { childrenIndex, estimatedCompletion, eventDay, inIteration, OverviewRow, overviewIds, overviewRows, PlannedNode, RItem } from "../../api/reports";
 import { fmtDate, Progress, Icon } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { ReportData } from "./data";
@@ -8,7 +9,7 @@ import { ItemRef, OpenInQuery, SelectPi, Widget } from "./Widget";
 
 /** Epics shown on the portfolio: in progress, or closed within the last 30 days. */
 export function epicInOverview(epic: RItem, today: number): boolean {
-  if (epic.category === "Completed") return !!epic.closedDate && toDay(epic.closedDate) >= today - 30;
+  if (epic.category === "Completed") return !!epic.closedDate && eventDay(epic.closedDate) >= today - 30;
   return epic.category === "InProgress" || epic.category === "Resolved";
 }
 
@@ -25,7 +26,20 @@ function SplitBar({ row }: { row: OverviewRow }) {
   );
 }
 
-function Row({ row, depth, onTeam, eta }: { row: OverviewRow; depth: number; onTeam: (id: string) => void; eta: (row: OverviewRow) => string | null }) {
+function Row({
+  row,
+  depth,
+  onTeam,
+  eta,
+  enabler,
+}: {
+  row: OverviewRow;
+  depth: number;
+  onTeam: (id: string) => void;
+  eta: (row: OverviewRow) => string | null;
+  /** The enabler work item type; its rows get an "Enabler" pill. */
+  enabler?: string;
+}) {
   const [open, setOpen] = useState(false);
   const synthetic = row.item.id === 0;
   const completion = eta(row);
@@ -42,6 +56,7 @@ function Row({ row, depth, onTeam, eta }: { row: OverviewRow; depth: number; onT
               <span className="twisty" />
             )}
             {synthetic ? <strong>{row.item.title}</strong> : <ItemRef item={row.item} />}
+            {!!enabler && row.item.type === enabler && <span className="pill enabler-pill">Enabler</span>}
           </span>
         </td>
         <td className="num">{row.wsjf ?? "—"}</td>
@@ -64,14 +79,25 @@ function Row({ row, depth, onTeam, eta }: { row: OverviewRow; depth: number; onT
         </td>
         <td className="eta">{completion ? fmtDate(completion) : "—"}</td>
       </tr>
-      {open && row.children.map((c) => <Row key={c.item.id} row={c} depth={depth + 1} onTeam={onTeam} eta={eta} />)}
+      {open && row.children.map((c) => <Row key={c.item.id} row={c} depth={depth + 1} onTeam={onTeam} eta={eta} enabler={enabler} />)}
     </>
   );
 }
 
+/** Whether any ancestor of `item` (walking parent links, cycles once) has `type`. */
+function hasAncestor(item: RItem, type: string, items: Map<number, RItem>): boolean {
+  const seen = new Set<number>([item.id]);
+  for (let p = item.parentId !== undefined ? items.get(item.parentId) : undefined; p && !seen.has(p.id); p = p.parentId !== undefined ? items.get(p.parentId) : undefined) {
+    if (p.type === type) return true;
+    seen.add(p.id);
+  }
+  return false;
+}
+
 /**
- * PI Overview (Solution / ART): parent items with children planned in the PI. On a Large
- * Solution with Capabilities, Features linked straight to an Epic get their own lane.
+ * PI Overview (Solution / ART): parent items with children planned in the PI, Enablers
+ * included (marked with a pill) so their stories aren't orphans. On a Large Solution with
+ * Capabilities, Features linked straight to an Epic get their own lane.
  * Epic Overview (Portfolio): epics in progress or closed within the last 30 days.
  */
 export function OverviewWidget({ data, today }: { data: ReportData; today: number }) {
@@ -101,23 +127,38 @@ export function OverviewWidget({ data, today }: { data: ReportData; today: numbe
           rootFilter: (f) => f.parentId !== undefined && data.items.get(f.parentId)?.type === config.types.epic,
         })
       : null;
+  // Enablers not already inside a row's tree become rows of their own.
+  const enablerType = config.types.enabler;
+  const enablers =
+    !portfolio && enablerType && enablerType !== rootType
+      ? overviewRows({ ...common, rootType: enablerType, rootFilter: (e) => !hasAncestor(e, rootType, data.items), exclude: direct?.covered })
+      : null;
   const { rows, orphans } = overviewRows({
     ...common,
     rootType,
     keepRoot: portfolio ? (e) => data.inScope(e) && epicInOverview(e, today) : undefined,
-    exclude: direct?.covered,
+    exclude: new Set([...(direct?.covered ?? []), ...(enablers?.covered ?? [])]),
   });
-  const all = orphans && !portfolio ? [...rows, orphans] : rows;
+  const ranked = [...rows, ...(enablers?.rows ?? [])].sort((a, b) => (b.wsjf ?? -1) - (a.wsjf ?? -1) || a.item.id - b.item.id);
+  const all = orphans && !portfolio ? [...ranked, orphans] : ranked;
   const lane = direct?.rows ?? [];
 
   const sprints = pis.flatMap((p) => p.sprints);
-  const below = descendantIterations(items);
+  const childrenOf = childrenIndex(items);
+  // Parents: their descendants' latest sprint. Leaf stories and the "Without parent" group
+  // are virtual roots (id 0) over themselves / their stories.
   const eta = (row: OverviewRow) => {
-    const iterations =
-      row.item.id === 0 ? row.children.map((c) => c.item.iteration) : row.item.type === config.types.story ? [row.item.iteration] : below(row.item.id);
-    return estimatedCompletion(iterations, sprints);
+    const leaf = row.item.id === 0 || row.item.type === config.types.story;
+    if (!leaf) return estimatedCompletion(row.item.id, childrenOf, sprints);
+    const below: PlannedNode[] = row.item.id === 0 ? row.children.map((c) => c.item) : [row.item];
+    return estimatedCompletion(0, (id) => (id === 0 ? below : []), sprints);
   };
-  const actions = <OpenInQuery ids={overviewIds([...all, ...lane])} />;
+  const scope = {
+    types: portfolio ? [...typeChain(config), enablerType ?? ""] : [rootType, config.types.feature, enablerType ?? "", config.types.story],
+    areas: scopeAreas(node),
+    iterationPath: portfolio ? undefined : pi!.path,
+  };
+  const actions = <OpenInQuery ids={overviewIds([...all, ...lane])} scope={scope} />;
 
   return (
     <Widget title={title} size="wide" actions={actions}>
@@ -134,12 +175,12 @@ export function OverviewWidget({ data, today }: { data: ReportData; today: numbe
               <th>Progress</th>
               <th>Status (SP)</th>
               <th>Teams (SP)</th>
-              <th title="Finish of the latest iteration any child is planned in">Est. completion</th>
+              <th title="Finish of the latest iteration any descendant is planned in">Est. completion</th>
             </tr>
           </thead>
           <tbody>
             {all.map((r) => (
-              <Row key={r.item.id} row={r} depth={0} onTeam={selectNode} eta={eta} />
+              <Row key={r.item.id} row={r} depth={0} onTeam={selectNode} eta={eta} enabler={enablerType} />
             ))}
           </tbody>
           {lane.length > 0 && (
@@ -150,7 +191,7 @@ export function OverviewWidget({ data, today }: { data: ReportData; today: numbe
                 </th>
               </tr>
               {lane.map((r) => (
-                <Row key={r.item.id} row={r} depth={0} onTeam={selectNode} eta={eta} />
+                <Row key={r.item.id} row={r} depth={0} onTeam={selectNode} eta={eta} enabler={enablerType} />
               ))}
             </tbody>
           )}

@@ -1,8 +1,8 @@
-import { Burnup, BurnupDay } from "../../api/reports";
+import { Burnup, BurnupDay, piStatus } from "../../api/reports";
 import { fmtDate } from "../../components/common";
-import { useSafe } from "../../components/context";
+import { useCan, useSafe } from "../../components/context";
 import { ReportData } from "./data";
-import { SelectPi, SnapshotNote, Widget } from "./Widget";
+import { NoSnapshotNote, RecordSnapshotButton, SelectPi, SnapshotNote, Widget } from "./Widget";
 
 const W = 720;
 const H = 240;
@@ -15,13 +15,21 @@ const SERIES: { key: keyof Pick<BurnupDay, "scope" | "burned" | "ideal" | "forec
   { key: "forecast", label: "Forecast" },
 ];
 
-/** Burnup of the PI's story points with iteration bands, a Today marker and a forecast. */
-export function BurnupWidget({ data }: { data: ReportData }) {
+/**
+ * Burnup of the PI's story points with iteration bands, a Today marker and a forecast. A
+ * completed PI without a snapshot offers "Record snapshot now" (`onRecorded` reloads).
+ */
+export function BurnupWidget({ data, today, onRecorded }: { data: ReportData; today: number; onRecorded?: () => void }) {
   const { pi } = useSafe();
+  const can = useCan();
   const snap = data.snapshot?.burnup ? data.snapshot : undefined;
   const chart = snap?.burnup ?? data.burnup;
+  const record =
+    pi && onRecorded && !data.snapshot && piStatus(pi, today) === "completed" ? (
+      <RecordSnapshotButton fresh={data.freshSnapshot} canPlan={can.plan} onRecorded={onRecorded} />
+    ) : undefined;
   return (
-    <Widget title="Burnup" size="wide">
+    <Widget title="Burnup" size="wide" actions={record}>
       {!pi ? (
         <SelectPi />
       ) : !chart ? (
@@ -31,6 +39,10 @@ export function BurnupWidget({ data }: { data: ReportData }) {
           <Chart chart={chart} />
           {snap ? (
             <SnapshotNote createdAt={snap.createdAt} />
+          ) : data.historyTruncated ? (
+            <p className="muted small burnup-note" role="note">
+              History too large to load completely; showing current-state burnup.
+            </p>
           ) : (
             data.historyError && (
               <p className="muted small burnup-note" role="note">
@@ -38,6 +50,7 @@ export function BurnupWidget({ data }: { data: ReportData }) {
               </p>
             )
           )}
+          {!snap && data.snapshotMissing && <NoSnapshotNote />}
         </>
       )}
     </Widget>

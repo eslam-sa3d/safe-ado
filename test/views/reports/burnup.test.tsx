@@ -47,8 +47,8 @@ describe("Burnup", () => {
     // 28 non-IP days: day idx + 1 of the ideal is 16 × (idx + 1) / 28
     const ideal = Math.round((16 * (idx + 1) * 10) / 28) / 10;
     expect(localTip(w, 0)).toMatch(new RegExp(`Scope 16 · Burned 5 · Ideal ${ideal} · Forecast 5$`));
-    // No completed iteration yet: 5 SP over the days so far (about 0.6 SP/day)
-    const rate = 5 / (idx + 1);
+    // No completed iteration of PI 2 yet: the historic rate of PI 1 (2 SP over its 28 sprint days)
+    const rate = 2 / 28;
     expect(within(w).getByText(`Forecast at ${Math.round(rate * 10) / 10} SP/day`)).toBeInTheDocument();
     expect(localTip(w, 1)).not.toContain("Burned");
     expect(localTip(w, 1)).toContain(`Forecast ${Math.round((5 + rate) * 10) / 10}`);

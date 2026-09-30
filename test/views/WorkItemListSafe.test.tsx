@@ -3,6 +3,7 @@ import { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProgramIncrement } from "../../src/api/types";
 import { getProgramIncrements } from "../../src/api/wit";
+import { fmtDate } from "../../src/components/common";
 import { SafeContext } from "../../src/components/context";
 import { PI_LIMIT_MESSAGE } from "../../src/form/planning";
 import {
@@ -71,9 +72,11 @@ describe("Work Item List: SAFe columns", () => {
     expect(cell(15, "piInvolvement")).toHaveTextContent(/^PI 1$/);
     expect(cell(12, "piInvolvement")).toHaveTextContent(/^$/);
     // #10's children are in PI 2 Sprint 1 and 2: the latest sprint wins.
-    expect(cell(10, "completion")).toHaveTextContent(finishOf(pis, "PI 2 Sprint 2"));
-    expect(cell(14, "completion")).toHaveTextContent(finishOf(pis, "PI 2 Sprint 1"));
-    expect(cell(15, "completion")).toHaveTextContent(finishOf(pis, "PI 1 Sprint 1"));
+    // Displayed with fmtDate like every other date; the ISO date stays as the tooltip.
+    expect(cell(10, "completion")).toHaveTextContent(fmtDate(finishOf(pis, "PI 2 Sprint 2")));
+    expect(cell(10, "completion").querySelector("span")).toHaveAttribute("title", finishOf(pis, "PI 2 Sprint 2"));
+    expect(cell(14, "completion")).toHaveTextContent(fmtDate(finishOf(pis, "PI 2 Sprint 1")));
+    expect(cell(15, "completion")).toHaveTextContent(fmtDate(finishOf(pis, "PI 1 Sprint 1")));
     expect(cell(12, "completion")).toHaveTextContent(/^$/);
     // Children are fetched with the fields needed for the SAFe columns.
     const batch = callsTo(/workitemsbatch/).find((c) => c.body.fields);

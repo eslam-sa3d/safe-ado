@@ -823,3 +823,8 @@ a.member-name:hover { text-decoration: underline; }
 .rm-side-filter .search-box .search { width: 100%; }
 .rm-parent { display: inline-block; max-width: 45%; margin-right: 6px; padding: 0 6px; border: 1px solid; border-radius: 10px; background: var(--bg); color: var(--text-2); font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; cursor: pointer; }
 .rm-parent:hover { color: var(--text); background: var(--alpha-6); }
+
+/* ---------- reports v3 ---------- */
+.pill.enabler-pill { margin-left: 6px; background: rgba(119, 59, 147, 0.12); color: #773b93; font-size: 11px; }
+.btn.record-snapshot { white-space: nowrap; }
+.snapshot-note.snapshot-missing { font-style: italic; }

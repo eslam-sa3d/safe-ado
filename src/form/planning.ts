@@ -1,4 +1,5 @@
-import { ProgramIncrement, Sprint, WorkItemMeta } from "../api/types";
+import { estimatedCompletion as completionOf, PlannedNode } from "../api/reports";
+import { ProgramIncrement, WorkItemMeta } from "../api/types";
 import { isUnder } from "../api/wit";
 
 /**
@@ -52,14 +53,13 @@ export function piInvolvement(iterations: (string | undefined)[], pis: ProgramIn
   return pis.filter((p) => iterations.some((it) => isUnder(it, p.path)));
 }
 
-/** Finish date (YYYY-MM-DD) of the latest sprint any of the iterations is planned in. */
+/**
+ * Finish date (YYYY-MM-DD) of the latest sprint any of the (descendant) iterations is planned
+ * in. Delegates to the Reports' estimatedCompletion (the single implementation) with the
+ * iterations as the descendants of a virtual root.
+ */
 export function estimatedCompletion(iterations: (string | undefined)[], pis: ProgramIncrement[]): string | undefined {
-  const sprints: Sprint[] = pis.flatMap((p) => p.sprints);
-  let latest: string | undefined;
-  for (const s of sprints) {
-    if (!s.finish || !iterations.some((it) => isUnder(it, s.path))) continue;
-    const finish = s.finish.slice(0, 10);
-    if (!latest || finish > latest) latest = finish;
-  }
-  return latest;
+  const below: PlannedNode[] = iterations.map((iteration, i) => ({ id: i + 1, iteration }));
+  const finish = completionOf(0, (id) => (id === 0 ? below : []), pis.flatMap((p) => p.sprints));
+  return finish ? finish.slice(0, 10) : undefined;
 }

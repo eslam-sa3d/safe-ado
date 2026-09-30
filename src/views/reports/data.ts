@@ -12,8 +12,11 @@ import {
   DepRow,
   DepSource,
   firstActiveDates,
+  historicDailyRate,
   historyFields,
   inIteration,
+  inSnapshotWindow,
+  KindTypes,
   isLive,
   normalize,
   PiSnapshot,
@@ -23,7 +26,10 @@ import {
   snapshotId,
 } from "../../api/reports";
 import { F, IterationCapacity, LINK, Milestone, OrgNode, PiObjective, ProgramIncrement, Risk, SafeConfig, WorkItem, WorkItemMeta } from "../../api/types";
-import { getRevisions, getStateCategories, getWorkItems, isUnder, queryWorkItems, relationTargetId, Revision } from "../../api/wit";
+import { getRevisions, getStateCategories, getWorkItems, getWorkItemTypes, isUnder, queryWorkItems, relationTargetId, RevisionList } from "../../api/wit";
+
+/** The process's defect type, counted as "Defect" work in the flow distribution. */
+export const BUG_TYPE = "Bug";
 
 /** Everything the Reports widgets read, loaded once per node / PI. */
 export interface ReportData {
@@ -49,10 +55,21 @@ export interface ReportData {
   burnup: Burnup | null;
   /** Why the history could not be read (the burnup then uses the current state). */
   historyError?: string;
+  /** The history hit the page limit (newest revisions missing): the burnup uses the current state. */
+  historyTruncated?: boolean;
   /** First in-progress date per item from revision history (flow time fallback). */
   firstActive: Map<number, string>;
   /** Numbers recorded when the selected (completed) PI ended. */
   snapshot?: PiSnapshot;
+  /** The selected PI ended more than SNAPSHOT_WINDOW_DAYS ago and has no snapshot. */
+  snapshotMissing?: boolean;
+  /**
+   * A snapshot of the completed PI built from the current numbers, for "Record snapshot now";
+   * only when there is none yet and the burnup comes from complete history.
+   */
+  freshSnapshot?: PiSnapshot;
+  /** Types that decide the flow distribution (enabler, and Bug when the process has it). */
+  kinds: KindTypes;
 }
 
 export interface LoadOptions {
@@ -60,6 +77,8 @@ export interface LoadOptions {
   today: number;
   /** Whether a missing PI snapshot may be written (the user can plan). */
   persist?: boolean;
+  /** The unit's cadence, for the forecast's historic velocity. */
+  pis?: ProgramIncrement[];
 }
 
 /** Capacity of the unit's teams over the PI's iterations. */
@@ -76,15 +95,25 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
   const piLevel = !!pi && node.level !== "portfolio";
   const completed = piLevel && piStatus(pi!, opts.today) === "completed";
 
-  const [categoryOf, objectives, risks, milestones, capacity, meta, stored] = await Promise.all([
-    getStateCategories(chain),
+  const [chainCategory, objectives, risks, milestones, capacity, meta, stored, bugType] = await Promise.all([
+    getStateCategories(enabler ? [...chain, enabler] : chain),
     objectivesStore.list(),
     risksStore.list(),
     milestonesStore.list(),
     capacityStore.list(),
     metaStore.list(),
     completed ? snapshotsStore.get(snapshotId(node.id, pi!)) : Promise.resolve(undefined),
+    // Team flow metrics count bugs as defects when the process has the type.
+    piLevel && node.level === "team"
+      ? getWorkItemTypes()
+          .then((ts) => (ts.some((t) => t.name === BUG_TYPE) ? BUG_TYPE : undefined))
+          .catch(() => undefined)
+      : Promise.resolve(undefined),
   ]);
+  const bugCategory = bugType ? await getStateCategories([bugType]).catch(() => undefined) : undefined;
+  const categoryOf = (type: string, state: string) => (bugCategory && type === bugType ? bugCategory(type, state) : chainCategory(type, state));
+  // A snapshot with a history-based burnup needs no history: skip the (large) revisions read.
+  const trusted = !!stored && stored.burnup?.source === "history";
 
   const raw = new Map<number, WorkItem>();
   const add = (list: WorkItem[]) => list.forEach((w) => raw.set(w.id, w));
@@ -102,7 +131,7 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
       .filter((id): id is number => id !== null);
 
   let anchors: number[] = [];
-  let revisions: Revision[] | null = null;
+  let revisions: RevisionList | null = null;
   let historyError: string | undefined;
   if (node.level === "portfolio") {
     const epics = await queryWorkItems(scopeQuery([epic], areas), [], true);
@@ -113,20 +142,24 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
       if (!(await fetchMissing(ids(LINK.child)))) break;
     }
   } else if (pi) {
-    const flowTypes = [story, feature, capability, enabler].filter((t): t is string => !!t);
-    const [stories, planning, history] = await Promise.all([
+    const flowTypes = [story, feature, capability, enabler, bugType].filter((t): t is string => !!t);
+    const [stories, planning, bugs, history] = await Promise.all([
       // Stories of the unit's own cadence (its PI root, an ancestor's, or the project's).
       queryWorkItems(scopeQuery([story], areas, effectivePiRoot(config, node.id)), [], true),
       queryWorkItems(scopeQuery([feature, capability, enabler].filter((t): t is string => !!t), areas, pi.path), [], true),
+      bugType ? queryWorkItems(scopeQuery([bugType], areas, pi.path), [], true) : Promise.resolve([]),
       // History for the burnup and flow time; the report still works without it.
-      getRevisions(flowTypes, historyFields(config.storyPointsField)).catch((e) => {
-        historyError = e?.message ?? String(e);
-        return null;
-      }),
+      trusted
+        ? Promise.resolve(null)
+        : getRevisions(flowTypes, historyFields(config.storyPointsField)).catch((e) => {
+            historyError = e?.message ?? String(e);
+            return null;
+          }),
     ]);
     revisions = history;
     add(stories);
     add(planning);
+    add(bugs);
     anchors = [...planning, ...stories.filter((w) => isUnder(w.fields[F.iteration], pi.path))].map((w) => w.id);
     // Walk up to the parents for the PI Overview and the Iteration Overview grouping.
     for (let depth = 0; depth < chain.length - 1; depth++) {
@@ -153,15 +186,19 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
   const stories = Array.from(items.values()).filter((i) => i.type === story && isLive(i) && inScope(i));
   const piStories = piLevel ? stories.filter((s) => inIteration(s, pi!.path)) : [];
 
+  const historyTruncated = !!revisions?.truncated;
+  const rate = piLevel ? historicDailyRate(pi!, opts.pis ?? [], stories, opts.today) : null;
   const chart = !piLevel
     ? null
-    : revisions
-    ? burnupFromHistory(pi!, revisions, { storyType: story, spField: config.storyPointsField, areas, categoryOf }, opts.today)
-    : burnup(pi!, piStories, opts.today);
+    : revisions && !historyTruncated
+    ? burnupFromHistory(pi!, revisions, { storyType: story, spField: config.storyPointsField, areas, categoryOf }, opts.today, rate)
+    : burnup(pi!, piStories, opts.today, rate);
 
   let snapshot = stored;
-  if (completed && !snapshot) {
-    const fresh = buildSnapshot({
+  let freshSnapshot: PiSnapshot | undefined;
+  // Only complete history makes a snapshot: never record a truncated or current-state burnup.
+  if (completed && !snapshot && chart?.source === "history") {
+    freshSnapshot = buildSnapshot({
       nodeId: node.id,
       team: node.level === "team",
       pi: pi!,
@@ -171,8 +208,10 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
       burnup: chart,
       today: opts.today,
     });
-    // Recording is best effort: a failed write only means the next visit tries again.
-    if (opts.persist) snapshot = await snapshotsStore.save(fresh).catch(() => undefined);
+    // Recorded automatically only shortly after the PI ended, so the numbers are close to
+    // those at PI end. Best effort: a failed write only means the next visit tries again.
+    if (opts.persist && inSnapshotWindow(pi!, opts.today)) snapshot = await snapshotsStore.save(freshSnapshot).catch(() => undefined);
+    if (snapshot) freshSnapshot = undefined;
   }
 
   return {
@@ -190,8 +229,12 @@ export async function loadReportData(config: SafeConfig, node: OrgNode, pi: Prog
     link,
     burnup: chart,
     historyError,
+    historyTruncated,
     firstActive: revisions ? firstActiveDates(revisions, categoryOf) : new Map(),
     snapshot,
+    snapshotMissing: completed && !snapshot && !inSnapshotWindow(pi!, opts.today),
+    freshSnapshot,
+    kinds: { enabler, bug: bugType },
   };
 }
 

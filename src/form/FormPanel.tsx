@@ -7,7 +7,7 @@ import { effectivePiRoot, flatten, pathTo } from "../api/org";
 import { F, LINK, OrgNode, ProgramIncrement, SafeConfig, Sprint, WorkItem, WorkItemMeta } from "../api/types";
 import { openInNewTab } from "../api/urlState";
 import { getProgramIncrements, getStateCategories, getWorkItems, isUnder, openWorkItem, relationTargetId } from "../api/wit";
-import { ErrorBar, Spinner, LevelPill } from "../components/common";
+import { ErrorBar, fmtDate, Spinner, LevelPill } from "../components/common";
 import { useCanSafe } from "../components/useCanSafe";
 import {
   estimatedCompletion,
@@ -365,7 +365,7 @@ export function FormPanel() {
       </div>
       <div className="safe-form-row">
         <span className="field-label">Estimated completion</span>
-        <span>{data.completion ?? <span className="muted">Unknown</span>}</span>
+        <span>{data.completion ? <span title={data.completion}>{fmtDate(data.completion)}</span> : <span className="muted">Unknown</span>}</span>
       </div>
       <div className="safe-form-row">
         <span className="field-label">Parent</span>
