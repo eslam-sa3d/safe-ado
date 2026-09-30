@@ -98,8 +98,19 @@ export interface Lane {
   assigned: boolean;
 }
 
-export function isAssigned(meta: WorkItemMeta | undefined, nodeId: string, piPath: string): boolean {
-  return !!meta && meta.assignedNodeIds.includes(nodeId) && meta.assignedPiPaths.includes(piPath);
+/** A PI given by path, or by path + stable id (preferred: survives renames). */
+export type PiKey = string | { path: string; identifier?: string };
+
+/** Whether the meta assigns this PI: by stable id first, then case-insensitive path. */
+export function metaHasPi(meta: WorkItemMeta, pi: PiKey): boolean {
+  const path = typeof pi === "string" ? pi : pi.path;
+  const id = typeof pi === "string" ? undefined : pi.identifier;
+  if (id && (meta.assignedPiIds ?? []).includes(id)) return true;
+  return meta.assignedPiPaths.some((p) => p.toLowerCase() === path.toLowerCase());
+}
+
+export function isAssigned(meta: WorkItemMeta | undefined, nodeId: string, pi: PiKey): boolean {
+  return !!meta && meta.assignedNodeIds.includes(nodeId) && metaHasPi(meta, pi);
 }
 
 /**
@@ -112,7 +123,7 @@ export function buildLanes(
   parents: Map<number, number>,
   metas: Map<number, WorkItemMeta>,
   nodeId: string,
-  piPath: string
+  piPath: PiKey
 ): Lane[] {
   const byId = new Map(features.map((f) => [f.id, f]));
   const lanes = new Map<number, Lane>();

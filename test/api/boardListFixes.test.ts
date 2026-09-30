@@ -115,3 +115,16 @@ describe("openStatesClause", () => {
     expect(await openStatesClause([])).toBe("[System.Id] < 0");
   });
 });
+
+describe("PI assignment matching survives renames", () => {
+  it("matches by stable id first, then case-insensitive path", async () => {
+    const { metaHasPi, isAssigned } = await import("../../src/api/teamboard");
+    const meta = { id: "1", workItemId: 1, assignedNodeIds: ["t"], assignedPiPaths: ["P\\Old name"], assignedPiIds: ["pi-2"] };
+    expect(metaHasPi(meta, { path: "P\\New name", identifier: "pi-2" })).toBe(true);
+    expect(metaHasPi(meta, "p\\old NAME")).toBe(true);
+    expect(metaHasPi(meta, { path: "P\\Other", identifier: "pi-3" })).toBe(false);
+    expect(metaHasPi({ ...meta, assignedPiIds: undefined }, { path: "P\\Other" })).toBe(false);
+    expect(isAssigned(meta, "t", { path: "P\\New name", identifier: "pi-2" })).toBe(true);
+    expect(isAssigned(undefined, "t", "x")).toBe(false);
+  });
+});

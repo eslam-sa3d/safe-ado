@@ -47,6 +47,7 @@ import {
   unassignMeta,
   unplannedStories,
   wsjf,
+  metaHasPi,
 } from "../api/teamboard";
 import {
   Criticality,
@@ -189,7 +190,7 @@ async function loadBlock(ctx: Ctx, team: OrgNode, filter: ItemFilter): Promise<B
     if (p !== null) featureIds.add(p);
   });
   metas.forEach((m) => {
-    if (m.assignedNodeIds.includes(team.id) && m.assignedPiPaths.includes(pi.path)) featureIds.add(m.workItemId);
+    if (m.assignedNodeIds.includes(team.id) && metaHasPi(m, pi)) featureIds.add(m.workItemId);
   });
   // Features planned in the PI on the ART, so parents known only through their Child link resolve too.
   (await queryIds(scopeQuery([config.types.feature], ctx.artAreas, pi.path))).forEach((id) => featureIds.add(id));
@@ -346,7 +347,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const toggleLane = (key: string) => setCollapse((c) => ({ ...c, over: { ...c.over, [key]: !(c.over[key] ?? c.all) } }));
 
   const lanes = useMemo(
-    () => (block && ctx ? buildLanes(block.stories, block.features, block.parents, ctx.metas, team.id, pi.path) : []),
+    () => (block && ctx ? buildLanes(block.stories, block.features, block.parents, ctx.metas, team.id, pi) : []),
     [block, ctx, team.id, pi.path]
   );
   const loads = useMemo(() => (data ? sprintLoads(data.all, sprintPaths, config.storyPointsField) : []), [data, sprintPaths.join("|")]);
@@ -1153,7 +1154,7 @@ function SiblingBlock(props: {
 
   // The team's feature lanes join the swimlane filter once loaded.
   useEffect(() => {
-    if (data) onLanes(team.id, buildLanes(data.stories, data.features, data.parents, ctx.metas, team.id, ctx.pi.path).filter((l) => l.feature && l.stories.length).map(laneOption));
+    if (data) onLanes(team.id, buildLanes(data.stories, data.features, data.parents, ctx.metas, team.id, ctx.pi).filter((l) => l.feature && l.stories.length).map(laneOption));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
@@ -1187,7 +1188,7 @@ function SiblingBlock(props: {
 
   const visible = new Set(applyFilter(data?.stories ?? [], filter, facets).map((s) => s.id));
   const lanes = data
-    ? buildLanes(data.stories, data.features, data.parents, ctx.metas, team.id, ctx.pi.path)
+    ? buildLanes(data.stories, data.features, data.parents, ctx.metas, team.id, ctx.pi)
         .filter(props.laneVisible)
         .map((l) => ({ lane: l, stories: l.stories.filter((s) => visible.has(s.id)) }))
         .filter((l) => l.stories.length > 0)
