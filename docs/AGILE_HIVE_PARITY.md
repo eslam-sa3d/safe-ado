@@ -1,6 +1,6 @@
 # Agile Hive → ScaleLane feature parity
 
-This document compares Agile Hive Cloud with ScaleLane 1.3.0. The Agile Hive side comes from its Cloud documentation (all 166 pages, including the 2023–2026 changelog), its Atlassian Marketplace listing and agile-hive.com. The statuses come from three independent code audits of this release. Each audit read the source and checked every claim against the code and tests.
+This document compares Agile Hive Cloud with ScaleLane 2.0.0. The Agile Hive side comes from its Cloud documentation (all 166 pages, including the 2023–2026 changelog), its Atlassian Marketplace listing and agile-hive.com. The statuses come from three independent code audits of this release. Each audit read the source and checked every claim against the code and tests.
 
 **Status legend**
 

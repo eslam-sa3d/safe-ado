@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "scalelane",
   "publisher": "ScaleLane",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "public": true,
   "name": "ScaleLane",
   "description": "Scaled agile planning for SAFe® in Azure Boards (Services and Server 2022.1): ART and team planning boards, roadmap, PI Objectives, ROAM risks, PI Planning and reports.",

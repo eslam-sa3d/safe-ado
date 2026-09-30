@@ -1,6 +1,6 @@
 # ScaleLane: business plan and decisions
 
-*Owner decision document. Status: core decisions recorded 2026-09-30 (see the decision log). Product version: 1.3.0 (not yet published).*
+*Owner decision document. Status: core decisions recorded 2026-09-30 (see the decision log). Product version: ScaleLane 2.0.0 (not yet published; SAFe Ado 1.3.0 is live).*
 
 This document lists the choices that need to be made before ScaleLane is sold to organisations.
 Every section ends with a **Decision needed** callout. Where a statement depends on third-party rules
@@ -226,7 +226,7 @@ design-partner interviews.
 | **PIs created** | New PIs per collection per month | Not available | `pi_created` (the name is reserved; it needs wiring in PIs & Iterations) |
 | **Retention past the 2nd PI** | Share of collections that create a 2nd PI and are still active 30 days after it starts | Design partners | `pi_created` count ≥ 2 per collection hash, plus `view_opened.*` after it |
 | **Conversion** | Share of active collections with a paid licence; trial → paid | Licence / billing system (outside telemetry) | None needed. Licence keys are matched to customers in the billing system, not through telemetry. |
-| Feature usage | Which views matter, to inform the free/paid split | Interviews | `view_opened.<view>` (shipped in 1.3.0 when opted in) |
+| Feature usage | Which views matter, to inform the free/paid split | Interviews | `view_opened.<view>` (shipped in SAFe Ado 1.3.0 when opted in) |
 
 **Needed to make these measurable:** a telemetry endpoint (small, EU-hosted, stores only the
 payload, drops IP addresses at ingestion), the `pi_created` and `board_replanned` events wired,
@@ -264,7 +264,7 @@ built **inside** Azure DevOps, so it can use data that the others can't reach ea
 ## Next 30 days
 
 1. Formal trademark search on "ScaleLane"; register a domain; create the `ScaleLane` Marketplace publisher.
-2. Publish ScaleLane 1.3.0 as a new listing; update the old SAFe Ado listing to point to it (see [MIGRATION.md](MIGRATION.md)).
+2. Publish ScaleLane 2.0.0 as a new listing; update the old SAFe Ado listing to point to it (see [MIGRATION.md](MIGRATION.md)).
 3. Recruit the 3 design partners, Server 2022.1 first, using [PILOT_PROGRAMME.md](PILOT_PROGRAMME.md).
 4. Sell the first onboarding package ([SERVICES.md](SERVICES.md)); set prices after the first two conversations.
 5. Decide on the telemetry endpoint (E1) so retention past the 2nd PI can be measured.

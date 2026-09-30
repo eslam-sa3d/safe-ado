@@ -20,7 +20,7 @@ administrator opts in ([privacy statement](https://github.com/eslam-sa3d/safe-ad
 - **Lean Portfolio Management**: a Portfolio Kanban ranked by WSJF, a roadmap, and epic progress across trains.
 - **Teams and Product Owners**: a Team Planning Board with load vs. capacity for PI Planning breakouts.
 
-## Features (version 1.3.0)
+## Features (version 2.0.0)
 
 The sidebar models **Portfolio → Large Solution → ART → Team**. Each unit maps to an area path and,
 optionally, an Azure DevOps team. Every view is scoped to the unit you select.

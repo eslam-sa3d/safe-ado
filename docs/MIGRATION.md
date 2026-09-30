@@ -15,8 +15,8 @@ Both extensions can be installed side by side while you migrate.
 ## Steps (per project)
 
 1. **Export from SAFe Ado.** Open *Boards → SAFe → Setup → Backup & restore* and click
-   **Export SAFe data**. Export arrives in the final SAFe Ado release (1.3.x); update SAFe Ado first
-   if the section is missing.
+   **Export SAFe data**. Export is in SAFe Ado 1.3.0 and later; update SAFe Ado first if the
+   section is missing.
    Keep the downloaded `safe-ado-backup-<project>-<date>.json` file.
 2. **Install ScaleLane** from the Marketplace (Services) or upload the VSIX
    (*Collection settings → Extensions*, Server 2022.1).
@@ -34,9 +34,9 @@ and start fresh in ScaleLane.
 
 ## For the publisher
 
-- **Publish a final SAFe Ado release first.** Published SAFe Ado (1.2.0) has no Export, so
-  existing users cannot migrate until it does. Build it from the last commit before the rename
-  (`8f142e1`, still under publisher `SAFeADO` / id `safe-ado`) as version 1.3.x, and point its
-  Marketplace description to ScaleLane and this guide.
+- SAFe Ado 1.3.0 (published 2026-09-30, commit `8f142e1`, tag `v1.3.0`) is the release with Export,
+  so existing users can already migrate.
+- Once ScaleLane is live, publish SAFe Ado 1.3.1 from branch `safe-ado-final` with only the
+  Marketplace description changed, pointing to ScaleLane and this guide.
 - Set the old listing to private once existing customers have moved.
-- Tags and release notes before the rename (v1.0.1 to v1.2.0) refer to SAFe Ado.
+- Tags and release notes up to v1.3.0 refer to SAFe Ado; ScaleLane starts at 2.0.0.

@@ -1,19 +1,41 @@
 # Changelog
 
-All notable changes to SAFe Ado are documented here. The format follows
+All notable changes to ScaleLane (formerly SAFe Ado) are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The release workflow (`.github/workflows/release.yml`) publishes the section whose heading matches
 the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here first.
 
-## [Unreleased]
+## [2.0.0] - Unreleased
+
+First release as **ScaleLane**. Replace "Unreleased" with the release date before tagging `v2.0.0`.
 
 ### Changed
 - **Renamed to ScaleLane.** New Marketplace listing: publisher `ScaleLane`, extension id
   `scalelane`, hub *Boards → ScaleLane*. Extension data does not carry over between listings;
   move it with Export / Import ([docs/MIGRATION.md](docs/MIGRATION.md)). Backups made by SAFe Ado
   import unchanged.
+- **Visibility pass**: inline-edit fields (budgets, rates, notes, objectives) have visible borders;
+  risk exposure tags are larger, readable ("Exposure: High", "Priority: High") and meet 4.5:1
+  contrast; progress-bar labels stay readable; ART and Team Planning Boards fit the whole PI on
+  screen; Portfolio Kanban columns fit; cards sit above dependency lines; tighter filter bars;
+  Setup checklist and "Create a PI" layout fixes; "1 item" wording.
+- Tab bar grouped with dividers (insight · plan · work items · configure).
+- Side-panel filters (Team board and Roadmap "Unplanned") are compact: search plus a
+  "Filters (n)" toggle.
+- Work Item List: a Columns menu (remembered per level; Area hidden by default at ART and
+  Solution level), ID / Type / Title pinned while scrolling sideways, team and PI lists wrap.
+- Roadmap cards lead with the item's own title; the parent pill moves to the extended layout or
+  wide bars, and to the tooltip otherwise; the Today marker runs behind the cards.
+
+### Added
+- Business, services, pilot and migration documents (`docs/BUSINESS_PLAN.md`, `docs/SERVICES.md`,
+  `docs/PILOT_PROGRAMME.md`, `docs/MIGRATION.md`).
+
+## [1.3.0] - 2026-09-30
+
+Last release as **SAFe Ado** (publisher `SAFeADO`, id `safe-ado`). It includes Export, the migration path to ScaleLane.
 
 ### Added
 - **Cross-project portfolios**: units may point to areas and teams in other projects of the same
@@ -31,27 +53,6 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
 - Release workflow, `npm run release:check`, and a guard that stops `npm run package` when
   `package.json` and `vss-extension.json` versions differ.
 - Marketplace screenshots; privacy, support and security policies.
-
-### Changed
-- Writes that go only to extension data are read-only when a permission check cannot be
-  answered (they used to be allowed).
-- Marketplace listing rewritten for SAFe® program offices; trademark attribution added.
-- **Visibility pass**: inline-edit fields (budgets, rates, notes, objectives) have visible borders;
-  risk exposure tags are larger, readable ("Exposure: High", "Priority: High") and meet 4.5:1
-  contrast; progress-bar labels stay readable; ART and Team Planning Boards fit the whole PI on
-  screen; Portfolio Kanban columns fit; cards sit above dependency lines; tighter filter bars;
-  Setup checklist and "Create a PI" layout fixes; "1 item" wording.
-- Tab bar grouped with dividers (insight · plan · work items · configure).
-- Side-panel filters (Team board and Roadmap "Unplanned") are compact: search plus a
-  "Filters (n)" toggle.
-- Work Item List: a Columns menu (remembered per level; Area hidden by default at ART and
-  Solution level), ID / Type / Title pinned while scrolling sideways, team and PI lists wrap.
-- Roadmap cards lead with the item's own title; the parent pill moves to the extended layout or
-  wide bars, and to the tooltip otherwise; the Today marker runs behind the cards.
-
-## [1.3.0] - 2026-09-30
-
-### Added
 - **PI Planning** view: PI summary, draft and final plan reviews per unit, confidence vote
   (fist of five) and Inspect & Adapt improvement items.
 - **Reports v2**: PI snapshots for closed PIs, history burnup, flow metrics (flow velocity, flow
@@ -79,6 +80,9 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
   permission checked with a validate-only work item create.
 
 ### Changed
+- Writes that go only to extension data are read-only when a permission check cannot be
+  answered (they used to be allowed).
+- Marketplace listing rewritten for SAFe® program offices; trademark attribution added.
 - Stored records keep stable node ids as well as paths and repair themselves after area or
   iteration renames and moves.
 - Capacity is keyed by iteration id.
@@ -126,6 +130,26 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
 - PI edit and delete, sprint mapping per team, unit members and roles.
 - Shared filter bar with a WIQL clause; `docs/AGILE_HIVE_PARITY.md`.
 
+## [1.0.4] - 2026-09-29
+
+### Fixed
+- Failed work item state lookups are no longer cached, so a transient error is retried instead of
+  breaking later views.
+
+## [1.0.3] - 2026-09-29
+
+### Added
+- Automated test suite (Vitest + Testing Library) against an in-memory fake of the Azure DevOps
+  REST API, the Extension Data Service and the SDK; coverage thresholds enforced.
+- `docs/TEST_SCENARIOS.md` and GitHub Actions CI (typecheck, tests with coverage, build, VSIX).
+
+### Fixed
+- Program Board crashed when the first load failed.
+- Units without an area path queried the whole project instead of nothing.
+- Setup: picking a team could discard the selection.
+- The Portfolio Kanban count included Removed epics.
+- PI form suggestions ignored PIs that loaded after the first render.
+
 ## [1.0.2] - 2026-09-29
 
 ### Changed
@@ -146,10 +170,12 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
   PI and iteration management, and Setup.
 - All REST calls pinned to `api-version=7.0` for Server 2022.1 compatibility.
 
-[Unreleased]: https://github.com/eslam-sa3d/safe-ado/compare/v1.2.0...HEAD
-[1.3.0]: https://github.com/eslam-sa3d/safe-ado/compare/v1.2.0...main
+[2.0.0]: https://github.com/eslam-sa3d/safe-ado/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/eslam-sa3d/safe-ado/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/eslam-sa3d/safe-ado/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/eslam-sa3d/safe-ado/compare/v1.0.2...v1.1.0
+[1.1.0]: https://github.com/eslam-sa3d/safe-ado/compare/v1.0.4...v1.1.0
+[1.0.4]: https://github.com/eslam-sa3d/safe-ado/compare/v1.0.3...v1.0.4
+[1.0.3]: https://github.com/eslam-sa3d/safe-ado/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/eslam-sa3d/safe-ado/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/eslam-sa3d/safe-ado/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/eslam-sa3d/safe-ado/commit/1a0d65c
+[1.0.0]: https://github.com/eslam-sa3d/safe-ado/releases/tag/v1.0.0
