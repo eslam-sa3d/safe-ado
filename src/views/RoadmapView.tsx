@@ -1,16 +1,22 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { parentIdOf } from "../api/artboard";
 import { emptyMeta, metaStore, milestonesStore, newId } from "../api/data";
 import { criticalityByDates, CRITICALITY_COLOR, CRITICALITY_LABEL, dependenciesOf } from "../api/dependencies";
-import { applyFilter, assigneeName, EMPTY_FILTER, facetOptions, isFilterActive, ItemFilter, withWiqlFilter } from "../api/filters";
-import { boardType, pathTo, scopeAreas } from "../api/org";
+import { applyFilter, assigneeName, EMPTY_FILTER, facetOptions, isFilterActive, ItemFilter, withWiqlFilter, wiqlSuffix } from "../api/filters";
+import { boardType, LEVEL_COLOR, pathTo, scopeAreas } from "../api/org";
 import { scopeQuery } from "../api/queries";
 import {
   autoAssignPis,
+  clipRange,
   axisTicks,
   DateRange,
   dateToX,
   defaultDuration,
   freeLane,
+  inWindow,
+  piIdsFor,
+  renderWindow,
+  roadmapCadences,
   packLanes,
   planFrom,
   rangeDays,
@@ -27,10 +33,10 @@ import {
   ZOOM_PX,
   ZOOMS,
 } from "../api/roadmap";
-import { Criticality, F, Milestone, WorkItem, WorkItemMeta } from "../api/types";
-import { getFieldNames, getStateCategories, openWorkItem, queryWorkItems, setFields } from "../api/wit";
+import { Criticality, F, Milestone, ProgramIncrement, WorkItem, WorkItemMeta } from "../api/types";
+import { getFieldNames, getProgramIncrements, getStateCategories, getWorkItems, openWorkItem, queryWorkItems, setFields } from "../api/wit";
 import { CATEGORY_COLOR, Empty, ErrorBar, Field, Info, Modal, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
-import { useSafe } from "../components/context";
+import { useCan, useSafe } from "../components/context";
 import { FilterBar } from "../components/FilterBar";
 
 type Layout = "compact" | "extended";
@@ -70,6 +76,8 @@ interface Loaded {
   metas: Map<string, WorkItemMeta>;
   milestones: Milestone[];
   dateFields: boolean;
+  /** Parents of the items (for the parent lozenge), by id. */
+  parents: Map<number, WorkItem>;
 }
 
 interface Hidden {
@@ -91,12 +99,14 @@ export function RoadmapView() {
 const critRank: Record<Criticality, number> = { critical: 0, atRisk: 1, healthy: 2, resolved: 3 };
 
 function Roadmap() {
-  const { config, node, pis } = useSafe();
+  const { config, node, pis, piRoot } = useSafe();
+  const can = useCan();
+  const readOnly = !can.plan;
   const type = boardType(config, node.level);
   const areas = scopeAreas(node);
   const [prefs, setPrefsState] = useState<Prefs>(readPrefs);
   const [filter, setFilter] = useState<ItemFilter>(EMPTY_FILTER);
-  const [search, setSearch] = useState("");
+  const [sideFilter, setSideFilter] = useState<ItemFilter>(EMPTY_FILTER);
   const [actionError, setActionError] = useState<string>();
   const [milestoneEdit, setMilestoneEdit] = useState<Milestone | null>(null);
   const [drag, setDragState] = useState<Drag | null>(null);
@@ -131,14 +141,26 @@ function Roadmap() {
       milestonesStore.list(),
       fieldsRef.current,
     ]);
+    const kept = items.filter((i) => category(i.fields[F.type], i.fields[F.state]) !== "Removed");
+    const parentIds = Array.from(new Set(kept.map(parentIdOf).filter((id): id is number => id !== null)));
+    // Parent titles are a nicety: the roadmap still works without them.
+    const parentItems = parentIds.length ? await getWorkItems(parentIds, [F.id, F.title, F.type]).catch(() => [] as WorkItem[]) : [];
     return {
-      items: items.filter((i) => category(i.fields[F.type], i.fields[F.state]) !== "Removed"),
+      items: kept,
       category,
       metas: new Map(metas.map((m) => [m.id, m])),
       milestones,
       dateFields,
+      parents: new Map(parentItems.map((p) => [p.id, p])),
     };
-  }, [type, areas.join("|"), filter.wiql]);
+  }, [type, areas.join("|"), wiqlSuffix(filter)]);
+
+  // PI bands: the unit's own cadence plus an ancestor's different cadence (Solution Train above an ART).
+  const cadences = useMemo(() => roadmapCadences(config, node.id, piRoot), [config, node.id, piRoot]);
+  const ancestorPis = useAsync(
+    async (): Promise<ProgramIncrement[]> => (cadences.ancestor ? getProgramIncrements(cadences.ancestor.root).catch(() => []) : []),
+    [cadences.ancestor?.root]
+  ).data;
 
   const today = todayIso();
   const ppd = ZOOM_PX[prefs.zoom];
@@ -160,12 +182,13 @@ function Roadmap() {
       const r = Number(i.fields[F.stackRank]);
       return Number.isFinite(r) && i.fields[F.stackRank] !== undefined ? r : Number.POSITIVE_INFINITY;
     };
-    const q = search.trim().toLowerCase();
-    return visible
-      .filter((i) => !rangeOf(i.id))
-      .filter((i) => !q || String(i.fields[F.title]).toLowerCase().includes(q) || String(i.id) === q)
-      .sort((a, b) => rank(a) - rank(b) || order.get(a.id)! - order.get(b.id)!);
-  }, [visible, items, rangeOf, search]);
+    // Agile Hive: finished (Completed) and Removed items are never offered for planning.
+    const open = (i: WorkItem) => !["Completed", "Removed"].includes(data!.category(i.fields[F.type], i.fields[F.state]));
+    return applyFilter(
+      visible.filter((i) => !rangeOf(i.id) && open(i)),
+      sideFilter
+    ).sort((a, b) => rank(a) - rank(b) || order.get(a.id)! - order.get(b.id)!);
+  }, [visible, items, rangeOf, sideFilter, data]);
 
   const lanes = packLanes(planned.map((i) => ({ id: i.id, range: rangeOf(i.id)!, lane: metas.get(String(i.id))?.lane })));
 
@@ -203,6 +226,14 @@ function Roadmap() {
     return p.left + p.width >= viewport.left && p.left <= viewport.left + viewport.width;
   };
   const shown = (id: number) => placedIds.has(id) && onScreen(id);
+  // Virtualization: only cards, ticks and bands near the viewport are rendered (lanes stay packed over all).
+  const win = renderWindow(viewport);
+  const rendered = (id: number) => {
+    if (drag?.id === id) return true;
+    const p = place(id);
+    return inWindow(p.left, p.width, win);
+  };
+  const rangeInWindow = (start: string, end: string) => inWindow(x(start), rangeDays({ start, end }) * ppd, win);
   const laneCount = Math.max(3, ...planned.map((i) => place(i.id).lane + 2));
 
   // --- dependencies ---------------------------------------------------------------------------
@@ -248,6 +279,19 @@ function Roadmap() {
     if (hasData) scrollToToday();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasData, ppd]);
+  // Re-measure when the scroll area is resized (window resize, sidebar, host layout).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setViewport({ left: el.scrollLeft, width: el.clientWidth });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [hasData]);
 
   // --- planning -------------------------------------------------------------------------------
   const plan = async (id: number, range: DateRange, targetLane: number) => {
@@ -256,18 +300,40 @@ function Roadmap() {
     const lane = freeLane(targetLane, range, occupied);
     const prev = current.metas.get(String(id)) ?? emptyMeta(id);
     const next: WorkItemMeta = { ...prev, plannedStart: range.start, plannedEnd: range.end, lane };
-    if (node.level === "art") next.assignedPiPaths = autoAssignPis(prev.assignedPiPaths ?? [], range, pis, today);
+    if (node.level === "art") {
+      next.assignedPiPaths = autoAssignPis(prev.assignedPiPaths ?? [], range, pis, today);
+      next.assignedPiIds = piIdsFor(next.assignedPiPaths, pis, prev.assignedPiPaths, prev.assignedPiIds);
+    }
+    const dates = { [F.startDate]: toIsoDateTime(range.start), [F.targetDate]: toIsoDateTime(range.end) };
     const withMeta = (d: Loaded, m: WorkItemMeta): Loaded => ({ ...d, metas: new Map(d.metas).set(m.id, m) });
-    setData((d) => d && withMeta(d, next));
+    const withFields = (d: Loaded, fields: Record<string, unknown>): Loaded => ({
+      ...d,
+      items: d.items.map((i) => (i.id === id ? { ...i, fields: { ...i.fields, ...fields } } : i)),
+    });
+    // Optimistic: the Start/Target Date fields win over the metadata, so preview both.
+    setData((d) => d && (current.dateFields ? withFields(withMeta(d, next), dates) : withMeta(d, next)));
+    let saved: WorkItemMeta;
     try {
-      const saved = await metaStore.save(next);
+      saved = await metaStore.save(next);
       setData((d) => d && withMeta(d, saved));
-      if (current.dateFields) {
-        const updated = await setFields(id, { [F.startDate]: toIsoDateTime(range.start), [F.targetDate]: toIsoDateTime(range.end) });
-        setData((d) => d && { ...d, items: d.items.map((i) => (i.id === id ? { ...i, fields: { ...i.fields, ...updated.fields } } : i)) });
-      }
     } catch (e: any) {
       setActionError(`Could not plan #${id}: ${e?.message ?? e}`);
+      reload(true);
+      return;
+    }
+    if (!current.dateFields) return;
+    try {
+      const updated = await setFields(id, dates);
+      setData((d) => d && withFields(d, updated.fields));
+    } catch (e: any) {
+      // No partial state: undo the metadata write when the work item rejects the dates.
+      try {
+        if (prev.__etag === undefined) await metaStore.remove(prev.id);
+        else await metaStore.save({ ...prev, __etag: saved.__etag });
+      } catch {
+        /* the reload below shows whatever the server has */
+      }
+      setActionError(`Could not plan #${id}: ${e?.message ?? e}. The planned dates were not changed.`);
       reload(true);
     }
   };
@@ -293,6 +359,7 @@ function Roadmap() {
       open(d.id);
       return;
     }
+    if (readOnly) return;
     if (d.range.start === d.orig.start && d.range.end === d.orig.end && d.lane === d.origLane) return;
     plan(d.id, d.range, d.lane);
   };
@@ -304,11 +371,16 @@ function Roadmap() {
     const range = rangeOf(id)!;
     const lane = lanes.get(id)!;
     setDrag({ id, mode, x0: e.clientX, y0: e.clientY, ppd, laneH, lanesLocked: filterActive, orig: range, origLane: lane, range, lane, moved: false });
-    const onMove = (ev: MouseEvent) => setDrag(compute(dragRef.current!, ev));
+    // Read-only: a press still opens the item, but nothing moves.
+    const step = (ev: MouseEvent) => {
+      const next = compute(dragRef.current!, ev);
+      return readOnly ? { ...dragRef.current!, moved: next.moved } : next;
+    };
+    const onMove = (ev: MouseEvent) => setDrag(step(ev));
     const onUp = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      const final = compute(dragRef.current!, ev);
+      const final = step(ev);
       setDrag(null);
       finishRef.current(final);
     };
@@ -319,7 +391,7 @@ function Roadmap() {
   const onCanvasDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const id = Number(e.dataTransfer.getData("text/plain"));
-    if (!id || !itemById.has(id)) return;
+    if (readOnly || !id || !itemById.has(id)) return;
     const rect = lanesRef.current!.getBoundingClientRect();
     const start = xToDate(e.clientX - rect.left, bounds.start, ppd);
     const lane = filterActive ? 0 : Math.max(0, Math.floor((e.clientY - rect.top) / laneH));
@@ -351,6 +423,15 @@ function Roadmap() {
   if (!data) return <ErrorBar message={error} />;
 
   const extended = prefs.layout === "extended";
+  const { types, states, assignees, tags } = facetOptions(visible.filter((i) => !rangeOf(i.id)));
+  const sideOptions = { types, states, assignees, tags };
+  const ticks = axisTicks(win ? clipRange(bounds, xToDate(Math.max(0, win.from), bounds.start, ppd), xToDate(win.to, bounds.start, ppd)) : bounds, prefs.zoom);
+  const bands = [
+    { key: "own", label: "PIs", aria: "Program increments", pis, owner: cadences.own.owner },
+    ...(cadences.ancestor
+      ? [{ key: "ancestor", label: `${cadences.ancestor.owner.name} PIs`, aria: `Program increments of ${cadences.ancestor.owner.name}`, pis: ancestorPis ?? [], owner: cadences.ancestor.owner }]
+      : []),
+  ];
   const sprints = node.level === "art" ? pis.flatMap((p) => p.sprints).filter((s) => s.start && s.finish) : [];
   const lanesHeight = laneCount * laneH;
 
@@ -391,16 +472,19 @@ function Roadmap() {
             ))}
           </div>
         </details>
-        <button className="btn" onClick={() => setMilestoneEdit({ id: "", nodeId: node.id, title: "", date: today, description: "" })}>
-          <Icon name="Add" /> New milestone
-        </button>
+        {!readOnly && (
+          <button className="btn" onClick={() => setMilestoneEdit({ id: "", nodeId: node.id, title: "", date: today, description: "" })}>
+            <Icon name="Add" /> New milestone
+          </button>
+        )}
         <button className="btn" onClick={() => reload()}>
           <Icon name="Refresh" /> Refresh
         </button>
       </div>
       <FilterBar value={filter} onChange={setFilter} options={facetOptions(items)} />
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
-      {filterActive && <Info>Filters are active: cards can be moved and resized in time, but not between lanes.</Info>}
+      {readOnly && <Info>You have read-only access to this area: planned dates, lanes and milestones can't be changed here.</Info>}
+      {filterActive && !readOnly && <Info>Filters are active: cards can be moved and resized in time, but not between lanes.</Info>}
       {items.length === 0 && !loading && (
         <Empty title={`No ${type}s in scope`}>
           <p>
@@ -412,22 +496,26 @@ function Roadmap() {
       <div className="rm-body">
         <aside className="rm-sidebar" aria-label="Unplanned items">
           <h3>Unplanned ({unplanned.length})</h3>
-          <input className="search" aria-label="Search unplanned" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div className="rm-side-filter">
+            <FilterBar value={sideFilter} onChange={setSideFilter} options={sideOptions} showWiql={false} quickFilters={false} />
+          </div>
           {unplanned.length === 0 && <div className="muted small">Nothing to plan.</div>}
           <ul>
             {unplanned.map((i) => (
               <li
                 key={i.id}
                 className="rm-unplanned"
-                draggable
+                draggable={!readOnly}
                 onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i.id))}
                 style={{ borderLeftColor: typeColor(i.fields[F.type]) }}
-                title="Drag onto the timeline to plan"
+                title={readOnly ? `${i.fields[F.type]} #${i.id}` : "Drag onto the timeline to plan"}
               >
                 <span className="muted">#{i.id}</span> {i.fields[F.title]}
-                <button className="link" aria-label={`Plan #${i.id} from today`} onClick={() => plan(i.id, planFrom(today, defaultDuration(node.level)), 0)}>
-                  Plan
-                </button>
+                {!readOnly && (
+                  <button className="link" aria-label={`Plan #${i.id} from today`} onClick={() => plan(i.id, planFrom(today, defaultDuration(node.level)), 0)}>
+                    Plan
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -436,30 +524,44 @@ function Roadmap() {
         <div className="rm-scroll" ref={scrollRef} onScroll={syncViewport} data-testid="roadmap-scroll">
           <div className="rm-canvas" style={{ width: totalW }}>
             <div className="rm-row rm-axis">
-              {axisTicks(bounds, prefs.zoom).map((t) => (
+              {ticks.map((t) => (
                 <span key={t.date} className="rm-tick" style={{ left: x(t.date) }}>
                   {t.label}
                 </span>
               ))}
             </div>
-            <div className="rm-row rm-pis" role="group" aria-label="Program increments">
-              <span className="rm-row-label">PIs</span>
-              {pis
-                .filter((p) => p.start && p.finish)
-                .map((p) => {
-                  const r = { start: p.start!.slice(0, 10), end: p.finish!.slice(0, 10) };
-                  const current = r.start <= today && today <= r.end;
-                  return (
-                    <div key={p.path} className={"rm-pi" + (current ? " current" : "")} style={{ left: x(r.start), width: rangeDays(r) * ppd }} title={`${p.name}: ${shortDate(r.start)} – ${shortDate(r.end)}`}>
-                      {p.name}
-                    </div>
-                  );
-                })}
-            </div>
+            {bands.map((band) => (
+              <div
+                key={band.key}
+                className={`rm-row rm-pis rm-cadence-${band.owner.level}`}
+                role="group"
+                aria-label={band.aria}
+                data-level={band.owner.level}
+                style={{ ["--pi-color" as string]: LEVEL_COLOR[band.owner.level] } as CSSProperties}
+              >
+                <span className="rm-row-label">{band.label}</span>
+                {band.pis
+                  .filter((p) => p.start && p.finish && rangeInWindow(p.start.slice(0, 10), p.finish.slice(0, 10)))
+                  .map((p) => {
+                    const r = { start: p.start!.slice(0, 10), end: p.finish!.slice(0, 10) };
+                    const current = r.start <= today && today <= r.end;
+                    return (
+                      <div
+                        key={p.path}
+                        className={"rm-pi cadence" + (current ? " current" : "")}
+                        style={{ left: x(r.start), width: rangeDays(r) * ppd }}
+                        title={`${p.name}: ${shortDate(r.start)} – ${shortDate(r.end)}`}
+                      >
+                        {p.name}
+                      </div>
+                    );
+                  })}
+              </div>
+            ))}
             {node.level === "art" && (
               <div className="rm-row rm-iterations" role="group" aria-label="Iterations">
                 <span className="rm-row-label">Iterations</span>
-                {sprints.map((s) => {
+                {sprints.filter((s) => rangeInWindow(s.start!.slice(0, 10), s.finish!.slice(0, 10))).map((s) => {
                   const r = { start: s.start!.slice(0, 10), end: s.finish!.slice(0, 10) };
                   return (
                     <div key={s.path} className="rm-sprint" style={{ left: x(r.start), width: rangeDays(r) * ppd }} title={`${s.name}: ${shortDate(r.start)} – ${shortDate(r.end)}`}>
@@ -477,8 +579,9 @@ function Roadmap() {
                   className={"rm-milestone" + (m.nodeId !== node.id ? " inherited" : "")}
                   style={{ left: x(m.date) }}
                   aria-label={`Milestone ${m.title}`}
+                  aria-disabled={readOnly}
                   title={`${m.title} · ${shortDate(m.date)}${m.description ? `\n${m.description}` : ""}`}
-                  onClick={() => setMilestoneEdit(m)}
+                  onClick={() => !readOnly && setMilestoneEdit(m)}
                 >
                   <span className="rm-diamond" aria-hidden="true" />
                   <span className="rm-milestone-label">{m.title}</span>
@@ -528,10 +631,12 @@ function Roadmap() {
                   );
                 })}
               </svg>
-              {planned.map((i) => {
+              {planned.filter((i) => rendered(i.id)).map((i) => {
                 const p = place(i.id);
                 const t = i.fields[F.type];
                 const cat = data.category(t, i.fields[F.state]);
+                const parentId = parentIdOf(i);
+                const parent = parentId === null ? undefined : data.parents.get(parentId);
                 return (
                   <div
                     key={i.id}
@@ -547,8 +652,26 @@ function Roadmap() {
                     onMouseDown={(e) => startDrag(e, i.id, "move")}
                     onKeyDown={(e) => e.key === "Enter" && open(i.id)}
                   >
-                    <span className="rm-handle start" aria-label={`Resize start of #${i.id}`} onMouseDown={(e) => startDrag(e, i.id, "start")} />
+                    {!readOnly && (
+                      <span className="rm-handle start" aria-label={`Resize start of #${i.id}`} onMouseDown={(e) => startDrag(e, i.id, "start")} />
+                    )}
                     <div className="rm-card-title">
+                      {parent && (
+                        <button
+                          className="rm-parent"
+                          aria-label={`Open parent #${parent.id} ${parent.fields[F.title]}`}
+                          title={`${parent.fields[F.type]} #${parent.id}: ${parent.fields[F.title]}`}
+                          style={{ borderColor: typeColor(parent.fields[F.type]) }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void open(parent.id);
+                          }}
+                        >
+                          {parent.fields[F.title]}
+                        </button>
+                      )}
                       <span className="muted">#{i.id}</span> {i.fields[F.title]}
                     </div>
                     {extended && (
@@ -577,7 +700,9 @@ function Roadmap() {
                         />
                       );
                     })}
-                    <span className="rm-handle end" aria-label={`Resize end of #${i.id}`} onMouseDown={(e) => startDrag(e, i.id, "end")} />
+                    {!readOnly && (
+                      <span className="rm-handle end" aria-label={`Resize end of #${i.id}`} onMouseDown={(e) => startDrag(e, i.id, "end")} />
+                    )}
                   </div>
                 );
               })}
@@ -592,7 +717,11 @@ function Roadmap() {
             <i className="line" style={{ borderColor: CRITICALITY_COLOR[c] }} /> {CRITICALITY_LABEL[c]}
           </span>
         ))}
-        <span>Drag cards to re-plan, drag their edges to resize; drag unplanned items onto the timeline.</span>
+        <span>
+          {readOnly
+            ? "Read-only: click a card to open it."
+            : "Drag cards to re-plan, drag their edges to resize; drag unplanned items onto the timeline."}
+        </span>
       </div>
 
       {milestoneEdit && (

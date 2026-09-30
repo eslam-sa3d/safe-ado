@@ -39,6 +39,7 @@ function seedPlan() {
   Object.assign(fake.workItems.get(11)!.fields, { [START]: D(20) + "T00:00:00Z", [TARGET]: D(29) + "T00:00:00Z" });
 }
 
+const mainBar = () => screen.getAllByRole("search")[0];
 const card = (id: number) => screen.getByRole("button", { name: new RegExp(`^#${id} `) });
 const px = (el: HTMLElement, prop: "left" | "width" | "top") => parseFloat(el.style[prop]);
 
@@ -90,12 +91,13 @@ describe("Roadmap", () => {
     expect(px(card(12), "left") - px(c10, "left")).toBe(5 * PPD);
 
     const sidebar = screen.getByRole("complementary", { name: "Unplanned items" });
-    expect(within(sidebar).getByText("Unplanned (1)")).toBeInTheDocument();
-    expect(within(sidebar).getByText("Old feature")).toBeInTheDocument();
+    // Completed (#15 Closed) and Removed items are never offered for planning.
+    expect(within(sidebar).getByText("Unplanned (0)")).toBeInTheDocument();
+    expect(within(sidebar).queryByText("Old feature")).not.toBeInTheDocument();
     // Removed and other-ART items are excluded.
     expect(screen.queryByText("Legacy cleanup")).not.toBeInTheDocument();
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
-    expect(screen.getByText(/4 planned · 1 unplanned · 4 dependencies/)).toBeInTheDocument();
+    expect(screen.getByText(/4 planned · 0 unplanned · 4 dependencies/)).toBeInTheDocument();
 
     const wiql = callsTo(/wiql/)[0].body.query;
     expect(wiql).toContain(`[System.AreaPath] UNDER '${ART_A}'`);
@@ -249,7 +251,7 @@ describe("Roadmap", () => {
   it("disables lane moves while a filter is active but still allows time moves", async () => {
     seedPlan();
     await renderRoadmap();
-    fireEvent.change(screen.getByLabelText("Filter text"), { target: { value: "Payment" } });
+    fireEvent.change(within(mainBar()).getByLabelText("Filter text"), { target: { value: "Payment" } });
     expect(screen.getByText(/cards can be moved and resized in time, but not between lanes/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^#11 / })).not.toBeInTheDocument();
     dragCard(card(10), 2 * PPD, 3 * LANE_H);
@@ -275,6 +277,7 @@ describe("Roadmap", () => {
 
   it("plans an unplanned item dropped onto the timeline at the drop date", async () => {
     seedPlan();
+    fake.workItems.get(15)!.fields["System.State"] = "Active";
     await renderRoadmap();
     const origin = originOf(10);
     const lanes = screen.getByRole("region", { name: "Roadmap timeline" });
@@ -299,7 +302,7 @@ describe("Roadmap", () => {
 
   it("drops into lane 0 while filtered and uses the portfolio default duration", async () => {
     await renderRoadmap({ nodeId: "n-root" });
-    fireEvent.change(screen.getByLabelText("Filter text"), { target: { value: "Mobile" } });
+    fireEvent.change(within(mainBar()).getByLabelText("Filter text"), { target: { value: "Mobile" } });
     const lanes = screen.getByRole("region", { name: "Roadmap timeline" });
     lanes.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
     dropAt(lanes, "2", 0, 500);
@@ -315,10 +318,10 @@ describe("Roadmap", () => {
     Object.assign(fake.workItems.get(14)!.fields, { "Microsoft.VSTS.Common.StackRank": 1 });
     await renderRoadmap();
     const sidebar = screen.getByRole("complementary", { name: "Unplanned items" });
-    expect(within(sidebar).getAllByRole("listitem").map((li) => li.textContent!.match(/#(\d+)/)![1])).toEqual(["14", "12", "10", "11", "15"]);
-    fireEvent.change(within(sidebar).getByLabelText("Search unplanned"), { target: { value: "wall" } });
+    expect(within(sidebar).getAllByRole("listitem").map((li) => li.textContent!.match(/#(\d+)/)![1])).toEqual(["14", "12", "10", "11"]);
+    fireEvent.change(within(sidebar).getByLabelText("Filter text"), { target: { value: "wall" } });
     expect(within(sidebar).getAllByRole("listitem")).toHaveLength(1);
-    fireEvent.change(within(sidebar).getByLabelText("Search unplanned"), { target: { value: "11" } });
+    fireEvent.change(within(sidebar).getByLabelText("Filter text"), { target: { value: "11" } });
     expect(within(sidebar).getByText("Checkout UI")).toBeInTheDocument();
     fireEvent.click(within(sidebar).getByRole("button", { name: "Plan #11 from today" }));
     await waitFor(() => expect(savedMeta(11)).toMatchObject({ plannedStart: D(0), plannedEnd: D(20), lane: 0, assignedPiPaths: [PI2] }));
@@ -440,10 +443,10 @@ describe("Roadmap", () => {
     expect(screen.queryByLabelText("Hidden providers of #10")).not.toBeInTheDocument();
 
     // Filtering #11 out turns its lines into indicators on both neighbours.
-    fireEvent.change(screen.getByLabelText("Filter text"), { target: { value: "a" } });
-    fireEvent.click(within(screen.getByRole("group", { name: "Type filter" })).getByRole("checkbox", { name: "Feature" }));
-    fireEvent.change(screen.getByLabelText("Filter text"), { target: { value: "" } });
-    fireEvent.click(within(screen.getByRole("group", { name: "State filter" })).getByRole("checkbox", { name: "Active" }));
+    fireEvent.change(within(mainBar()).getByLabelText("Filter text"), { target: { value: "a" } });
+    fireEvent.click(within(within(mainBar()).getByRole("group", { name: "Type filter" })).getByRole("checkbox", { name: "Feature" }));
+    fireEvent.change(within(mainBar()).getByLabelText("Filter text"), { target: { value: "" } });
+    fireEvent.click(within(within(mainBar()).getByRole("group", { name: "State filter" })).getByRole("checkbox", { name: "Active" }));
     // Only #10 (Active) is left.
     expect(screen.queryByRole("button", { name: /^#11 / })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Hidden consumers of #10").getAttribute("title")).toBe("Hidden consumers of #10\nAt risk: #20\nHealthy: #11");
@@ -521,9 +524,10 @@ describe("Roadmap", () => {
     await waitFor(() => expect(card(10).dataset.start).toBe(D(0)));
     fail(/PATCH _apis\/wit\/workitems\/10/, 400, "TF: read-only");
     dragCard(card(10), 3 * PPD);
-    expect(await screen.findByText("Could not plan #10: TF: read-only")).toBeInTheDocument();
-    // The planned date itself was saved.
-    expect(savedMeta(10).plannedStart).toBe(D(3));
+    expect(await screen.findByText("Could not plan #10: TF: read-only. The planned dates were not changed.")).toBeInTheDocument();
+    // No partial state: the metadata write is rolled back.
+    await waitFor(() => expect(savedMeta(10).plannedStart).toBe(D(0)));
+    await waitFor(() => expect(card(10).dataset.start).toBe(D(0)));
   });
 
   it("skips the ADO date fields when the process lacks them or the field list fails", async () => {
