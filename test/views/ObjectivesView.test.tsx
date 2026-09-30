@@ -139,9 +139,9 @@ describe("PI Objectives view", () => {
   it("toggles committed/uncommitted", async () => {
     await renderObjectives({ nodeId: "n-red" });
     const row = screen.getByDisplayValue("Ship payments").closest("tr")!;
-    fireEvent.change(within(row).getByRole("combobox"), { target: { value: "u" } });
+    fireEvent.change(within(row).getByRole("combobox", { name: "Type" }), { target: { value: "u" } });
     await waitFor(() => expect(docs("objectives").find((d) => d.id === "o1").committed).toBe(false));
-    fireEvent.change(within(row).getByRole("combobox"), { target: { value: "c" } });
+    fireEvent.change(within(row).getByRole("combobox", { name: "Type" }), { target: { value: "c" } });
     await waitFor(() => expect(docs("objectives").find((d) => d.id === "o1").committed).toBe(true));
   });
 

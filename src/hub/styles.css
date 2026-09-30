@@ -661,3 +661,25 @@ tr.dep-resolved td { opacity: 0.5; }
 .quick-save { display: flex; gap: 8px; padding: 8px 16px 4px; border-top: 1px solid var(--border); margin-top: 4px; }
 .quick-save input { flex: 1; min-width: 0; }
 .readonly-banner { margin-bottom: 16px; }
+
+/* ---------- shell / help / a11y ---------- */
+.readonly-pill { background: var(--warning-bg); color: var(--warn); font-weight: 600; margin-left: 8px; }
+.help-wrap { position: relative; }
+.help-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 220px; background: var(--bg-callout); border-radius: var(--radius); box-shadow: var(--shadow-16); padding: 4px 0; display: grid; }
+.help-menu button { display: flex; align-items: center; gap: 8px; background: none; border: 0; text-align: left; padding: 6px 12px; color: var(--text); cursor: pointer; }
+.help-menu button:hover, .help-menu button:focus-visible { background: var(--alpha-6); }
+.help-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.help-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 12px; font-size: 12px; }
+.help-note kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; font-family: inherit; font-size: 11px; background: var(--bg); }
+.tour { position: relative; margin-bottom: 12px; padding: 12px 16px; max-width: 520px; background: var(--bg-callout); border-left: 4px solid var(--accent); border-radius: var(--radius); box-shadow: var(--shadow-16); }
+.tour-head { display: flex; align-items: center; gap: 8px; }
+.tour-head .icon { color: var(--accent); }
+.tour-count { margin-left: auto; }
+.tour-text { margin: 6px 0 10px; }
+.tour-actions { display: flex; align-items: center; gap: 8px; }
+.tree li[role="treeitem"] { outline: none; }
+.tree li[role="treeitem"]:focus-visible > .tree-row, .starred .tree-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.child-count { display: block; margin-top: 2px; }
+.hier-hint { display: inline-flex; color: var(--warn); cursor: help; }
+.hier-query { display: inline-flex; color: var(--text-2); padding: 0 2px; }
+.plain-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }

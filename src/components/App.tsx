@@ -23,7 +23,10 @@ import { TeamBoard } from "../views/TeamBoard";
 import { WorkItemList } from "../views/WorkItemList";
 import { ErrorBar, fmtDate, Icon, LevelPill, RefreshContext, Spinner, storage, useAsync } from "./common";
 import { SafeContext, SafeContextValue } from "./context";
+import { HelpMenu } from "./HelpMenu";
+import { OpenInBoardsButton, useNewItemShortcut } from "./shell";
 import { Sidebar } from "./Sidebar";
+import { Tour } from "./Tour";
 
 export type ViewKey =
   | "reports"
@@ -84,6 +87,7 @@ export function App() {
   const [can, setCan] = useState<Capabilities>(ALL_ALLOWED);
   const [tick, setTick] = useState(0);
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
+  const [tourKey, setTourKey] = useState(0);
   const urlReady = useRef(false);
 
   const refresh = useCallback(() => {
@@ -147,6 +151,9 @@ export function App() {
     if (urlReady.current && config) void writeUrlState({ node: nodeId || undefined, view, pi: pi?.identifier });
   }, [nodeId, view, pi?.identifier, config]);
 
+  const shortcutNode = config ? findNode(config.root, nodeId) ?? config.root : undefined;
+  useNewItemShortcut({ config: config!, node: shortcutNode!, pi, enabled: !!config && can.plan });
+
   const saveConfig = useCallback(async (next: SafeConfig) => {
     const saved = await persistConfig(next);
     setConfig(saved);
@@ -192,8 +199,15 @@ export function App() {
                 </span>
               ))}
               <LevelPill level={node.level} />
+              {!can.admin && !can.plan && (
+                <span className="pill readonly-pill" title="You can view this project's SAFe data but not change it">
+                  Read-only
+                </span>
+              )}
             </div>
             <div className="pi-picker">
+              <OpenInBoardsButton config={config} node={node} />
+              <HelpMenu onRestartTour={() => setTourKey((k) => k + 1)} />
               <span className="muted small updated" title={updatedAt.toLocaleString()}>
                 Updated {updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
@@ -229,6 +243,7 @@ export function App() {
 
           <section className="content">
             <ErrorBar message={pisState.error && `Could not load PIs: ${pisState.error}`} />
+            <Tour view={activeView} suppressed={firstRun && activeView === "setup"} restartKey={tourKey} />
             {firstRun && activeView !== "setup" && (
               <div className="msg msg-info">SAFe Ado is not configured for this project yet. Open Setup to get started.</div>
             )}

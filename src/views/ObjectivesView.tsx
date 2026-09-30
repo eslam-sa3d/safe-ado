@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { newId, objectivesStore } from "../api/data";
-import { LEVEL_COLOR, subtreeIds } from "../api/org";
+import { flatten, LEVEL_COLOR, parentOf, subtreeIds } from "../api/org";
 import { LEVEL_LABEL, OrgNode, PiObjective } from "../api/types";
 import { openWorkItem } from "../api/wit";
-import { ErrorBar, Progress, Spinner, useAsync, Icon } from "../components/common";
-import { useSafe } from "../components/context";
+import { ErrorBar, Info, Progress, Spinner, useAsync, Icon } from "../components/common";
+import { useCan, useSafe } from "../components/context";
 
 /** SAFe predictability: actual BV of all objectives / planned BV of committed objectives. */
 export function predictability(objectives: PiObjective[]): { planned: number; actual: number; pct: number | null } {
@@ -14,17 +14,20 @@ export function predictability(objectives: PiObjective[]): { planned: number; ac
 }
 
 export function ObjectivesView() {
-  const { node, pi } = useSafe();
+  const { node, pi, config } = useSafe();
+  const canPlan = useCan().plan;
   const [error, setError] = useState<string>();
   const { data, loading, error: loadError, setData } = useAsync(() => objectivesStore.list(), []);
 
   if (!pi) return null;
   if (loading && !data) return <Spinner />;
-  const all = (data ?? []).filter((o) => o.piPath === pi.path);
+  // Match by the PI's stable id first (survives renames), else by path for older documents.
+  const all = (data ?? []).filter((o) => (!!o.piId && o.piId === pi.identifier) || o.piPath === pi.path);
+  const nodes = new Map(flatten(config.root).map((n) => [n.id, n]));
 
   const save = async (o: PiObjective) => {
     try {
-      const saved = await objectivesStore.save(o);
+      const saved = await objectivesStore.save({ ...o, piId: pi.identifier, piPath: pi.path });
       setData((prev) => [...(prev ?? []).filter((x) => x.id !== saved.id), saved]);
     } catch (e: any) {
       setError(`Could not save objective: ${e.message}`);
@@ -48,6 +51,7 @@ export function ObjectivesView() {
   return (
     <div className="objectives-view">
       <ErrorBar message={loadError ?? error} onClose={() => setError(undefined)} />
+      {!canPlan && <Info>You have read-only access: objectives can be viewed but not changed.</Info>}
       <div className="summary-cards">
         <Stat label="Planned BV (committed)" value={total.planned} />
         <Stat label="Actual BV" value={total.actual} />
@@ -61,13 +65,17 @@ export function ObjectivesView() {
           key={g.id}
           node={g}
           objectives={all.filter((o) => (g.id === node.id ? o.nodeId === g.id : subtreeIds(g).has(o.nodeId)))}
-          editableNodeId={g.id}
+          editableNodeId={canPlan ? g.id : undefined}
+          all={all}
+          nodes={nodes}
+          parentOf={(nodeId) => parentOf(config.root, nodeId)}
           onSave={save}
           onRemove={remove}
           onAdd={() =>
             save({
               id: newId(),
               piPath: pi.path,
+              piId: pi.identifier,
               nodeId: g.id,
               title: "New objective",
               committed: true,
@@ -99,7 +107,12 @@ function Stat({ label, value, tone }: { label: string; value: string | number; t
 function ObjectiveGroup(props: {
   node: OrgNode;
   objectives: PiObjective[];
-  editableNodeId: string;
+  /** Unit whose objectives can be edited here; none when the user is read-only. */
+  editableNodeId?: string;
+  /** Every objective of the PI (to offer parent objectives and count children). */
+  all: PiObjective[];
+  nodes: Map<string, OrgNode>;
+  parentOf: (nodeId: string) => OrgNode | undefined;
   onSave: (o: PiObjective) => void;
   onRemove: (o: PiObjective) => void;
   onAdd: () => void;
@@ -117,9 +130,11 @@ function ObjectiveGroup(props: {
         <div style={{ width: 180 }}>
           <Progress done={p.actual} total={p.planned} label={p.pct === null ? "No committed BV" : `${p.pct}% predictability`} />
         </div>
-        <button className="btn" onClick={props.onAdd}>
-          <Icon name="Add" /> New objective
-        </button>
+        {props.editableNodeId && (
+          <button className="btn" onClick={props.onAdd}>
+            <Icon name="Add" /> New objective
+          </button>
+        )}
       </div>
       {sorted.length === 0 ? (
         <p className="muted pad">No objectives for this PI yet.</p>
@@ -132,19 +147,28 @@ function ObjectiveGroup(props: {
               <th title="Business value assigned by Business Owners (1–10)">Planned BV</th>
               <th title="Business value achieved at the end of the PI">Actual BV</th>
               <th>Features</th>
+              <th title="Objective of the parent unit (ART or Solution) this objective contributes to">Parent objective</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {sorted.map((o) => (
+            {sorted.map((o) => {
+              const unit = props.nodes.get(o.nodeId);
+              const parentUnit = props.parentOf(o.nodeId);
+              const showChildren = unit?.level === "art" || unit?.level === "solution";
+              return (
               <ObjectiveRow
                 key={o.id}
                 objective={o}
+                parentUnit={parentUnit}
+                parentOptions={parentUnit ? props.all.filter((x) => x.nodeId === parentUnit.id) : []}
+                childCount={showChildren ? props.all.filter((x) => x.parentId === o.id).length : undefined}
                 readOnly={o.nodeId !== props.editableNodeId}
                 onSave={props.onSave}
                 onRemove={props.onRemove}
               />
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -154,11 +178,18 @@ function ObjectiveGroup(props: {
 
 function ObjectiveRow({
   objective,
+  parentUnit,
+  parentOptions,
+  childCount,
   readOnly,
   onSave,
   onRemove,
 }: {
   objective: PiObjective;
+  parentUnit?: OrgNode;
+  parentOptions: PiObjective[];
+  /** Number of child objectives linked to this one (ART / Solution objectives only). */
+  childCount?: number;
   readOnly: boolean;
   onSave: (o: PiObjective) => void;
   onRemove: (o: PiObjective) => void;
@@ -182,9 +213,15 @@ function ObjectiveRow({
           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           onBlur={() => commit({})}
         />
+        {childCount !== undefined && (
+          <span className="muted small child-count" title="Objectives of child units linked to this objective">
+            {childCount} child objective{childCount === 1 ? "" : "s"}
+          </span>
+        )}
       </td>
       <td>
         <select
+          aria-label="Type"
           value={draft.committed ? "c" : "u"}
           disabled={readOnly}
           onChange={(e) => commit({ committed: e.target.value === "c" })}
@@ -242,6 +279,29 @@ function ObjectiveRow({
             </button>
           ))}
         </div>
+      </td>
+      <td>
+        {parentUnit ? (
+          <select
+            aria-label="Parent objective"
+            value={draft.parentId ?? ""}
+            disabled={readOnly || (parentOptions.length === 0 && !draft.parentId)}
+            onChange={(e) => commit({ parentId: e.target.value || undefined })}
+            title={`Objectives of ${parentUnit.name}`}
+          >
+            <option value="">— None —</option>
+            {parentOptions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+            {draft.parentId && !parentOptions.some((p) => p.id === draft.parentId) && (
+              <option value={draft.parentId}>(objective not in this PI)</option>
+            )}
+          </select>
+        ) : (
+          <span className="muted">—</span>
+        )}
       </td>
       <td>
         {!readOnly && (

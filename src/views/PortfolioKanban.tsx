@@ -3,8 +3,8 @@ import { scopeAreas } from "../api/org";
 import { baseFields, scopeQuery } from "../api/queries";
 import { F, WorkItem } from "../api/types";
 import { getFieldNames, getStates, openNewWorkItem, openWorkItem, queryWorkItems, setFields } from "../api/wit";
-import { Empty, ErrorBar, Spinner, useAsync, Icon } from "../components/common";
-import { useSafe } from "../components/context";
+import { Empty, ErrorBar, Info, Spinner, useAsync, Icon } from "../components/common";
+import { useCan, useSafe } from "../components/context";
 import { wsjfOf } from "../api/rules";
 
 /**
@@ -17,6 +17,7 @@ const wsjf = (item: WorkItem) => wsjfOf(item.fields, RROE_FIELD);
 
 export function PortfolioKanban() {
   const { config, node } = useSafe();
+  const canPlan = useCan().plan;
   const epic = config.types.epic;
   const areas = scopeAreas(node);
   const [sortByWsjf, setSortByWsjf] = useState(false);
@@ -60,14 +61,17 @@ export function PortfolioKanban() {
         <label className="check">
           <input type="checkbox" checked={sortByWsjf} onChange={(e) => setSortByWsjf(e.target.checked)} /> Sort by WSJF
         </label>
-        <button className="btn" onClick={() => openNewWorkItem(epic, { [F.area]: areas[0] }).then(() => reload(true))}>
-          <Icon name="Add" /> New {epic}
-        </button>
+        {canPlan && (
+          <button className="btn" onClick={() => openNewWorkItem(epic, { [F.area]: areas[0] }).then(() => reload(true))}>
+            <Icon name="Add" /> New {epic}
+          </button>
+        )}
         <button className="btn" onClick={() => reload()}>
           <Icon name="Refresh" /> Refresh
         </button>
       </div>
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
+      {!canPlan && <Info>You have read-only access: {epic}s can be viewed but not moved or created here.</Info>}
       <div className="kanban">
         {data?.states.map((s) => {
           const col = sorted(data.items.filter((i) => i.fields[F.state] === s.name));
@@ -78,6 +82,7 @@ export function PortfolioKanban() {
               aria-label={`${s.name} column`}
               className={"kanban-col" + (over === s.name ? " drop-over" : "")}
               onDragOver={(e) => {
+                if (!canPlan) return;
                 e.preventDefault();
                 setOver(s.name);
               }}
@@ -85,6 +90,7 @@ export function PortfolioKanban() {
               onDrop={(e) => {
                 e.preventDefault();
                 setOver(null);
+                if (!canPlan) return;
                 const id = Number(e.dataTransfer.getData("text/plain"));
                 const item = data.items.find((i) => i.id === id);
                 if (item && item.fields[F.state] !== s.name) move(id, s.name);
@@ -101,7 +107,7 @@ export function PortfolioKanban() {
                     key={i.id}
                     className="card"
                     style={{ borderLeftColor: "#ff7b00" }}
-                    draggable
+                    draggable={canPlan}
                     onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i.id))}
                     onClick={() => openWorkItem(i.id).then(() => reload(true))}
                   >

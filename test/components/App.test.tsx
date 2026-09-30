@@ -2,7 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../../src/components/App";
 import { useSafe } from "../../src/components/context";
-import { callsTo, dataStore, fake, makeConfig, PI1, PI2 } from "../fakeAdo";
+import { callsTo, dataManager, dataStore, fake, makeConfig, PI1, PI2 } from "../fakeAdo";
+import * as sdk from "../sdkMock";
 import { PREFS_KEY, renderApp } from "../utils";
 
 const tabs = () => screen.getAllByRole("tab").map((t) => t.textContent);
@@ -237,3 +238,62 @@ describe("App shell", () => {
 function seed() {
   dataStore.values.set("config-p1", makeConfig());
 }
+
+describe("App shell: help, tour, shortcuts, read-only", () => {
+  const PROJECT_WRITE = "52d39943-cb85-4d7f-8fa8-c6baac873819/2";
+  const AREA_WRITE = "83e28ad4-2d72-4ceb-97b0-c7726d5502c3/32";
+  const tour = () => screen.queryByRole("region", { name: "Guided tour" });
+
+  it("shows the tour for a first-time view and restarts it from the Help menu", async () => {
+    await renderApp({ nodeId: "n-arta", view: "organization" });
+    expect(await screen.findByRole("region", { name: "Guided tour" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Skip tour" }));
+    expect(tour()).toBeNull();
+    await waitFor(() => expect(dataStore.values.get(`toursSeen-${fake.projectId}`)).toEqual(["organization"]));
+    fireEvent.click(screen.getByRole("button", { name: /Help/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Restart tour" }));
+    expect(await screen.findByRole("region", { name: "Guided tour" })).toBeInTheDocument();
+  });
+
+  it("does not show the tour on Setup during the first run", async () => {
+    await renderApp({ config: null, view: "board" });
+    expect(screen.getByRole("tab", { name: "Setup" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(dataManager.getValue).toHaveBeenCalledWith(`toursSeen-${fake.projectId}`, expect.anything()));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(tour()).toBeNull();
+  });
+
+  it("offers Open in Azure Boards for the selected unit", async () => {
+    sdk.hostNavigation.openNewWindow.mockClear();
+    await renderApp({ nodeId: "n-red", view: "organization" });
+    fireEvent.click(screen.getByRole("button", { name: "Open in Azure Boards" }));
+    await waitFor(() => expect(sdk.hostNavigation.openNewWindow).toHaveBeenCalledWith(`${fake.baseUrl}/Fabrikam/_backlogs/backlog/Team%20Red`, ""));
+  });
+
+  it("opens a new work item with 'c' for the selected unit in the current PI", async () => {
+    await renderApp({ nodeId: "n-arta", view: "organization" });
+    await waitFor(() => expect((screen.getByLabelText("PI") as HTMLSelectElement).value).toBe(PI2));
+    fireEvent.keyDown(document.body, { key: "c" });
+    await waitFor(() =>
+      expect(sdk.workItemForm.openNewWorkItem).toHaveBeenCalledWith("Feature", { "System.AreaPath": "Fabrikam\\ART A", "System.IterationPath": PI2 })
+    );
+  });
+
+  it("shows a Read-only pill and disables the shortcut without admin and plan rights", async () => {
+    fake.permissions[PROJECT_WRITE] = false;
+    fake.permissions[AREA_WRITE] = false;
+    await renderApp({ nodeId: "n-arta", view: "organization" });
+    expect(await screen.findByText("Read-only", { selector: ".readonly-pill" })).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "c" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sdk.workItemForm.openNewWorkItem).not.toHaveBeenCalled();
+  });
+
+  it("has no Read-only pill when the user can plan", async () => {
+    fake.permissions[PROJECT_WRITE] = false;
+    await renderApp({ nodeId: "n-arta", view: "organization" });
+    await waitFor(() => expect(callsTo(/_apis\/permissions/).length).toBe(3));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("Read-only", { selector: ".readonly-pill" })).toBeNull();
+  });
+});

@@ -4,8 +4,8 @@ import { flatten, subtreeIds } from "../api/org";
 import { exposure, Exposure, EXPOSURE_COLOR, EXPOSURE_RANK, ImpactLevel, IMPACTS, PROBABILITIES, Probability } from "../api/risk";
 import { LEVEL_LABEL, Risk, ROAM_STATUSES, RoamStatus } from "../api/types";
 import { openWorkItem } from "../api/wit";
-import { ErrorBar, Field, Modal, Spinner, useAsync, Icon } from "../components/common";
-import { useSafe } from "../components/context";
+import { ErrorBar, Field, Info, Modal, Spinner, useAsync, Icon } from "../components/common";
+import { useCan, useSafe } from "../components/context";
 
 const ROAM_HINT: Record<RoamStatus, string> = {
   Unroamed: "Raised, not yet discussed",
@@ -14,6 +14,23 @@ const ROAM_HINT: Record<RoamStatus, string> = {
   Accepted: "Nothing more can be done",
   Mitigated: "Plan in place to reduce impact",
 };
+
+/** Every work item a risk links to: the list plus the legacy single `workItemId`, without duplicates. */
+export function riskWorkItemIds(r: Risk): number[] {
+  return Array.from(new Set([...(r.workItemIds ?? []), ...(r.workItemId ? [r.workItemId] : [])]));
+}
+
+/** Parses "12, 34 56" into positive integer ids (duplicates dropped). */
+export function parseIds(text: string): number[] {
+  return Array.from(
+    new Set(
+      text
+        .split(/[,\s;]+/)
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0)
+    )
+  );
+}
 
 export const riskExposure = (r: Risk) => exposure(r.probability, r.impactLevel);
 export const residualExposure = (r: Risk) => exposure(r.residualProbability, r.residualImpact);
@@ -39,6 +56,7 @@ function ExposureChip({ label, value }: { label: string; value: Exposure }) {
 /** ROAM board for PI risks, scoped to the selected node and its descendants. */
 export function RisksView() {
   const { node, pi, config } = useSafe();
+  const canPlan = useCan().plan;
   const [allPis, setAllPis] = useState(false);
   const [editing, setEditing] = useState<Risk | null>(null);
   const [error, setError] = useState<string>();
@@ -48,12 +66,14 @@ export function RisksView() {
 
   if (loading && !data) return <Spinner />;
   const scope = subtreeIds(node);
-  const risks = (data ?? []).filter((r) => scope.has(r.nodeId) && (allPis || r.piPath === pi?.path));
+  const inPi = (r: Risk) => !!pi && ((!!r.piId && r.piId === pi.identifier) || r.piPath === pi.path);
+  const risks = (data ?? []).filter((r) => scope.has(r.nodeId) && (allPis || inPi(r)));
   const nodeName = new Map(flatten(config.root).map((n) => [n.id, n.name]));
 
   const save = async (r: Risk) => {
     try {
-      const saved = await risksStore.save(r);
+      // Record the PI's stable id with the risk so it survives PI renames.
+      const saved = await risksStore.save(inPi(r) && !r.piId ? { ...r, piId: pi!.identifier } : r);
       setData((prev) => [...(prev ?? []).filter((x) => x.id !== saved.id), saved]);
       setEditing(null);
     } catch (e: any) {
@@ -82,6 +102,7 @@ export function RisksView() {
         <label className="check">
           <input type="checkbox" checked={allPis} onChange={(e) => setAllPis(e.target.checked)} /> All PIs
         </label>
+        {canPlan && (
         <button
           className="btn primary"
           disabled={!pi}
@@ -89,6 +110,7 @@ export function RisksView() {
             setEditing({
               id: newId(),
               piPath: pi!.path,
+              piId: pi!.identifier,
               nodeId: node.id,
               title: "",
               description: "",
@@ -101,8 +123,10 @@ export function RisksView() {
         >
           <Icon name="Add" /> New risk
         </button>
+        )}
       </div>
       <ErrorBar message={loadError ?? error} onClose={() => setError(undefined)} />
+      {!canPlan && <Info>You have read-only access: risks can be viewed but not changed.</Info>}
       <div className="roam">
         {ROAM_STATUSES.map((status) => {
           const col = risks.filter((r) => r.status === status);
@@ -114,6 +138,7 @@ export function RisksView() {
               aria-label={`${status} risks`}
               className={"roam-col" + (over === status ? " drop-over" : "")}
               onDragOver={(e) => {
+                if (!canPlan) return;
                 e.preventDefault();
                 setOver(status);
               }}
@@ -121,6 +146,7 @@ export function RisksView() {
               onDrop={(e) => {
                 e.preventDefault();
                 setOver(null);
+                if (!canPlan) return;
                 const r = risks.find((x) => x.id === e.dataTransfer.getData("text/plain"));
                 if (r && r.status !== status) save({ ...r, status });
               }}
@@ -134,7 +160,7 @@ export function RisksView() {
                 <div
                   key={r.id}
                   className={"card risk impact-" + r.impact.toLowerCase()}
-                  draggable
+                  draggable={canPlan}
                   onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)}
                   onClick={() => setEditing(r)}
                 >
@@ -147,17 +173,18 @@ export function RisksView() {
                     </span>
                     <span className="muted">{nodeName.get(r.nodeId)}</span>
                     {r.owner && <span className="muted">· {r.owner}</span>}
-                    {r.workItemId ? (
+                    {riskWorkItemIds(r).map((id) => (
                       <button
+                        key={id}
                         className="link small"
                         onClick={(e) => {
                           e.stopPropagation();
-                          openWorkItem(r.workItemId!);
+                          openWorkItem(id);
                         }}
                       >
-                        #{r.workItemId}
+                        #{id}
                       </button>
-                    ) : null}
+                    ))}
                   </div>
                 </div>
               ))}
@@ -169,6 +196,7 @@ export function RisksView() {
         <RiskDialog
           risk={editing}
           isNew={!(data ?? []).some((r) => r.id === editing.id)}
+          readOnly={!canPlan}
           scopeNodes={flatten(node)}
           onClose={() => setEditing(null)}
           onSave={save}
@@ -182,18 +210,34 @@ export function RisksView() {
 function RiskDialog(props: {
   risk: Risk;
   isNew: boolean;
+  readOnly?: boolean;
   scopeNodes: ReturnType<typeof flatten>;
   onClose: () => void;
   onSave: (r: Risk) => void;
   onDelete: (r: Risk) => void;
 }) {
   const [r, setR] = useState(props.risk);
+  const [links, setLinks] = useState(riskWorkItemIds(props.risk).join(", "));
   const set = <K extends keyof Risk>(k: K, v: Risk[K]) => setR({ ...r, [k]: v });
+  const readOnly = !!props.readOnly;
+  const submit = () => {
+    const ids = parseIds(links);
+    // workItemId mirrors the first link so older readers still find one.
+    props.onSave({ ...r, workItemIds: ids.length ? ids : undefined, workItemId: ids[0] });
+  };
   return (
     <Modal
-      title={props.isNew ? "New risk" : "Edit risk"}
+      title={readOnly ? "Risk details" : props.isNew ? "New risk" : "Edit risk"}
       onClose={props.onClose}
       footer={
+        readOnly ? (
+          <>
+            <span className="spacer" />
+            <button className="btn" onClick={props.onClose}>
+              Close
+            </button>
+          </>
+        ) : (
         <>
           {!props.isNew && (
             <button className="btn danger" onClick={() => props.onDelete(props.risk)}>
@@ -204,12 +248,14 @@ function RiskDialog(props: {
           <button className="btn" onClick={props.onClose}>
             Cancel
           </button>
-          <button className="btn primary" disabled={!r.title.trim()} onClick={() => props.onSave(r)}>
+          <button className="btn primary" disabled={!r.title.trim()} onClick={submit}>
             Save
           </button>
         </>
+        )
       }
     >
+      <fieldset className="plain-fieldset" disabled={readOnly}>
       <Field label="Title">
         <input autoFocus value={r.title} onChange={(e) => set("title", e.target.value)} />
       </Field>
@@ -296,13 +342,10 @@ function RiskDialog(props: {
           <input value={r.owner} onChange={(e) => set("owner", e.target.value)} />
         </Field>
       </div>
-      <Field label="Linked work item ID (optional)">
-        <input
-          type="number"
-          value={r.workItemId ?? ""}
-          onChange={(e) => set("workItemId", e.target.value ? Number(e.target.value) : undefined)}
-        />
+      <Field label="Linked work item IDs (optional)">
+        <input value={links} placeholder="e.g. 123, 456" onChange={(e) => setLinks(e.target.value)} />
       </Field>
+      </fieldset>
     </Modal>
   );
 }
