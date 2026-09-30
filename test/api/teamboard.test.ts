@@ -42,7 +42,7 @@ const cat = (_t: string, s: string) => (s === "Closed" ? "Completed" : s === "Re
 
 describe("teamboard logic", () => {
   it("computes today and iteration status", () => {
-    expect(todayIso(new Date(2026, 2, 4, 23, 30))).toBe("2026-03-04");
+    expect(todayIso(new Date(2026, 2, 4, 23, 30))).toBe("2026-03-04"); // local calendar date
     expect(todayIso()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const sprint = { start: "2026-03-01T00:00:00Z", finish: "2026-03-10T00:00:00Z" };
     expect(iterationStatus(sprint, "2026-03-11")).toBe("past");

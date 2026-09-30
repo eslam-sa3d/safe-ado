@@ -1,18 +1,30 @@
 import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { capacityId, capacityStore, emptyMeta, metaStore } from "../api/data";
-import { CRITICALITY_COLOR, CRITICALITY_LABEL, sprintIndex } from "../api/dependencies";
-import { applyFilter, EMPTY_FILTER, facetOptions, ItemFilter, withWiqlFilter } from "../api/filters";
-import { parentOf, scopeAreas } from "../api/org";
+import { CRITICALITY_COLOR, CRITICALITY_LABEL, dependencyLinkTypes, DependencyLinkTypes, sprintIndex } from "../api/dependencies";
+import { applyFilter, EMPTY_FILTER, ExtraFacet, facetOptions, isFilterActive, ItemFilter, wiqlSuffix, withWiqlFilter } from "../api/filters";
+import { findNode, parentOf, scopeAreas } from "../api/org";
 import { baseFields, scopeQuery } from "../api/queries";
+import { DEFAULT_RROE_FIELD } from "../api/rules";
 import {
+  assignedPiNames,
   assignMeta,
+  assignPiMeta,
+  backlogMarkers,
   BoardDependency,
   boardDependencies,
+  boardFacets,
   buildLanes,
+  childIds,
+  CRITICALITY_RANK,
   decodeDrag,
+  DragPayload,
+  EdgeHint,
+  edgeHints,
   encodeDrag,
   externalIds,
+  externalPlacement,
   groupByArea,
+  INDEPENDENT,
   isOpen,
   iterationStatus,
   IterationStatus,
@@ -20,6 +32,9 @@ import {
   moveChanges,
   ownParentId,
   parentMap,
+  piOf,
+  Placement,
+  rolledOverItems,
   searchItems,
   SortKey,
   sortItems,
@@ -46,6 +61,8 @@ import {
 import {
   addLink,
   createWorkItem,
+  getFieldNames,
+  getRevisions,
   getStateCategories,
   getWorkItems,
   getWorkItemTypes,
@@ -57,7 +74,7 @@ import {
 } from "../api/wit";
 import { FilterBar } from "../components/FilterBar";
 import { CATEGORY_COLOR, ErrorBar, fmtDate, Info, lastSegment, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
-import { useSafe } from "../components/context";
+import { useCan, useSafe } from "../components/context";
 
 /**
  * Team Planning Board (Agile Hive's "breakout board"). Columns are the PI's iterations with
@@ -67,6 +84,10 @@ import { useSafe } from "../components/context";
  *
  * "Remove from board" moves a story back to `config.piRootIteration` — the iteration above all
  * PIs — so it leaves every PI and reappears in the team's Unplanned list.
+ *
+ * Completed sprints show translucent "Rolled over" shadow cards for items that were in them and
+ * moved on to a later sprint (from the revision history). Cards whose dependency partner is not
+ * drawn get a coloured edge marker (left = providers, right = consumers).
  */
 export function TeamBoard() {
   const { node, pi } = useSafe();
@@ -79,32 +100,53 @@ export function TeamBoard() {
 
 type Category = (type: string, state: string) => string;
 type Layout = "compact" | "extended";
+type Hint = "valid" | "invalid" | undefined;
+/** What is being dragged (the type decides which lanes accept a feature). */
+type DragInfo = DragPayload & { type?: string };
 
 interface BlockData {
   stories: WorkItem[];
   features: WorkItem[];
   parents: Map<number, number>;
   external: WorkItem[];
+  /** Placement of external items (own sprint, children's sprint or target date). */
+  placement: Map<number, Placement>;
 }
 
 interface Ctx {
   config: SafeConfig;
   pi: ProgramIncrement;
+  pis: ProgramIncrement[];
   types: string[];
   category: Category;
   metas: Map<number, WorkItemMeta>;
   artAreas: string[];
+  link: DependencyLinkTypes;
+}
+
+interface SiblingSummary {
+  critical?: number;
+  error?: string;
+  denied?: boolean;
+}
+
+interface Shadow {
+  item: WorkItem;
+  sprintIndex: number;
 }
 
 const ALL_CRITICALITIES: Criticality[] = ["healthy", "atRisk", "critical", "resolved"];
 const [loadLayout, saveLayout] = storage<Layout>("safe-ado-teamboard-layout", "compact");
+const DAY = 86_400_000;
+const isDenied = (e: any) => e?.status === 401 || e?.status === 403;
+const notRemoved = (category: Category) => (i: WorkItem) => category(i.fields[F.type], i.fields[F.state]) !== "Removed";
 
 /** Loads one team's stories in the PI, their Feature parents, assigned features and external dependency ends. */
 async function loadBlock(ctx: Ctx, team: OrgNode, filter: ItemFilter): Promise<BlockData> {
   const { config, pi, types, category, metas } = ctx;
-  const stories = (
-    await queryWorkItems(withWiqlFilter(scopeQuery(types, scopeAreas(team), pi.path), filter), [], true)
-  ).filter((s) => category(s.fields[F.type], s.fields[F.state]) !== "Removed");
+  const stories = (await queryWorkItems(withWiqlFilter(scopeQuery(types, scopeAreas(team), pi.path), filter), [], true)).filter(
+    notRemoved(category)
+  );
 
   const featureIds = new Set<number>();
   stories.forEach((s) => {
@@ -122,19 +164,95 @@ async function loadBlock(ctx: Ctx, team: OrgNode, filter: ItemFilter): Promise<B
       )
     : [];
 
-  const extIds = externalIds(stories);
-  const external = extIds.length ? await getWorkItems(extIds, baseFields(config)) : [];
-  return { stories, features, parents: parentMap(stories, features), external };
+  // External dependency ends, with relations so features / epics can be placed by their children.
+  const extIds = externalIds(stories, ctx.link);
+  const external = extIds.length ? await getWorkItems(extIds, undefined, true) : [];
+  const storyLevel = new Set(types);
+  const kids = new Map(external.filter((e) => !storyLevel.has(e.fields[F.type])).map((e) => [e.id, childIds(e)]));
+  const allKids = Array.from(new Set(Array.from(kids.values()).flat()));
+  const childItems = allKids.length ? await getWorkItems(allKids, [F.id, F.iteration]) : [];
+  const childIteration = new Map(childItems.map((c) => [c.id, c.fields[F.iteration] as string | undefined]));
+  const placement = new Map(
+    external.map((e) => [e.id, externalPlacement(e, pi.sprints, (kids.get(e.id) ?? []).map((k) => childIteration.get(k)))])
+  );
+  return { stories, features, parents: parentMap(stories, features), external, placement };
+}
+
+function blockDependencies(block: BlockData, ctx: Ctx): BoardDependency[] {
+  const lookup = new Map([...block.external, ...block.stories].map((i) => [i.id, i]));
+  const sprintPaths = ctx.pi.sprints.map((s) => s.path);
+  return boardDependencies(block.stories, lookup, sprintPaths, ctx.category, ctx.link, (id) => block.placement.get(id)?.index);
+}
+
+/**
+ * Light query per sibling team (its stories in the PI with relations) to show the number of
+ * unresolved critical dependencies without expanding the block. 401/403 marks "no access".
+ */
+async function loadSiblingSummaries(ctx: Ctx, siblings: OrgNode[], own: BlockData, filter: ItemFilter): Promise<Map<string, SiblingSummary>> {
+  const sprintPaths = ctx.pi.sprints.map((s) => s.path);
+  const results = await Promise.allSettled(
+    siblings.map((s) => queryWorkItems(withWiqlFilter(scopeQuery(ctx.types, scopeAreas(s), ctx.pi.path), filter), [], true))
+  );
+  const lists = results.map((r) => (r.status === "fulfilled" ? r.value.filter(notRemoved(ctx.category)) : undefined));
+  const lookup = new Map<number, WorkItem>([...own.external, ...own.stories].map((i) => [i.id, i]));
+  lists.forEach((l) => l?.forEach((i) => lookup.set(i.id, i)));
+  const missing = Array.from(new Set(lists.flatMap((l) => (l ? externalIds(l, ctx.link) : [])))).filter((id) => !lookup.has(id));
+  // Ends we can't read are rated "at risk", never critical.
+  const extra = missing.length ? await getWorkItems(missing, [F.id, F.type, F.state, F.iteration]).catch(() => [] as WorkItem[]) : [];
+  extra.forEach((i) => lookup.set(i.id, i));
+  const out = new Map<string, SiblingSummary>();
+  siblings.forEach((s, i) => {
+    const r = results[i];
+    if (r.status === "rejected") {
+      out.set(s.id, { error: String(r.reason?.message ?? r.reason), denied: isDenied(r.reason) });
+      return;
+    }
+    const deps = boardDependencies(lists[i]!, lookup, sprintPaths, ctx.category, ctx.link);
+    out.set(s.id, { critical: deps.filter((d) => d.criticality === "critical").length });
+  });
+  return out;
+}
+
+/** Items that were in a completed sprint of the team and have since moved to a later sprint. */
+async function loadRolledOver(ctx: Ctx, team: OrgNode, past: boolean[]): Promise<Shadow[]> {
+  if (!team.areaPath || !past.some(Boolean)) return [];
+  const sprintPaths = ctx.pi.sprints.map((s) => s.path);
+  const since = ctx.pi.start ? new Date(Date.parse(ctx.pi.start) - 90 * DAY).toISOString() : undefined;
+  const revisions = await getRevisions(ctx.types, [F.iteration, F.area], since);
+  const candidates = Array.from(
+    new Set(
+      revisions
+        .filter((r) => {
+          const i = sprintIndex(r.fields[F.iteration], sprintPaths);
+          return i >= 0 && past[i];
+        })
+        .map((r) => r.id)
+    )
+  );
+  if (!candidates.length) return [];
+  const current = new Map((await getWorkItems(candidates, baseFields(ctx.config))).filter(notRemoved(ctx.category)).map((i) => [i.id, i]));
+  const piIndex = ctx.pis.findIndex((p) => p.path === ctx.pi.path);
+  const laterOutside = (iteration: string | undefined) => {
+    const other = piOf(iteration, ctx.pis);
+    return !!other && piIndex >= 0 && ctx.pis.indexOf(other) > piIndex;
+  };
+  return rolledOverItems(revisions, current, sprintPaths, past, team.areaPath, laterOutside).map((r) => ({
+    item: current.get(r.id)!,
+    sprintIndex: r.sprintIndex,
+  }));
 }
 
 function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }) {
-  const { config } = useSafe();
+  const { config, pis } = useSafe();
+  const can = useCan();
+  const readOnly = !can.plan;
   const art = parentOf(config.root, team.id);
   const siblings = (art?.children ?? []).filter((c) => c.id !== team.id && c.level === "team");
   const artAreas = art ? scopeAreas(art) : scopeAreas(team);
   const sprintPaths = pi.sprints.map((s) => s.path);
   const today = todayIso();
   const status = pi.sprints.map((s) => iterationStatus(s, today));
+  const past = status.map((s) => s === "past");
 
   const [filter, setFilter] = useState<ItemFilter>(EMPTY_FILTER);
   const [laneFilter, setLaneFilter] = useState<string[]>([]);
@@ -146,6 +264,8 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const [backlogToken, setBacklogToken] = useState(0);
   const [creating, setCreating] = useState<{ lane: string; sprint: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState<DragInfo | null>(null);
+  const wiqlKey = wiqlSuffix(filter);
 
   const { data, loading, error, reload, setData } = useAsync(async () => {
     const types = storyLevelTypes(config.types.story, (await getWorkItemTypes()).map((t) => t.name));
@@ -155,10 +275,20 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
       getStateCategories([...types, config.types.feature]),
     ]);
     const metas = new Map(metaDocs.map((m) => [m.workItemId, m]));
-    const ctx: Ctx = { config, pi, types, category, metas, artAreas };
+    const ctx: Ctx = { config, pi, pis, types, category, metas, artAreas, link: dependencyLinkTypes(config) };
     const block = await loadBlock(ctx, team, filter);
     return { ctx, block, caps: new Map(caps.map((c) => [c.id, c])) };
-  }, [team.id, pi.path, filter.wiql]);
+  }, [team.id, pi.path, wiqlKey]);
+
+  const block = data?.block;
+  const ctx = data?.ctx;
+
+  // Sibling critical counts and rolled-over shadows load after the board, whenever it reloads.
+  const summaries = useAsync(
+    async () => (block && ctx && siblings.length ? loadSiblingSummaries(ctx, siblings, block, filter) : new Map<string, SiblingSummary>()),
+    [ctx]
+  );
+  const rolled = useAsync(async () => (ctx ? loadRolledOver(ctx, team, past) : []), [ctx]);
 
   const setLayout = (l: Layout) => {
     setLayoutState(l);
@@ -167,19 +297,16 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const isCollapsed = (key: string) => collapse.over[key] ?? collapse.all;
   const toggleLane = (key: string) => setCollapse((c) => ({ ...c, over: { ...c.over, [key]: !(c.over[key] ?? c.all) } }));
 
-  const block = data?.block;
-  const ctx = data?.ctx;
   const lanes = useMemo(
     () => (block && ctx ? buildLanes(block.stories, block.features, block.parents, ctx.metas, team.id, pi.path) : []),
     [block, ctx, team.id, pi.path]
   );
   const loads = useMemo(() => (block ? sprintLoads(block.stories, sprintPaths, config.storyPointsField) : []), [block, sprintPaths.join("|")]);
-
-  const deps: BoardDependency[] = useMemo(() => {
-    if (!block || !ctx) return [];
-    const lookup = new Map([...block.external, ...block.stories].map((i) => [i.id, i]));
-    return boardDependencies(block.stories, lookup, sprintPaths, ctx.category);
-  }, [block, ctx]);
+  const deps: BoardDependency[] = useMemo(() => (block && ctx ? blockDependencies(block, ctx) : []), [block, ctx]);
+  const facets: ExtraFacet[] = useMemo(
+    () => (block && ctx ? boardFacets(block.stories, block.features, block.parents, ctx.metas, pis) : []),
+    [block, ctx, pis]
+  );
 
   // --- dependency lines ------------------------------------------------------------------------
   const gridRef = useRef<HTMLDivElement>(null);
@@ -214,6 +341,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
       setActionError(`${label}: ${e?.message ?? e}`);
     } finally {
       setBusy(false);
+      // Reloading the board also reloads expanded sibling blocks and their counts (new ctx).
       reload(true);
       setBacklogToken((t) => t + 1);
     }
@@ -223,13 +351,12 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
     metaStore.save(change(data!.ctx.metas.get(id) ?? emptyMeta(id)));
 
   const onDrop = (raw: string, lane: Lane | null, sprint: Sprint | null) => {
+    setDragging(null);
     const payload = decodeDrag(raw);
-    if (!payload || !data) return;
+    if (!payload || !data || readOnly) return;
     if (payload.kind === "feature") {
       if (lanes.some((l) => l.feature?.id === payload.id && l.assigned)) return;
-      void run(`Could not add swimlane for #${payload.id}`, () =>
-        saveMeta(payload.id, (m) => assignMeta(m, team.id, pi.path))
-      );
+      void run(`Could not add swimlane for #${payload.id}`, () => saveMeta(payload.id, (m) => assignMeta(m, team.id, pi.path)));
       return;
     }
     if (!lane || !sprint) return;
@@ -270,6 +397,8 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
       const created = await createWorkItem(values.type, fields);
       setCreating(null);
       if (lane.feature) await addLink(created.id, lane.feature.id, LINK.parent);
+      // The item is planned in this PI: record it as an Assigned PI like Agile Hive does.
+      await metaStore.save(assignPiMeta(emptyMeta(created.id), pi));
     });
 
   const saveCapacity = async (sprint: Sprint, capacity: number) => {
@@ -287,7 +416,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   if (loading && !data) return <Spinner label="Loading team planning board…" />;
   if (!data || !block || !ctx) return <ErrorBar message={error} />;
 
-  const visibleStories = new Set(applyFilter(block.stories, filter).map((s) => s.id));
+  const visibleStories = new Set(applyFilter(block.stories, filter, facets).map((s) => s.id));
   const laneOptions = lanes.map((l) => ({ key: l.key, title: l.feature ? `#${l.feature.id} ${l.title}` : l.title }));
   const laneVisible = (l: Lane) => laneFilter.length === 0 || laneFilter.includes(l.key);
   const featureTitle = (id: number | undefined) => block.features.find((f) => f.id === id)?.fields[F.title] as string | undefined;
@@ -296,6 +425,21 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
   const cols = `220px repeat(${pi.sprints.length}, minmax(200px, 1fr))`;
   const plannedCount = block.stories.length;
   const onBoard = new Set(block.stories.map((s) => s.id));
+  const hints = showDeps ? edgeHints(shownDeps, (id) => rects.has(id)) : new Map<number, EdgeHint[]>();
+  const shadows = rolled.data ?? [];
+  const laneOfShadow = (s: Shadow) => {
+    const parent = block.parents.get(s.item.id);
+    const lane = lanes.find((l) => l.feature?.id === parent);
+    return lane ? lane.key : INDEPENDENT;
+  };
+
+  const cellHint = (lane: Lane, locked: boolean): Hint => {
+    if (!dragging) return undefined;
+    if (locked) return "invalid";
+    if (dragging.kind === "story") return "valid";
+    return lane.feature && lane.feature.fields[F.type] === (dragging.type ?? config.types.feature) ? "valid" : "invalid";
+  };
+  const dropZoneHint: Hint = dragging ? (dragging.kind === "feature" ? "valid" : "invalid") : undefined;
 
   const cardProps = {
     category: ctx.category,
@@ -337,9 +481,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                   <input
                     type="checkbox"
                     checked={laneFilter.includes(o.key)}
-                    onChange={() =>
-                      setLaneFilter((f) => (f.includes(o.key) ? f.filter((k) => k !== o.key) : [...f, o.key]))
-                    }
+                    onChange={() => setLaneFilter((f) => (f.includes(o.key) ? f.filter((k) => k !== o.key) : [...f, o.key]))}
                   />{" "}
                   {o.title}
                 </label>
@@ -350,7 +492,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
             <Icon name="Refresh" /> Refresh
           </button>
         </div>
-        <FilterBar value={filter} onChange={setFilter} options={facetOptions(block.stories)} />
+        <FilterBar value={filter} onChange={setFilter} options={facetOptions(block.stories)} extraFacets={facets} />
         <div className="toolbar tb-deps" role="group" aria-label="Dependency criticality">
           <label className="check">
             <input type="checkbox" checked={showDeps} onChange={(e) => setShowDeps(e.target.checked)} /> Show dependencies
@@ -367,22 +509,33 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
           ))}
         </div>
         <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
+        {rolled.error && <ErrorBar message={`Could not load rolled-over items: ${rolled.error}`} />}
+        {readOnly && (
+          <div className="tb-readonly">
+            <Info>Read-only: you don't have permission to plan in this area.</Info>
+          </div>
+        )}
         {!team.areaPath && <Info>{team.name} has no area path. Set one in Setup to plan its stories.</Info>}
         {plannedCount === 0 && !loading && (
           <Info>
-            No stories of {team.name} are planned in {pi.name} yet. Drag stories from the Unplanned sidebar or create
-            them in a cell.
+            No stories of {team.name} are planned in {pi.name} yet.
+            {!readOnly && " Drag stories from the Unplanned sidebar or create them in a cell."}
           </Info>
         )}
 
         <div className="board-scroll">
-          <div className="board-grid tb-grid" ref={gridRef} style={{ gridTemplateColumns: cols }}>
+          <div
+            className={"board-grid tb-grid" + (dragging ? " tb-dragging" : "")}
+            ref={gridRef}
+            style={{ gridTemplateColumns: cols }}
+          >
             <div className="board-corner" />
             {pi.sprints.map((s, i) => (
               <SprintHeader
                 key={s.path}
                 sprint={s}
                 status={status[i]}
+                readOnly={readOnly}
                 load={loads[i]}
                 capacity={data.caps.get(capacityId(team.id, s.path))?.capacity}
                 onSave={(c) => saveCapacity(s, c)}
@@ -392,18 +545,20 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
 
             <div className="tb-block-header current">
               <span className="tb-block-title">{team.name}</span>
-              <div
-                className="tb-feature-drop"
-                role="group"
-                aria-label="Add swimlane"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  onDrop(e.dataTransfer.getData("text/plain"), null, null);
-                }}
-              >
-                Drop a feature from the ART tab here to add a swimlane
-              </div>
+              {!readOnly && (
+                <div
+                  className={"tb-feature-drop" + (dropZoneHint ? ` drop-${dropZoneHint}` : "")}
+                  role="group"
+                  aria-label="Add swimlane"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    onDrop(e.dataTransfer.getData("text/plain"), null, null);
+                  }}
+                >
+                  Drop a feature from the ART tab here to add a swimlane
+                </div>
+              )}
             </div>
             {lanes.filter(laneVisible).map((lane) => {
               const key = `${team.id}|${lane.key}`;
@@ -416,31 +571,50 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                   count={stories.length}
                   collapsed={collapsed}
                   onToggle={() => toggleLane(key)}
-                  onRemove={lane.assigned && lane.stories.length === 0 ? () => removeLane(lane) : undefined}
+                  onRemove={!readOnly && lane.assigned && lane.stories.length === 0 ? () => removeLane(lane) : undefined}
                 >
                   {pi.sprints.map((s, si) => {
-                    const past = status[si] === "past";
+                    const isPast = past[si];
+                    const locked = isPast || readOnly;
                     const here = stories.filter((st) => sprintIndex(st.fields[F.iteration], sprintPaths) === si);
+                    const ghosts = isPast ? shadows.filter((sh) => sh.sprintIndex === si && laneOfShadow(sh) === lane.key) : [];
                     const isCreating = creating?.lane === lane.key && creating.sprint === s.path;
                     return (
                       <DropCell
                         key={s.path}
                         label={`${lane.title} / ${s.name}`}
-                        disabled={past}
+                        past={isPast}
+                        disabled={locked}
+                        hint={cellHint(lane, locked)}
                         onDrop={(raw) => onDrop(raw, lane, s)}
                       >
-                        {here.map((st) => (
+                        {here.map((st) => {
+                          const parentId = block.parents.get(st.id);
+                          return (
+                            <Card
+                              key={st.id}
+                              item={st}
+                              {...cardProps}
+                              parentId={parentId}
+                              parentTitle={featureTitle(parentId)}
+                              draggable={!locked}
+                              cardRef={cardRef}
+                              edges={hints.get(st.id)}
+                              onDragStart={() => setDragging({ kind: "story", id: st.id })}
+                              onDragEnd={() => setDragging(null)}
+                              onRemove={locked ? undefined : () => removeFromBoard(st)}
+                            />
+                          );
+                        })}
+                        {ghosts.map((sh) => (
                           <Card
-                            key={st.id}
-                            item={st}
+                            key={`shadow-${sh.item.id}`}
+                            item={sh.item}
                             {...cardProps}
-                            parentTitle={featureTitle(block.parents.get(st.id))}
-                            draggable={!past}
-                            cardRef={cardRef}
-                            onRemove={past ? undefined : () => removeFromBoard(st)}
+                            shadow
                           />
                         ))}
-                        {!past && !isCreating && (
+                        {!locked && !isCreating && (
                           <button
                             className="cell-add"
                             aria-label={`Create in ${lane.title} / ${s.name}`}
@@ -450,7 +624,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                             +
                           </button>
                         )}
-                        {isCreating && (
+                        {isCreating && !locked && (
                           <CreateForm
                             types={ctx.types}
                             defaultType={config.types.story}
@@ -471,6 +645,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
                 team={sib}
                 ctx={ctx}
                 filter={filter}
+                summary={summaries.data?.get(sib.id)}
                 laneVisible={laneVisible}
                 isCollapsed={isCollapsed}
                 onToggleLane={toggleLane}
@@ -481,10 +656,12 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
             {block.external.length > 0 && (
               <ExternalBlock
                 items={block.external}
+                placement={block.placement}
                 pi={pi}
                 category={ctx.category}
                 layout={layout}
                 cardRef={cardRef}
+                hints={hints}
                 onOpen={open}
                 exclude={onBoard}
               />
@@ -528,15 +705,19 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
           </div>
         </div>
         <div className="legend-bar muted small">
-          <span>Load / Capacity in story points. Click a capacity to edit it.</span>
-          <span>Drag stories to plan them; the swimlane sets the parent Feature.</span>
+          <span>Load / Capacity in story points.{!readOnly && " Click a capacity to edit it."}</span>
+          {!readOnly && <span>Drag stories to plan them; the swimlane sets the parent Feature.</span>}
+          <span>Edge dots mark dependencies to items not shown (left = providers, right = consumers).</span>
         </div>
       </div>
       <UnplannedSidebar
         team={team}
         ctx={ctx}
         token={backlogToken}
+        canPlan={!readOnly}
         onOpen={open}
+        onDragStart={setDragging}
+        onDragEnd={() => setDragging(null)}
       />
     </div>
   );
@@ -549,6 +730,7 @@ function TeamPlanningBoard({ team, pi }: { team: OrgNode; pi: ProgramIncrement }
 function SprintHeader(props: {
   sprint: Sprint;
   status: IterationStatus;
+  readOnly: boolean;
   load: number;
   capacity: number | undefined;
   onSave: (capacity: number) => Promise<void>;
@@ -590,8 +772,11 @@ function SprintHeader(props: {
         </div>
       )}
       <div className="small tb-capacity-row">
-        {status === "past" ? (
-          <span className="tb-capacity locked" title="Iteration completed — capacity is locked">
+        {status === "past" || props.readOnly ? (
+          <span
+            className="tb-capacity locked"
+            title={status === "past" ? "Iteration completed — capacity is locked" : "Load / Capacity (story points) — read-only"}
+          >
             {loadText}
           </span>
         ) : editing ? (
@@ -667,14 +852,15 @@ function LaneRow(props: {
   );
 }
 
-function DropCell(props: { label: string; disabled: boolean; onDrop: (raw: string) => void; children: ReactNode }) {
+function DropCell(props: { label: string; past: boolean; disabled: boolean; hint: Hint; onDrop: (raw: string) => void; children: ReactNode }) {
   const [over, setOver] = useState(false);
-  if (props.disabled) return <div className="board-cell tb-cell past">{props.children}</div>;
+  const hint = props.hint ? ` drop-${props.hint}` : "";
+  if (props.disabled) return <div className={"board-cell tb-cell" + (props.past ? " past" : " locked") + hint}>{props.children}</div>;
   return (
     <div
       role="group"
       aria-label={props.label}
-      className={"board-cell tb-cell" + (over ? " drop-over" : "")}
+      className={"board-cell tb-cell" + (over ? " drop-over" : "") + hint}
       onDragOver={(e) => {
         e.preventDefault();
         setOver(true);
@@ -727,16 +913,46 @@ function CreateForm(props: {
   );
 }
 
+/** Coloured dots on a card's edges for dependency partners that are not drawn. */
+function EdgeMarkers({ id, edges }: { id: number; edges: EdgeHint[] }) {
+  return (
+    <>
+      {edges.map((h) => {
+        const crits = Array.from(h.byCrit.keys()).sort((a, b) => CRITICALITY_RANK[a] - CRITICALITY_RANK[b]);
+        const label = `${h.side === "providers" ? "Hidden providers" : "Hidden consumers"} of #${id}`;
+        const detail = crits.map((c) => `${CRITICALITY_LABEL[c]}: ${h.byCrit.get(c)!.map((n) => `#${n}`).join(", ")}`).join("\n");
+        return (
+          <span
+            key={h.side}
+            className={`tb-edge ${h.side === "providers" ? "left" : "right"}`}
+            style={{ background: CRITICALITY_COLOR[crits[0]] }}
+            aria-label={label}
+            title={`${label}\n${detail}`}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function Card(props: {
   item: WorkItem;
   category: Category;
   pointsField: string;
   layout: Layout;
+  parentId?: number;
   parentTitle?: string;
   draggable?: boolean;
   cardRef?: (id: number, el: HTMLElement | null) => void;
   onOpen: (id: number) => void;
   onRemove?: () => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  edges?: EdgeHint[];
+  /** Read-only copy in a completed sprint of an item that rolled over to a later sprint. */
+  shadow?: boolean;
+  /** Target / due date that placed an external item. */
+  date?: string;
 }) {
   const { item, layout } = props;
   const [menu, setMenu] = useState(false);
@@ -747,15 +963,24 @@ function Card(props: {
     .split(";")
     .map((t) => t.trim())
     .filter(Boolean);
+  const title = `${type} #${item.id}: ${item.fields[F.title]}` + (props.shadow ? ` — rolled over, now in ${lastSegment(item.fields[F.iteration])}` : "");
   return (
     <div
       ref={props.cardRef ? (el) => props.cardRef!(item.id, el) : undefined}
-      className={"card tb-card " + layout}
+      className={"card tb-card " + layout + (props.shadow ? " tb-shadow" : "")}
       style={{ borderLeftColor: typeColor(type) }}
       draggable={!!props.draggable}
-      onDragStart={props.draggable ? (e) => e.dataTransfer.setData("text/plain", encodeDrag({ kind: "story", id: item.id })) : undefined}
+      onDragStart={
+        props.draggable
+          ? (e) => {
+              e.dataTransfer.setData("text/plain", encodeDrag({ kind: "story", id: item.id }));
+              props.onDragStart?.();
+            }
+          : undefined
+      }
+      onDragEnd={props.draggable ? props.onDragEnd : undefined}
       onClick={() => props.onOpen(item.id)}
-      title={`${type} #${item.id}: ${item.fields[F.title]}`}
+      title={title}
     >
       <div className="card-title">{item.fields[F.title]}</div>
       <div className="card-meta">
@@ -765,10 +990,24 @@ function Card(props: {
           {item.fields[F.state]}
         </span>
         {pts !== undefined && pts !== null && pts !== "" ? <span className="pill">{pts} pts</span> : null}
-        {props.parentTitle && (
-          <span className="pill tb-parent" title="Parent feature">
-            {props.parentTitle}
+        {props.shadow && <span className="pill tb-rolled">Rolled over</span>}
+        {props.date && (
+          <span className="pill tb-date" title="Target date">
+            {fmtDate(props.date)}
           </span>
+        )}
+        {props.parentTitle && (
+          <button
+            type="button"
+            className="pill tb-parent"
+            title="Parent feature"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onOpen(props.parentId!);
+            }}
+          >
+            {props.parentTitle}
+          </button>
         )}
       </div>
       {layout === "extended" && (
@@ -781,6 +1020,7 @@ function Card(props: {
           ))}
         </div>
       )}
+      {props.edges && <EdgeMarkers id={item.id} edges={props.edges} />}
       {props.onRemove && (
         <div className="tb-menu-wrap" onClick={(e) => e.stopPropagation()}>
           <button className="link tb-menu-btn" aria-label={`Actions for #${item.id}`} aria-expanded={menu} onClick={() => setMenu(!menu)}>
@@ -817,24 +1057,27 @@ function Card(props: {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Sibling teams (read-only, lazily loaded)
+// Sibling teams (read-only; critical count from a light query, lanes loaded on expand)
 // ---------------------------------------------------------------------------------------------
 
 function SiblingBlock(props: {
   team: OrgNode;
   ctx: Ctx;
   filter: ItemFilter;
+  summary?: SiblingSummary;
   laneVisible: (l: Lane) => boolean;
   isCollapsed: (key: string) => boolean;
   onToggleLane: (key: string) => void;
   cardProps: { category: Category; pointsField: string; layout: Layout; onOpen: (id: number) => void };
 }) {
-  const { team, ctx, filter } = props;
+  const { team, ctx, filter, summary } = props;
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<BlockData>();
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<{ message: string; denied: boolean }>();
   const [loading, setLoading] = useState(false);
+  const wiqlKey = wiqlSuffix(filter);
 
+  // Reloads when expanded and whenever the board reloads (new ctx), e.g. after a drop.
   useEffect(() => {
     if (!open) return;
     let live = true;
@@ -842,22 +1085,27 @@ function SiblingBlock(props: {
     setError(undefined);
     loadBlock(ctx, team, filter)
       .then((d) => live && setData(d))
-      .catch((e) => live && setError(`Could not load ${team.name}: ${e?.message ?? e}`))
+      .catch((e) => live && setError({ message: `Could not load ${team.name}: ${e?.message ?? e}`, denied: isDenied(e) }))
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ctx, filter.wiql]);
+  }, [open, ctx, wiqlKey]);
 
   const sprintPaths = ctx.pi.sprints.map((s) => s.path);
-  const criticalCount = useMemo(() => {
-    if (!data) return undefined;
-    const lookup = new Map([...data.external, ...data.stories].map((i) => [i.id, i]));
-    return boardDependencies(data.stories, lookup, sprintPaths, ctx.category).filter((d) => d.criticality === "critical").length;
-  }, [data]);
+  const loadedCount = useMemo(
+    () => (data ? blockDependencies(data, ctx).filter((d) => d.criticality === "critical").length : undefined),
+    [data]
+  );
+  const criticalCount = loadedCount ?? summary?.critical;
+  const denied = summary?.denied || error?.denied;
+  const facets = useMemo(
+    () => (data ? boardFacets(data.stories, data.features, data.parents, ctx.metas, ctx.pis) : []),
+    [data]
+  );
 
-  const visible = new Set(applyFilter(data?.stories ?? [], filter).map((s) => s.id));
+  const visible = new Set(applyFilter(data?.stories ?? [], filter, facets).map((s) => s.id));
   const lanes = data
     ? buildLanes(data.stories, data.features, data.parents, ctx.metas, team.id, ctx.pi.path)
         .filter(props.laneVisible)
@@ -879,22 +1127,29 @@ function SiblingBlock(props: {
             {criticalCount} critical
           </span>
         )}
+        {denied && <span className="tb-no-access small">You don't have access to {team.name}</span>}
+        {!denied && summary?.error && criticalCount === undefined && (
+          <span className="pill" title={summary.error}>
+            critical count unavailable
+          </span>
+        )}
       </div>
-      {open && loading && (
+      {open && loading && !data && (
         <div className="tb-span">
           <Spinner label={`Loading ${team.name}…`} />
         </div>
       )}
-      {open && error && (
+      {open && error && !error.denied && (
         <div className="tb-span">
-          <ErrorBar message={error} />
+          <ErrorBar message={error.message} />
         </div>
       )}
       {open && !loading && data && lanes.length === 0 && (
         <div className="tb-span muted small tb-empty">No stories of {team.name} in {ctx.pi.name}.</div>
       )}
       {open &&
-        !loading &&
+        data &&
+        !error &&
         lanes.map(({ lane, stories }) => {
           const key = `${team.id}|${lane.key}`;
           return (
@@ -903,9 +1158,10 @@ function SiblingBlock(props: {
                 <div key={s.path} className="board-cell tb-cell readonly">
                   {stories
                     .filter((st) => sprintIndex(st.fields[F.iteration], sprintPaths) === si)
-                    .map((st) => (
-                      <Card key={st.id} item={st} {...props.cardProps} parentTitle={featureTitle(data!.parents.get(st.id))} />
-                    ))}
+                    .map((st) => {
+                      const parentId = data.parents.get(st.id);
+                      return <Card key={st.id} item={st} {...props.cardProps} parentId={parentId} parentTitle={featureTitle(parentId)} />;
+                    })}
                 </div>
               ))}
             </LaneRow>
@@ -921,17 +1177,29 @@ function SiblingBlock(props: {
 
 function ExternalBlock(props: {
   items: WorkItem[];
+  placement: Map<number, Placement>;
   pi: ProgramIncrement;
   category: Category;
   layout: Layout;
   cardRef: (id: number, el: HTMLElement | null) => void;
+  hints: Map<number, EdgeHint[]>;
   onOpen: (id: number) => void;
   exclude: Set<number>;
 }) {
-  const sprintPaths = props.pi.sprints.map((s) => s.path);
   const groups = groupByArea(props.items.filter((i) => !props.exclude.has(i.id)));
+  const indexOf = (i: WorkItem) => props.placement.get(i.id)?.index ?? -1;
   const card = (i: WorkItem) => (
-    <Card key={i.id} item={i} category={props.category} pointsField="" layout={props.layout} cardRef={props.cardRef} onOpen={props.onOpen} />
+    <Card
+      key={i.id}
+      item={i}
+      category={props.category}
+      pointsField=""
+      layout={props.layout}
+      cardRef={props.cardRef}
+      edges={props.hints.get(i.id)}
+      date={props.placement.get(i.id)?.date}
+      onOpen={props.onOpen}
+    />
   );
   return (
     <>
@@ -940,7 +1208,7 @@ function ExternalBlock(props: {
         <span className="muted small">Dependencies to items outside this board</span>
       </div>
       {groups.map((g) => {
-        const outside = g.items.filter((i) => sprintIndex(i.fields[F.iteration], sprintPaths) < 0);
+        const outside = g.items.filter((i) => indexOf(i) < 0);
         return (
           <Fragment key={g.area}>
             <div className="board-row-header tb-lane-header external">
@@ -956,7 +1224,7 @@ function ExternalBlock(props: {
             </div>
             {props.pi.sprints.map((s, si) => (
               <div key={s.path} className="board-cell tb-cell readonly">
-                {g.items.filter((i) => sprintIndex(i.fields[F.iteration], sprintPaths) === si).map(card)}
+                {g.items.filter((i) => indexOf(i) === si).map(card)}
               </div>
             ))}
           </Fragment>
@@ -972,7 +1240,17 @@ function ExternalBlock(props: {
 
 type Tab = "team" | "art";
 
-function UnplannedSidebar(props: { team: OrgNode; ctx: Ctx; token: number; onOpen: (id: number) => void }) {
+interface SidebarProps {
+  team: OrgNode;
+  ctx: Ctx;
+  token: number;
+  canPlan: boolean;
+  onOpen: (id: number) => void;
+  onDragStart: (info: DragInfo) => void;
+  onDragEnd: () => void;
+}
+
+function UnplannedSidebar(props: SidebarProps) {
   const [tab, setTab] = useState<Tab>("team");
   return (
     <aside className="tb-sidebar" aria-label="Unplanned">
@@ -989,35 +1267,42 @@ function UnplannedSidebar(props: { team: OrgNode; ctx: Ctx; token: number; onOpe
   );
 }
 
-function BacklogList(props: { tab: Tab; team: OrgNode; ctx: Ctx; token: number; onOpen: (id: number) => void }) {
+type FacetOptions = Parameters<typeof FilterBar>[0]["options"];
+
+function BacklogList(props: SidebarProps & { tab: Tab }) {
   const { tab, team, ctx } = props;
   const { config, pi, types, category } = ctx;
-  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ItemFilter>(EMPTY_FILTER);
   const [sort, setSort] = useState<SortKey>("rank");
   const sprintPaths = pi.sprints.map((s) => s.path);
+  const nodeName = (id: string) => findNode(config.root, id)?.name;
 
   const { data, loading, error } = useAsync(async () => {
     if (tab === "team") {
       const items = await queryWorkItems(scopeQuery(types, scopeAreas(team)), baseFields(config).concat(F.priority));
       return unplannedStories(items, sprintPaths, category);
     }
+    // Only request optional fields the process has (unknown fields fail the whole batch).
+    const known = new Set((await getFieldNames()).map((f) => f.referenceName));
+    const optional = [F.priority, F.stackRank, F.businessValue, F.timeCriticality, F.effort, config.rroeField ?? DEFAULT_RROE_FIELD];
     const items = await queryWorkItems(scopeQuery([config.types.feature], ctx.artAreas), [
       ...baseFields(config),
-      F.priority,
-      F.businessValue,
-      F.timeCriticality,
-      F.effort,
-      F.stackRank,
+      ...optional.filter((f) => known.has(f)),
     ]);
     return items.filter((i) => isOpen(i, category));
   }, [tab, props.token]);
 
-  const shown = sortItems(searchItems(data ?? [], query), sort, config.storyPointsField);
+  const items = data ?? [];
+  const opts = facetOptions(items);
+  const facetOpts = { types: opts.types, states: opts.states } as unknown as FacetOptions;
+  const shown = sortItems(searchItems(applyFilter(items, { ...filter, text: "" }), filter.text), sort, config.storyPointsField, config.rroeField);
   const kind = tab === "team" ? "story" : "feature";
 
   return (
     <div className="tb-backlog" role="tabpanel" aria-label={tab === "team" ? "Team backlog" : "ART backlog"}>
-      <input className="tb-search" aria-label="Search unplanned" placeholder="Search title or ID" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div className="tb-sidebar-filter">
+        <FilterBar value={filter} onChange={setFilter} options={facetOpts} showWiql={false} />
+      </div>
       <select aria-label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
         <option value="rank">Backlog order</option>
         <option value="priority">Priority</option>
@@ -1027,17 +1312,28 @@ function BacklogList(props: { tab: Tab; team: OrgNode; ctx: Ctx; token: number; 
       </select>
       {loading && !data && <Spinner label="Loading backlog…" />}
       <ErrorBar message={error} />
-      {data && shown.length === 0 && <div className="muted small tb-empty">{query ? "No matches" : "Nothing unplanned"}</div>}
+      {data && shown.length === 0 && <div className="muted small tb-empty">{isFilterActive(filter) ? "No matches" : "Nothing unplanned"}</div>}
       {shown.map((i) => {
         const pts = storyPoints(i, config.storyPointsField);
-        const w = wsjf(i);
+        const w = wsjf(i, config.rroeField);
+        const meta = ctx.metas.get(i.id);
+        const markers = backlogMarkers(i, { pis: ctx.pis, pi, meta, teamId: team.id, nodeName, story: tab === "team" });
+        const piNames = tab === "art" ? assignedPiNames(meta, ctx.pis) : [];
         return (
           <div
             key={i.id}
             className="card tb-backlog-card"
             style={{ borderLeftColor: typeColor(i.fields[F.type]) }}
-            draggable
-            onDragStart={(e) => e.dataTransfer.setData("text/plain", encodeDrag({ kind, id: i.id }))}
+            draggable={props.canPlan}
+            onDragStart={
+              props.canPlan
+                ? (e) => {
+                    e.dataTransfer.setData("text/plain", encodeDrag({ kind, id: i.id }));
+                    props.onDragStart({ kind, id: i.id, type: i.fields[F.type] });
+                  }
+                : undefined
+            }
+            onDragEnd={props.canPlan ? props.onDragEnd : undefined}
             onClick={() => props.onOpen(i.id)}
             title={`${i.fields[F.type]} #${i.id}: ${i.fields[F.title]}`}
           >
@@ -1052,6 +1348,20 @@ function BacklogList(props: { tab: Tab; team: OrgNode; ctx: Ctx; token: number; 
               {i.fields[F.priority] !== undefined && <span className="pill">P{i.fields[F.priority]}</span>}
               {tab === "art" && w !== undefined && <span className="pill">WSJF {w}</span>}
             </div>
+            {(markers.length > 0 || piNames.length > 0) && (
+              <div className="card-meta tb-markers">
+                {markers.map((m) => (
+                  <span key={m.kind} className={"tb-marker " + m.kind}>
+                    {m.label}
+                  </span>
+                ))}
+                {piNames.length > 0 && (
+                  <span className="tb-marker pis" title="Assigned PIs">
+                    PIs: {piNames.join(", ")}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
