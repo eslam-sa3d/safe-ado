@@ -107,7 +107,7 @@ npm run preview   # builds preview-dist/ against the in-memory fake backend used
 ## Testing
 
 ```bash
-npm test               # 558 tests
+npm test               # 1182 tests
 npm run test:coverage  # with coverage report (fails below 95% lines / 85% branches)
 npm run typecheck      # src + tests
 ```

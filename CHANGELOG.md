@@ -10,10 +10,26 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
 ## [Unreleased]
 
 ### Added
+- **Cross-project portfolios**: units may point to areas and teams in other projects of the same
+  collection; collection-level queries, PI matching by name or dates, writes mapped to each
+  item's own project.
+- **Lean Portfolio Management**: Lean Business Case and go / no-go decision per Epic, SAFe
+  Portfolio Kanban columns with WIP limits and the Analyzing guardrail, value stream budgets per PI
+  with forecast and actual spend, Epic cost vs. estimate, portfolio canvas.
+- **Capacity source**: manual story points, derived from Azure DevOps team capacity (SAFe
+  normalized estimation), or hybrid with overrides; the source is shown wherever capacity is.
+- **Data governance**: audit stamps and a per-project change log for all SAFe data, History on
+  objectives and risks, Setup audit log, export / import of all SAFe data.
+- SAFe roles for unit members; only Business Owners enter Actual BV when a unit has any.
 - Opt-in anonymous usage telemetry (off by default; see [docs/PRIVACY.md](docs/PRIVACY.md)).
 - Release workflow, `npm run release:check`, and a guard that stops `npm run package` when
   `package.json` and `vss-extension.json` versions differ.
 - Marketplace screenshots; privacy, support and security policies.
+
+### Changed
+- Writes that go only to extension data are read-only when a permission check cannot be
+  answered (they used to be allowed).
+- Marketplace listing rewritten for SAFe® program offices; trademark attribution added.
 
 ## [1.3.0] - 2026-09-30
 
