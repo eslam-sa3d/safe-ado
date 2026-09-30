@@ -1,4 +1,5 @@
 import { api, ApiError, getBaseUrl, getProject, mapLimit } from "./client";
+import { isForeignNode, nodeProject } from "./projects";
 import { findCapacity } from "./data";
 import { CapacitySettings, CapacitySource, IterationCapacity, OrgNode, SafeConfig, Sprint } from "./types";
 import { getTeams } from "./wit";
@@ -219,6 +220,14 @@ export async function loadDerivedCapacity(config: Pick<SafeConfig, "capacity">, 
     const key = derivedKey(team.id, sprint);
     if (!team.teamId) {
       out.set(key, { derived: null, reason: `No Azure DevOps team is linked to ${team.name}. Link one in Setup.` });
+      return;
+    }
+    // Team capacity is read per iteration id, and another project's sprints have their own ids.
+    if (isForeignNode(team)) {
+      out.set(key, {
+        derived: null,
+        reason: `${team.name} is in project ${nodeProject(team).name}: capacity from other projects is not derived. Enter it manually (Hybrid or Manual source).`,
+      });
       return;
     }
     const teamName = names.find((t) => t.id === team.teamId)?.name ?? team.teamId;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { queryUrl, teamBacklogUrl } from "../api/links";
 import { boardType, scopeAreas } from "../api/org";
+import { isForeignNode, nodeProject } from "../api/projects";
 import { scopeQuery } from "../api/queries";
 import { openInNewTab } from "../api/urlState";
 import { F, OrgNode, ProgramIncrement, SafeConfig } from "../api/types";
@@ -10,8 +11,10 @@ import { Icon } from "./common";
 /** Where "Open in Azure Boards" goes: a team's backlog, else a query of the unit's board items. */
 export async function boardsUrl(config: SafeConfig, node: OrgNode): Promise<string> {
   if (node.teamId) {
-    const team = (await getTeams().catch(() => [])).find((t) => t.id === node.teamId);
-    return teamBacklogUrl(team?.name ?? node.name);
+    // Teams of other projects (cross-project units) open in their own project.
+    const project = isForeignNode(node) ? nodeProject(node) : undefined;
+    const team = (await getTeams(project?.id).catch(() => [])).find((t) => t.id === node.teamId);
+    return teamBacklogUrl(team?.name ?? node.name, project?.name);
   }
   const type = boardType(config, node.level) || config.types.story;
   return queryUrl(scopeQuery([type], scopeAreas(node)));

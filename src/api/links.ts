@@ -9,14 +9,14 @@ export async function workItemUrl(id: number): Promise<string> {
   return `${await getBaseUrl()}${enc(getProject().name)}/_workitems/edit/${id}`;
 }
 
-/** A team's backlog (Agile Hive's "open project in Jira"). */
-export async function teamBacklogUrl(teamName: string): Promise<string> {
-  return `${await getBaseUrl()}${enc(getProject().name)}/_backlogs/backlog/${enc(teamName)}`;
+/** A team's backlog (Agile Hive's "open project in Jira"); `projectName` for teams of other projects. */
+export async function teamBacklogUrl(teamName: string, projectName = getProject().name): Promise<string> {
+  return `${await getBaseUrl()}${enc(projectName)}/_backlogs/backlog/${enc(teamName)}`;
 }
 
 /** A team's board. */
-export async function teamBoardUrl(teamName: string): Promise<string> {
-  return `${await getBaseUrl()}${enc(getProject().name)}/_boards/board/t/${enc(teamName)}`;
+export async function teamBoardUrl(teamName: string, projectName = getProject().name): Promise<string> {
+  return `${await getBaseUrl()}${enc(projectName)}/_boards/board/t/${enc(teamName)}`;
 }
 
 /** An ad-hoc query results page for a WIQL statement ("Open in Azure Boards query"). */

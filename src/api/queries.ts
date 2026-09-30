@@ -1,18 +1,23 @@
 import { wiqlString } from "./client";
+import { projectClause } from "./projects";
 import { F, SafeConfig, WorkItem } from "./types";
-import { getStateCategories, getWorkItems, queryLinks, queryWorkItems, typeIn, underAny } from "./wit";
+import { getStateCategories, getWorkItems, iterationUnder, queryLinks, queryWorkItems, typeIn, underAny } from "./wit";
 
 export function baseFields(config: SafeConfig): string[] {
   return [F.id, F.title, F.type, F.state, F.area, F.iteration, F.assignedTo, F.tags, config.storyPointsField];
 }
 
-/** Flat query for items of `types` inside `areas`, optionally limited to a PI iteration subtree. */
+/**
+ * Flat query for items of `types` inside `areas`, optionally limited to a PI iteration subtree.
+ * Areas in other projects widen the project clause, and the (cadence) iteration to its
+ * counterparts in those projects.
+ */
 export function scopeQuery(types: string[], areas: string[], iterationPath?: string, orderBy: string = F.stackRank): string {
   return [
-    `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project`,
+    `SELECT [System.Id] FROM WorkItems WHERE ${projectClause(areas)}`,
     `AND ${typeIn(types)}`,
     `AND ${underAny("[System.AreaPath]", areas)}`,
-    iterationPath ? `AND [System.IterationPath] UNDER ${wiqlString(iterationPath)}` : "",
+    iterationPath ? `AND ${iterationUnder("[System.IterationPath]", iterationPath)}` : "",
     `ORDER BY [${orderBy}] ASC, [System.Id] ASC`,
   ].join(" ");
 }
@@ -56,10 +61,11 @@ export async function loadTree(
     edges = await queryLinks(
       [
         `SELECT [System.Id] FROM WorkItemLinks WHERE (`,
-        `[Source].[System.TeamProject] = @project`,
+        projectClause(areas, "[Source].[System.TeamProject]"),
         `AND [Source].[System.WorkItemType] = ${wiqlString(rootType)}`,
         `AND ${underAny("[Source].[System.AreaPath]", areas)}`,
-        iterationPath ? `AND [Source].[System.IterationPath] UNDER ${wiqlString(iterationPath)}` : "",
+        iterationPath ? `AND ${iterationUnder("[Source].[System.IterationPath]", iterationPath)}` : "",
+
         `) AND ([System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward')`,
         `AND (${typeIn(below, "[Target].[System.WorkItemType]")})`,
         `MODE (Recursive)`,

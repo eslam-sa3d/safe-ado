@@ -76,7 +76,20 @@ export const fake = {
   capacityShape: "teamMembers" as "teamMembers" | "value" | "array",
   /** The signed-in user (SDK.getUser). */
   user: { id: "u-ada", name: "ada@fabrikam.com", displayName: "Ada Lovelace" },
+  /** Other projects of the collection (cross-project portfolios); empty unless a test seeds them. */
+  otherProjects: [] as FakeProject[],
 };
+
+/** Another project of the same collection, with its own trees and teams. */
+export interface FakeProject {
+  id: string;
+  name: string;
+  areaTree: ClassificationNode;
+  iterationTree: ClassificationNode;
+  teams: { id: string; name: string }[];
+  teamAreas: Record<string, string | undefined>;
+  teamMembers: Record<string, { id: string; displayName: string; uniqueName: string }[]>;
+}
 
 /** The reverse of each link type Azure DevOps keeps in sync automatically. */
 export const REVERSE_LINK: Record<string, string> = {
@@ -125,13 +138,20 @@ const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v
 // Fixtures
 // ---------------------------------------------------------------------------------------------
 
-function cnode(structure: "Area" | "Iteration", parts: string[], attrs?: { start: number; finish: number }, children: ClassificationNode[] = []): ClassificationNode {
+function cnode(
+  structure: "Area" | "Iteration",
+  parts: string[],
+  attrs?: { start: number; finish: number },
+  children: ClassificationNode[] = [],
+  project = fake.projectName
+): ClassificationNode {
   const id = fake.nextId++;
+  const prefix = project === fake.projectName ? "" : `${project.toLowerCase()}-`;
   return {
     id,
-    identifier: `${structure.toLowerCase()}-${parts.join("-") || "root"}`.replace(/\s+/g, "_"),
-    name: parts.length ? parts[parts.length - 1] : fake.projectName,
-    path: "\\" + [fake.projectName, structure, ...parts].join("\\"),
+    identifier: `${prefix}${structure.toLowerCase()}-${parts.join("-") || "root"}`.replace(/\s+/g, "_"),
+    name: parts.length ? parts[parts.length - 1] : project,
+    path: "\\" + [project, structure, ...parts].join("\\"),
     hasChildren: children.length > 0,
     children: children.length ? children : undefined,
     attributes: attrs ? { startDate: iso(attrs.start), finishDate: iso(attrs.finish) } : undefined,
@@ -287,6 +307,7 @@ export function resetFake() {
   fake.teamDaysOff = {};
   fake.capacityShape = "teamMembers";
   fake.user = { id: "u-ada", name: "ada@fabrikam.com", displayName: "Ada Lovelace" };
+  fake.otherProjects = [];
 
   dataStore.values.clear();
   dataStore.collections.clear();
@@ -312,6 +333,84 @@ export function makeConfig(overrides: Partial<SafeConfig> = {}): SafeConfig {
     storyPointsField: "Microsoft.VSTS.Scheduling.StoryPoints",
     ...overrides,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cross-project fixture: a second project "Contoso" with ART C / Team Orange
+// ---------------------------------------------------------------------------------------------
+
+export const C = "Contoso";
+export const ART_C = "Contoso\\ART C";
+export const ORANGE = "Contoso\\ART C\\Team Orange";
+export const C_ROOT = "Contoso\\Cadence";
+export const C_PI2 = "Contoso\\Cadence\\PI 2";
+/** Matched to "PI 2 Sprint 1" by dates (different name). */
+export const C_PI2_S1 = "Contoso\\Cadence\\PI 2\\Iteration 1";
+/** Matched to "PI 2 Sprint 2" by name. */
+export const C_PI2_S2 = "Contoso\\Cadence\\PI 2\\PI 2 Sprint 2";
+
+const attrsOf = (n: ClassificationNode | undefined) => {
+  const a = n?.attributes;
+  return a?.startDate && a.finishDate ? { start: Date.parse(a.startDate), finish: Date.parse(a.finishDate) } : undefined;
+};
+
+/**
+ * Adds project "Contoso" (id p2): areas ART C / Team Orange, a PI root "Cadence" whose PI 2 matches
+ * the host's PI 2 (sprint 1 by dates, sprint 2 by name; no IP iteration, no PI 1), team t-orange,
+ * and items 300-303 (Feature 300 is a child of the host's Epic 1).
+ */
+export function seedCrossProject(): FakeProject {
+  const host = (parts: string[]) => findIteration(parts);
+  const it = (parts: string[], attrs?: { start: number; finish: number }, children: ClassificationNode[] = []) =>
+    cnode("Iteration", parts, attrs, children, C);
+  const project: FakeProject = {
+    id: "p2",
+    name: C,
+    areaTree: cnode("Area", [], undefined, [cnode("Area", ["ART C"], undefined, [cnode("Area", ["ART C", "Team Orange"], undefined, [], C)], C)], C),
+    iterationTree: it([], undefined, [
+      it(["Cadence"], undefined, [
+        it(["Cadence", "PI 2"], attrsOf(host(["PIs", "PI 2"])), [
+          it(["Cadence", "PI 2", "Iteration 1"], attrsOf(host(["PIs", "PI 2", "PI 2 Sprint 1"]))),
+          it(["Cadence", "PI 2", "PI 2 Sprint 2"], attrsOf(host(["PIs", "PI 2", "PI 2 Sprint 2"]))),
+        ]),
+      ]),
+    ]),
+    teams: [{ id: "t-orange", name: "Team Orange" }],
+    teamAreas: { "t-orange": ORANGE },
+    teamMembers: { "t-orange": [{ id: "u-linus", displayName: "Linus Torvalds", uniqueName: "linus@contoso.com" }] },
+  };
+  fake.otherProjects.push(project);
+
+  const SP = "Microsoft.VSTS.Scheduling.StoryPoints";
+  const inC = { "System.TeamProject": C };
+  const items: WorkItem[] = [
+    wi(300, "Feature", "Partner API", ORANGE, C_PI2_S1, "Active", { ...inC, [SP]: 5 }, [[CHILD, 301], [CHILD, 302], [SUCC, 10]]),
+    wi(301, "User Story", "Partner auth", ORANGE, C_PI2_S1, "Closed", { ...inC, [SP]: 5, "Microsoft.VSTS.Common.ClosedDate": new Date().toISOString() }),
+    wi(302, "User Story", "Partner docs", ORANGE, C_PI2_S2, "New", { ...inC, [SP]: 3 }),
+    wi(303, "Feature", "Contoso backlog", ART_C, C, "New", inC),
+  ];
+  for (const item of items) fake.workItems.set(item.id, item);
+  (fake.workItems.get(1)!.relations ??= []).push({ rel: CHILD, url: url(300), attributes: {} });
+  for (const item of items) for (const r of [...(item.relations ?? [])]) addReverse(item.id, r.rel, linkTarget(r.url));
+  addReverse(1, CHILD, 300);
+  for (const item of items) recordRevision(item);
+  return project;
+}
+
+/** makeConfig plus ART C (project Contoso, PI root "Contoso\\Cadence") with Team Orange. */
+export function makeCrossConfig(overrides: Partial<SafeConfig> = {}): SafeConfig {
+  const config = makeConfig(overrides);
+  const inC = { projectId: "p2", projectName: C };
+  config.root.children.push({
+    id: "n-artc",
+    name: "ART C",
+    level: "art",
+    areaPath: ART_C,
+    piRootIteration: C_ROOT,
+    ...inC,
+    children: [{ id: "n-orange", name: "Team Orange", level: "team", areaPath: ORANGE, teamId: "t-orange", ...inC, children: [] }],
+  });
+  return config;
 }
 
 export function seedConfig(config: SafeConfig = makeConfig()) {
@@ -342,6 +441,8 @@ export function callsTo(re: RegExp, method?: string): Call[] {
 // ---------------------------------------------------------------------------------------------
 
 const unq = (s: string) => s.replace(/''/g, "'");
+/** Project context of the WIQL being evaluated (null at collection level, where @project is invalid). */
+let wiqlProject: string | null = null;
 const STR = "'((?:[^']|'')*)'";
 
 function listAfter(query: string, field: string): string[] | null {
@@ -426,7 +527,10 @@ function parseWhere(src: string): Pred {
     if (tok.t === "str") return tok.v;
     if (tok.t === "num") return Number(tok.v);
     if (tok.t === "macro") {
-      if (tok.v === "@project") return fake.projectName;
+      if (tok.v === "@project") {
+        if (wiqlProject === null) throw new WiqlSyntaxError("TF51011: The @project macro can only be used in the context of a project.");
+        return wiqlProject;
+      }
       if (tok.v === "@today") return new Date().toISOString().slice(0, 10);
       throw new WiqlSyntaxError(`TF51005: Unsupported macro ${tok.v}.`);
     }
@@ -566,18 +670,50 @@ function json(body: Json, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function findIteration(parts: string[]): ClassificationNode | undefined {
-  let node: ClassificationNode | undefined = fake.iterationTree;
+function findIteration(parts: string[], tree = fake.iterationTree): ClassificationNode | undefined {
+  let node: ClassificationNode | undefined = tree;
   for (const p of parts) node = node?.children?.find((c) => c.name.toLowerCase() === p.toLowerCase());
   return node;
+}
+
+/** Project of a work item (seeded host items may omit System.TeamProject). */
+const projectOfItem = (item: WorkItem) => String(item.fields["System.TeamProject"] ?? fake.projectName);
+const allProjects = () => [{ id: fake.projectId, name: fake.projectName }, ...fake.otherProjects.map((p) => ({ id: p.id, name: p.name }))];
+/** Another project by route segment (id or name). */
+const otherProject = (segment: string) => {
+  const s = decodeURIComponent(segment).toLowerCase();
+  return fake.otherProjects.find((p) => p.id === s || p.name.toLowerCase() === s);
+};
+
+/** Whether `path` (field form) exists in a classification tree. */
+function inTree(tree: ClassificationNode, path: string): boolean {
+  const parts = path.split("\\");
+  return parts[0].toLowerCase() === tree.name.toLowerCase() && !!findIteration(parts.slice(1), tree);
+}
+
+/**
+ * Azure DevOps rejects area / iteration paths of another project (TF401347). For items of the
+ * other (seeded) projects the path must also exist in that project's tree.
+ */
+function treeError(project: string, field: string, value: unknown): string | null {
+  if (typeof value !== "string" || (field !== "System.AreaPath" && field !== "System.IterationPath")) return null;
+  const valueProject = value.split("\\")[0].toLowerCase();
+  const known = allProjects().some((p) => p.name.toLowerCase() === valueProject);
+  const invalid = `TF401347: Invalid tree name given for work item, field '${field}' ('${value}').`;
+  if (known && valueProject !== project.toLowerCase()) return invalid;
+  const other = fake.otherProjects.find((p) => p.name.toLowerCase() === project.toLowerCase());
+  if (other && !inTree(field === "System.AreaPath" ? other.areaTree : other.iterationTree, value)) return invalid;
+  return null;
 }
 
 function route(method: string, path: string, body: Json, full: string): Response {
   const P1 = fake.projectId;
   let m: RegExpExecArray | null;
 
-  if (method === "POST" && path === `${P1}/_apis/wit/wiql`) {
+  // Project-level WIQL resolves @project; collection-level WIQL (cross-project scopes) cannot.
+  if (method === "POST" && (path === `${P1}/_apis/wit/wiql` || path === `_apis/wit/wiql`)) {
     const top = new URL(full).searchParams.get("$top");
+    wiqlProject = path === `_apis/wit/wiql` ? null : fake.projectName;
     try {
       return json(evalWiql(body.query, top ? Number(top) : undefined));
     } catch (e) {
@@ -586,7 +722,9 @@ function route(method: string, path: string, body: Json, full: string): Response
     }
   }
 
-  if (method === "POST" && path === `${P1}/_apis/wit/workitemsbatch`) {
+  if (method === "GET" && path === `_apis/projects`) return json({ count: allProjects().length, value: allProjects() });
+
+  if (method === "POST" && (path === `${P1}/_apis/wit/workitemsbatch` || path === `_apis/wit/workitemsbatch`)) {
     const known = new Set(fake.fields.map((f) => f.referenceName));
     if (body.fields && body.$expand) return json({ message: "The expand parameter can not be used with the fields parameter." }, 400);
     const bad = (body.fields ?? []).find((f: string) => !f.startsWith("System.") && !known.has(f));
@@ -609,6 +747,10 @@ function route(method: string, path: string, body: Json, full: string): Response
   if (method === "PATCH" && (m = /^_apis\/wit\/workitems\/(\d+)$/.exec(path))) {
     const item = fake.workItems.get(Number(m[1]));
     if (!item) return json({ message: "TF401232: Work item does not exist" }, 404);
+    for (const op of body) {
+      const error = op.path.startsWith("/fields/") ? treeError(projectOfItem(item), op.path.slice(8), op.value) : null;
+      if (error) return json({ message: error }, 400);
+    }
     for (const op of body) {
       if (op.path.startsWith("/fields/")) item.fields[op.path.slice(8)] = op.value;
       else if (op.path === "/relations/-") {
@@ -689,7 +831,8 @@ function route(method: string, path: string, body: Json, full: string): Response
   }
 
   // Reporting revisions (used for history-based burnup): all revisions of the requested types.
-  if ((method === "POST" || method === "GET") && path === `${P1}/_apis/wit/reporting/workitemrevisions`) {
+  // The collection-level route (cross-project scopes) returns the same (the fixture's projects).
+  if ((method === "POST" || method === "GET") && (path === `${P1}/_apis/wit/reporting/workitemrevisions` || path === `_apis/wit/reporting/workitemrevisions`)) {
     const types: string[] | undefined = body?.types;
     const fields: string[] | undefined = body?.fields;
     const values = Array.from(fake.revisions.entries())
@@ -770,8 +913,47 @@ function route(method: string, path: string, body: Json, full: string): Response
     }
   }
 
+  const other = routeOtherProject(method, path, body, full);
+  if (other) return other;
+
   return json({ message: `Fake ADO: no route for ${method} ${path}` }, 404);
 }
+
+/** Routes of the other (seeded) projects: trees, teams, members, team areas and item creation. */
+function routeOtherProject(method: string, path: string, body: Json, full: string): Response | null {
+  let m: RegExpExecArray | null;
+  if (method === "GET" && (m = /^([^/]+)\/_apis\/wit\/classificationnodes\/(Areas|Iterations)$/.exec(path)) && otherProject(m[1])) {
+    const p = otherProject(m[1])!;
+    return json(m[2] === "Areas" ? p.areaTree : p.iterationTree);
+  }
+  if (method === "GET" && (m = /^_apis\/projects\/([^/]+)\/teams$/.exec(path)) && otherProject(m[1])) {
+    return json({ value: otherProject(m[1])!.teams });
+  }
+  if (method === "GET" && (m = /^_apis\/projects\/([^/]+)\/teams\/([^/]+)\/members$/.exec(path)) && otherProject(m[1])) {
+    return json({ value: (otherProject(m[1])!.teamMembers[decodeURIComponent(m[2])] ?? []).map((identity) => ({ identity })) });
+  }
+  if (method === "GET" && (m = /^([^/]+)\/([^/]+)\/_apis\/work\/teamsettings\/teamfieldvalues$/.exec(path)) && otherProject(m[1])) {
+    return json({ field: { referenceName: "System.AreaPath" }, defaultValue: otherProject(m[1])!.teamAreas[decodeURIComponent(m[2])], values: [] });
+  }
+  if (method === "POST" && (m = /^([^/]+)\/_apis\/wit\/workitems\/\$(.+)$/.exec(path)) && otherProject(m[1])) {
+    const p = otherProject(m[1])!;
+    const type = decodeURIComponent(m[2]);
+    if (!fake.types.some((t) => t.name === type)) return json({ message: `TF401326: Invalid work item type ${type}` }, 400);
+    for (const op of body) {
+      const error = op.path.startsWith("/fields/") ? treeError(p.name, op.path.slice(8), op.value) : null;
+      if (error) return json({ message: error }, 400);
+    }
+    if (new URL(full).searchParams.get("validateOnly") === "true") return json({ id: -1, fields: {} });
+    const id = fake.nextId++;
+    const fields: Json = { "System.Id": id, "System.WorkItemType": type, "System.State": fake.states[type]?.[0]?.name ?? "New", "System.TeamProject": p.name };
+    for (const op of body) if (op.path.startsWith("/fields/")) fields[op.path.slice(8)] = op.value;
+    const item: WorkItem = { id, rev: 1, fields, relations: [] };
+    fake.workItems.set(id, item);
+    return json(clone(item));
+  }
+  return null;
+}
+
 
 export const fetchMock = vi.fn(async (input: string, init: RequestInit = {}) => {
   const method = (init.method ?? "GET").toUpperCase();

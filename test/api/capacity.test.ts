@@ -264,6 +264,15 @@ describe("loading Azure DevOps team capacity", () => {
     expect(config.capacity).toBeUndefined();
   });
 
+  it("does not derive capacity for a team in another project", async () => {
+    const { red, s1 } = await setup();
+    fake.calls = [];
+    const foreign = { ...red, projectId: "p-contoso", projectName: "Contoso" };
+    const r = (await loadDerivedCapacity({ capacity: { source: "hybrid" } }, [foreign], [s1])).get(derivedKey("n-red", s1))!;
+    expect(r).toEqual({ derived: null, reason: expect.stringContaining("is in project Contoso") });
+    expect(callsTo(/_apis\/work\/teamsettings/)).toHaveLength(0);
+  });
+
   it("falls back to Mon–Fri, no team days off and the team id when settings requests fail", async () => {
     const { red, s1 } = await setup();
     fake.teamCapacity[`t-red|${s1.identifier}`] = [member("Ada", 6)];

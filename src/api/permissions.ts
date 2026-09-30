@@ -1,4 +1,5 @@
 import { api, getProject } from "./client";
+import { foreignProjectOf } from "./projects";
 
 /**
  * What the current user may change (api-version 7.0):
@@ -64,7 +65,9 @@ const BIT = { genericWrite: 2, createChildren: 4, workItemWrite: 32 };
 export async function checkPlanIn(areaPath: string, type: string): Promise<boolean | undefined> {
   if (!areaPath || !type) return true;
   try {
-    await api(`${encodeURIComponent(getProject().id)}/_apis/wit/workitems/$${encodeURIComponent(type)}?validateOnly=true`, {
+    // Areas of other projects (cross-project units) are validated in their own project.
+    const route = encodeURIComponent(foreignProjectOf(areaPath) ?? getProject().id);
+    await api(`${route}/_apis/wit/workitems/$${encodeURIComponent(type)}?validateOnly=true`, {
       method: "POST",
       contentType: "application/json-patch+json",
       body: [

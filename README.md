@@ -41,6 +41,7 @@ Every board and list has the shared filter bar: text search, Type / State / Assi
 | SAFe roles (RTE, Product Owner, Business Owner, …) | Members of hierarchy nodes, linked to Azure DevOps identities |
 | Hierarchy / settings | Extension Data Service value (per project) |
 | Team capacity | Manual story points (Extension Data Service), or derived from the Azure DevOps team capacity (see below) |
+| Units in other projects | A unit may point to an area path and team in **another project of the same collection** (pick the project first in Setup or My Organization). The configuration stays in the host project |
 
 ## Capacity source
 
@@ -63,6 +64,15 @@ SAFe Ado's own data (PI objectives, ROAM risks, milestones, capacity, planning m
 - **Keeps an audit log, which is the control.** Every write through SAFe Ado is stamped (`createdBy`/`createdAt`, `modifiedBy`/`modifiedAt`) and appended to a per-project change log (`audit-<projectId>`) with the changed fields. Objectives and risks have a **History** dialog; **Setup → Audit log** shows every change, filterable by data and user. The log keeps the latest 2000 changes of the last 180 days. Writes made outside SAFe Ado (directly through the REST API) are not logged.
 - **Lets Business Owners own Actual BV.** When a unit or one of its ancestors has members with the *Business Owner* role, only those people (matched by their Azure DevOps identity, so pick them from the team) can enter Actual BV on PI objectives. Who entered it and when is shown.
 - **Backs up and restores.** Azure DevOps deletes extension data when the extension is uninstalled. **Setup → Export SAFe data** downloads one JSON file with the configuration and every document collection (with a schema version); **Import** (administrators) validates it, shows a summary, and merges or overwrites. Export before uninstalling or moving to another collection.
+
+## Cross-project portfolios
+
+Large enterprises often keep ARTs or solutions in separate projects. A portfolio configured in one project (the *host*) can include units from other projects of the same collection:
+
+- **Queries.** A scope inside the host project works exactly as before (`[System.TeamProject] = @project`). A scope that spans projects lists them (`[System.TeamProject] IN (...)`, plus the area clauses) and runs WIQL at collection level. Work items are always read by id at collection level.
+- **PIs.** The host project's PI root (or the unit's cadence in the host project) defines the PIs. Each project has its own iteration tree, so a unit in another project names its **PI root in that project** (inherited by its children; by default the cadence's path in that project, e.g. `Contoso\PIs`). Its PIs and sprints are matched to the cadence **by name, else by identical dates**. Boards, reports and lists show foreign items in the matched cadence sprint; iterations with no match are listed in a note at the top of the hub.
+- **Writes.** Re-planning a foreign item (drag, create in a cell, remove from board) writes that project's matching iteration; new items are created in the area's project. Moving an item between projects is refused (use *Move to team project* in Azure Boards).
+- **Limitations.** Team iteration subscriptions (sprint mapping and "Assign to teams" in PIs & Iterations) are not available for teams of other projects; a note says so. All projects should use the same work item types (states are read from the host project's process). Objectives, risks and other SAFe data stay in the host project. The SAFe panel on the work item form of a foreign item uses that project's own configuration. There is no collection-level hub; open the hub in the host project.
 
 ## Compatibility notes (Server 2022.1)
 
@@ -132,7 +142,6 @@ src/
 ```
 
 ## Roadmap ideas
-- Collection-level hub for portfolios that span several projects
 - Work item form group showing PI, ART and objective links
 - PI planning mode (team breakouts, confidence vote)
 - Dashboard widgets for predictability and the program board

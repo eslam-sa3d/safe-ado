@@ -1,3 +1,4 @@
+import { isForeignNode, nodeProject } from "./projects";
 import { Level, OrgNode, SafeConfig } from "./types";
 
 /** Helpers for walking the SAFe organization tree. */
@@ -86,11 +87,35 @@ export const LEVEL_COLOR: Record<Level, string> = {
   team: "#6a1b9a",
 };
 
-/** The PI root iteration that applies to a node: its own cadence, the nearest ancestor's, or the project's. */
-export function effectivePiRoot(config: SafeConfig, nodeId: string): string {
-  // Detached units keep their own chain (detached root -> node).
+/** The unit's chain from its tree's root (detached units keep their own chain: detached root -> node). */
+function chainOf(config: SafeConfig, nodeId: string): OrgNode[] {
   const tree = [config.root, ...(config.detached ?? [])].find((t) => findNode(t, nodeId)) ?? config.root;
-  const chain = pathTo(tree, nodeId);
-  for (let i = chain.length - 1; i >= 0; i--) if (chain[i].piRootIteration) return chain[i].piRootIteration!;
+  return pathTo(tree, nodeId);
+}
+
+/**
+ * The PI root iteration that applies to a node: its own cadence, the nearest ancestor's, or the
+ * project's. The cadence always lives in the host project: a unit of another project names its
+ * PI root in that project, which mirrors the cadence (see foreignPiRoot) instead of replacing it.
+ */
+export function effectivePiRoot(config: SafeConfig, nodeId: string): string {
+  const chain = chainOf(config, nodeId);
+  for (let i = chain.length - 1; i >= 0; i--) if (chain[i].piRootIteration && !isForeignNode(chain[i])) return chain[i].piRootIteration!;
   return config.piRootIteration;
+}
+
+/**
+ * Where a unit of another project keeps its PIs: its own PI root, the nearest ancestor's in the same
+ * project, else the cadence root's path in that project (e.g. "Fabrikam\\PIs" -> "Contoso\\PIs").
+ */
+export function foreignPiRoot(config: SafeConfig, nodeId: string): string {
+  const chain = chainOf(config, nodeId);
+  const node = chain[chain.length - 1];
+  const project = nodeProject(node);
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const n = chain[i];
+    if (n.piRootIteration && isForeignNode(n) && n.projectId === project.id) return n.piRootIteration;
+  }
+  const rest = effectivePiRoot(config, nodeId).split("\\").slice(1);
+  return [project.name, ...rest].join("\\");
 }

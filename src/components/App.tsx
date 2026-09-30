@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProject, onThrottled } from "../api/client";
+import { crossProjectKey, NO_CROSS_PROJECT, prepareCrossProject } from "../api/crossProject";
 import { defaultConfig, loadConfig, saveConfig as persistConfig } from "../api/data";
 import { effectivePiRoot, findNode, pathTo, scopeAreas } from "../api/org";
 import { Capabilities, checkPlanIn, loadCapabilities, UNCONFIRMED } from "../api/permissions";
@@ -199,6 +200,23 @@ export function App() {
   const pisState = useAsync(() => (config ? getProgramIncrements(piRoot) : Promise.resolve([])), [piRoot, !!config]);
   const pis = pisState.data ?? [];
 
+  // Units in other projects: load their PI trees and match them to the cadence before views query.
+  const crossKey = config ? crossProjectKey(config) : "";
+  const crossState = useAsync(
+    async () => ({ key: crossKey, status: config ? await prepareCrossProject(config) : NO_CROSS_PROJECT }),
+    [crossKey, !!config]
+  );
+  // Views wait (spinner) until the mirrors of the current setup are installed.
+  const crossReady = !crossKey || crossState.data?.key === crossKey || !!crossState.error;
+  const crossNotes = crossKey && crossState.data?.key === crossKey ? crossState.data.status.notes : [];
+  const lastCross = useRef<string>();
+  useEffect(() => {
+    if (!crossState.data) return;
+    // Mirrors rebuilt for the same setup (e.g. PIs were created): reload the views' queries.
+    if (crossState.data.key && lastCross.current === crossState.data.key) refresh();
+    lastCross.current = crossState.data.key;
+  }, [crossState.data, refresh]);
+
   // Default to the PI running today, else the latest one.
   const pi = useMemo(() => {
     const chosen = pis.find((p) => p.identifier === piPath || p.path === piPath);
@@ -264,7 +282,10 @@ export function App() {
     selectNode: setNodeId,
     pis,
     pi,
-    reloadPis: () => pisState.reload(),
+    reloadPis: () => {
+      pisState.reload();
+      crossState.reload(true);
+    },
     openView: (v) => setView(v as ViewKey),
     piRoot,
     can,
@@ -344,11 +365,21 @@ export function App() {
 
           <section className="content">
             <ErrorBar message={pisState.error && `Could not load PIs: ${pisState.error}`} />
+            <ErrorBar message={crossKey && crossState.error ? `Could not load the other projects' PIs: ${crossState.error}` : undefined} />
+            {crossNotes.length > 0 && (
+              <div className="msg msg-info cross-project-note" role="note">
+                <span>
+                  <strong>Other projects:</strong> {crossNotes.join(" ")}
+                </span>
+              </div>
+            )}
             <Tour view={activeView} suppressed={firstRun && activeView === "setup"} restartKey={tourKey} />
             {firstRun && activeView !== "setup" && (
               <div className="msg msg-info">SAFe Ado is not configured for this project yet. Open Setup to get started.</div>
             )}
-            {needsPi && !pi && !pisState.loading ? (
+            {!crossReady ? (
+              <Spinner label="Loading other projects…" />
+            ) : needsPi && !pi && !pisState.loading ? (
               <div className="empty">
                 <h3>No Program Increments found</h3>
                 <p>
