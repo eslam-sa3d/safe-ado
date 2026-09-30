@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { capacityTotal, defaultIterationIndex, iterationSummary } from "../../api/reports";
+import { effectiveCapacity } from "../../api/capacity";
+import { defaultIterationIndex, iterationSummary } from "../../api/reports";
+import { CapacityBadge, CapacitySetupLink } from "../../components/CapacityBadge";
 import { CATEGORY_COLOR, fmtDate, Progress } from "../../components/common";
 import { useSafe } from "../../components/context";
 import { scopeAreas } from "../../api/org";
@@ -26,8 +28,8 @@ export function IterationOverviewWidget({ data, today }: { data: ReportData; tod
     );
 
   const sprint = pi.sprints[Math.min(index, pi.sprints.length - 1)];
-  const hasCapacity = data.capacity.some((c) => c.nodeId === node.id && c.iterationPath.toLowerCase() === sprint.path.toLowerCase());
-  const s = iterationSummary(data.piStories, sprint, hasCapacity ? capacityTotal(data.capacity, new Set([node.id]), [sprint.path]) : null);
+  const cap = effectiveCapacity(config, data.capacity, data.derived, node.id, sprint);
+  const s = iterationSummary(data.piStories, sprint, cap.value ?? null);
 
   const pager = (
     <span className="pager">
@@ -62,11 +64,15 @@ export function IterationOverviewWidget({ data, today }: { data: ReportData; tod
         </div>
         <div>
           <div className="kpi-value">{s.capacity ?? "—"}</div>
-          <div className="muted small">Capacity (SP)</div>
+          <div className="muted small">
+            Capacity (SP)
+            {cap.source !== "manual" && <CapacityBadge origin={cap.origin} explanation={cap.explanation} />}
+          </div>
+          <CapacitySetupLink capacity={cap} />
         </div>
         <div className="iteration-burn">
           <Progress done={s.done} total={s.planned} label={`${s.done} / ${s.planned} SP burned`} />
-          {s.capacity !== null && s.planned > s.capacity && <div className="small bad-text">Overloaded by {s.planned - s.capacity} SP</div>}
+          {s.capacity !== null && s.planned > s.capacity && <div className="small bad-text">Overloaded by {Math.round((s.planned - s.capacity) * 10) / 10} SP</div>}
         </div>
       </div>
       {s.groups.length === 0 ? (
