@@ -3,6 +3,7 @@ import { newId } from "../api/data";
 import { DEFAULT_DEPENDENCY_LINK } from "../api/dependencies";
 import { childLevels, flatten } from "../api/org";
 import { DEFAULT_RROE_FIELD } from "../api/rules";
+import { telemetryAvailable } from "../api/telemetry";
 import { Level, LEVEL_LABEL, Member, OrgNode, SafeConfig } from "../api/types";
 import {
   ClassificationNode,
@@ -312,6 +313,27 @@ export function SetupView({ firstRun }: { firstRun: boolean }) {
               Direction: provider → consumer. The provider links to the consumer with <strong>{linkName(link.forward)}</strong>; the
               consumer links back with <strong>{linkName(link.reverse)}</strong>
               {link.forward === link.reverse ? " (a symmetric link: the first-linked item counts as the provider)" : ""}.
+            </p>
+          </div>
+        </section>
+
+        <section className="panel setup-telemetry">
+          <div className="panel-header">
+            <h3>Usage data</h3>
+          </div>
+          <div className="pad form">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.telemetryOptIn === true}
+                onChange={(e) => setDraft({ ...draft, telemetryOptIn: e.target.checked })}
+              />{" "}
+              Share anonymous usage data
+            </label>
+            <p className="muted small">
+              Only event names (such as &ldquo;view opened: Reports&rdquo;), the extension version and a salted hash of the
+              collection id. Never titles, names, e-mails or work item data. Off by default.{" "}
+              {telemetryAvailable() ? "" : "This build has no telemetry endpoint, so nothing is sent even when this is on."}
             </p>
           </div>
         </section>

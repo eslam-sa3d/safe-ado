@@ -5,6 +5,7 @@ import { effectivePiRoot, findNode, pathTo, scopeAreas } from "../api/org";
 import { canPlanIn, Capabilities, loadCapabilities, UNCONFIRMED } from "../api/permissions";
 import { indexTree, reconcileConfig, reconcileDocs } from "../api/reconcile";
 import { localToday } from "../api/rules";
+import { setTelemetryOptIn, TelemetryEvents, track } from "../api/telemetry";
 import { onUrlStateChanged, readUrlState, writeUrlState } from "../api/urlState";
 import { getUserValue, setUserValue } from "../api/data";
 import { Level, LEVEL_LABEL, SafeConfig } from "../api/types";
@@ -183,6 +184,12 @@ export function App() {
   }, [pis, piPath]);
 
   useEffect(() => setPrefs({ nodeId, view, piPath }), [nodeId, view, piPath, setPrefs]);
+  // Anonymous, opt-in usage telemetry: a no-op unless the build has an endpoint and an admin opted in.
+  const configLoaded = !!config;
+  useEffect(() => setTelemetryOptIn(config?.telemetryOptIn), [config?.telemetryOptIn]);
+  useEffect(() => {
+    if (configLoaded) void track(TelemetryEvents.viewOpened, view);
+  }, [view, configLoaded]);
   useEffect(() => {
     if (urlReady.current && config) void writeUrlState({ node: nodeId || undefined, view, pi: pi?.identifier });
   }, [nodeId, view, pi?.identifier, config]);

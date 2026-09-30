@@ -53,6 +53,8 @@ export interface SafeConfig {
   dependencyLink?: { forward: string; reverse: string };
   /** Units removed from their parent but kept in the organization. */
   detached?: OrgNode[];
+  /** A project admin opted in to anonymous usage telemetry (see docs/PRIVACY.md). Off when unset. */
+  telemetryOptIn?: boolean;
 }
 
 export interface Sprint {
