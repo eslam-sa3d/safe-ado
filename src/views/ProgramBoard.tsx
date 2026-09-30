@@ -1,33 +1,39 @@
-import { MouseEvent as ReactMouseEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, MouseEvent as ReactMouseEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  addHidden,
+  ArtBoardData,
   BoardRow,
   calculatePlacement,
-  childIdsOf,
+  CardEdge,
+  cardEdges,
   childTypeOf,
+  externalColumn,
+  hiddenCrits,
+  hiddenDetail,
+  HiddenPartners,
+  loadArtBoard,
   milestonesBySprint,
+  ownerMap,
   rowForArea,
   sprintIndexForDate,
   todayIso,
+  worstCriticality,
 } from "../api/artboard";
-import { metaStore, milestonesStore } from "../api/data";
-import { criticalityByIteration, CRITICALITY_COLOR, CRITICALITY_LABEL, dependenciesOf } from "../api/dependencies";
-import { boardRows, boardType, flatten, pathTo, scopeAreas } from "../api/org";
-import { scopeQuery } from "../api/queries";
-import { Criticality, F, LINK, Milestone, WorkItem, WorkItemMeta } from "../api/types";
 import {
-  addLink,
-  getStateCategories,
-  getWorkItems,
-  isUnder,
-  openNewWorkItem,
-  openWorkItem,
-  queryWorkItems,
-  relationTargetId,
-  removeLink,
-  setFields,
-} from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, fmtDate, Info, Spinner, storage, typeColor, useAsync, Icon } from "../components/common";
-import { useSafe } from "../components/context";
+  criticalityByIteration,
+  CRITICALITY_COLOR,
+  CRITICALITY_LABEL,
+  dependencyLinkTypes,
+  sprintIndex,
+} from "../api/dependencies";
+import { applyFilter, EMPTY_FILTER, ExtraFacet, facetOptions, ItemFilter, wiqlSuffix } from "../api/filters";
+import { boardRows, boardType, flatten, pathTo, scopeAreas } from "../api/org";
+import { groupByArea } from "../api/teamboard";
+import { Criticality, F, WorkItem } from "../api/types";
+import { addLink, isUnder, openNewWorkItem, openWorkItem, relationTargetId, removeLink, setFields } from "../api/wit";
+import { CATEGORY_COLOR, Empty, ErrorBar, fmtDate, Icon, Info, lastSegment, Spinner, storage, typeColor, useAsync } from "../components/common";
+import { useCan, useSafe } from "../components/context";
+import { FilterBar } from "../components/FilterBar";
 
 interface Column {
   key: string;
@@ -38,9 +44,7 @@ interface Column {
 
 type Row = BoardRow;
 
-interface Edge {
-  from: number;
-  to: number;
+interface Edge extends CardEdge {
   criticality: Criticality;
 }
 
@@ -52,28 +56,33 @@ interface Placement {
 export type PlacementMode = "calculated" | "feature";
 
 const [loadMode, saveMode] = storage<PlacementMode>("safe-ado-artboard-placement", "calculated");
-const CRITICALITIES: Criticality[] = ["healthy", "atRisk", "critical", "resolved"];
-const CHILD_FIELDS = [F.id, F.title, F.type, F.state, F.area, F.iteration];
-
-interface BoardData {
-  items: WorkItem[];
-  category: (type: string, state: string) => string;
-  children: Map<number, WorkItem[]>;
-  meta: Map<number, WorkItemMeta>;
-  milestones: Milestone[];
-}
+const extKey = (area: string) => `ext:${area}`;
+const CRITICALITIES: Criticality[] =["healthy", "atRisk", "critical", "resolved"];
+const EMPTY_DATA: ArtBoardData = {
+  items: [],
+  category: () => "",
+  children: new Map(),
+  meta: new Map(),
+  milestones: [],
+  external: [],
+  externalChildren: new Map(),
+};
 
 /**
  * ART / Solution Planning Board: rows are teams (or ARTs at solution level), columns are the
  * PI's iterations, cards are Features (or Capabilities). In Agile Hive's default "calculated"
  * mode cards sit where their children are planned; "feature iteration" mode places them by
  * their own iteration and allows drag-and-drop re-planning and dependency editing.
+ * Dependencies include story-level links (drawn between the cards owning the stories); partners
+ * outside the board sit in EXTERNAL rows, and partners that are not drawn show as edge indicators.
  */
 export function ProgramBoard() {
   const { config, node, pi } = useSafe();
+  const can = useCan();
   const type = boardType(config, node.level);
   const childType = childTypeOf(config, type);
   const areas = scopeAreas(node);
+  const link = dependencyLinkTypes(config);
   const [mode, setModeState] = useState<PlacementMode>(loadMode);
   const [showDeps, setShowDeps] = useState(true);
   const [shown, setShown] = useState<Record<Criticality, boolean>>({ healthy: true, atRisk: true, critical: true, resolved: true });
@@ -81,7 +90,9 @@ export function ProgramBoard() {
   const [linkMode, setLinkMode] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string>();
-  const editable = mode === "feature";
+  const [filter, setFilter] = useState<ItemFilter>(EMPTY_FILTER);
+  const editable = mode === "feature" && can.plan;
+  const calculatedMode = mode === "calculated";
 
   const setMode = (m: PlacementMode) => {
     setModeState(m);
@@ -90,35 +101,10 @@ export function ProgramBoard() {
     setLinkFrom(null);
   };
 
-  const { data, loading, error, reload, setData } = useAsync(async (): Promise<BoardData> => {
-    const empty: BoardData = { items: [], category: () => "", children: new Map(), meta: new Map(), milestones: [] };
-    if (!pi) return empty;
-    const [all, category] = await Promise.all([
-      queryWorkItems(scopeQuery([type], areas, pi.path), [], true),
-      getStateCategories([type, childType]),
-    ]);
-    const items = all.filter((i) => category(i.fields[F.type], i.fields[F.state]) !== "Removed");
-    const childIds = childType ? items.flatMap(childIdsOf) : [];
-    const [childItems, metas, milestones] = await Promise.all([
-      childIds.length ? getWorkItems(childIds, CHILD_FIELDS) : Promise.resolve([] as WorkItem[]),
-      // Planning metadata is optional: the board still works without it.
-      metaStore.list().catch(() => [] as WorkItemMeta[]),
-      milestonesStore.list().catch(() => [] as Milestone[]),
-    ]);
-    const byId = new Map(childItems.map((c) => [c.id, c]));
-    const children = new Map(
-      items.map((i) => [
-        i.id,
-        childIdsOf(i)
-          .map((id) => byId.get(id))
-          .filter(
-            (c): c is WorkItem =>
-              !!c && c.fields[F.type] === childType && category(c.fields[F.type], c.fields[F.state]) !== "Removed"
-          ),
-      ])
-    );
-    return { items, category, children, meta: new Map(metas.map((m) => [m.workItemId, m])), milestones };
-  }, [type, childType, areas.join("|"), pi?.path]);
+  const { data, loading, error, reload, setData } = useAsync(
+    async (): Promise<ArtBoardData> => (pi ? loadArtBoard({ type, childType, areas, pi, filter, link }) : EMPTY_DATA),
+    [type, childType, areas.join("|"), pi?.path, pi?.identifier, wiqlSuffix(filter), link.forward, link.reverse]
+  );
 
   const columns: Column[] = useMemo(() => {
     if (!pi) return [];
@@ -138,22 +124,23 @@ export function ProgramBoard() {
     return [...base, { key: "unassigned", title: "Unassigned", areaPath: undefined }];
   }, [node]);
 
-  const items = data?.items ?? [];
+  const d = data ?? EMPTY_DATA;
+  const items = d.items;
   const sprintPaths = useMemo(() => (pi?.sprints ?? []).map((s) => s.path), [pi]);
   const nodeName = useMemo(() => new Map(flatten(config.root).map((n) => [n.id, n.name])), [config]);
 
   const calculated = useMemo(() => {
     const map = new Map<number, ReturnType<typeof calculatePlacement>>();
-    for (const item of items) {
-      map.set(item.id, calculatePlacement(item, data?.children.get(item.id) ?? [], rows, sprintPaths, data?.meta.get(item.id)?.owningNodeId));
+    for (const item of d.items) {
+      map.set(item.id, calculatePlacement(item, d.children.get(item.id) ?? [], rows, sprintPaths, d.meta.get(item.id)?.owningNodeId));
     }
     return map;
-  }, [items, data, rows, sprintPaths]);
+  }, [d, rows, sprintPaths]);
 
   const placement = useMemo(() => {
     const map = new Map<number, Placement>();
     for (const item of items) {
-      if (mode === "calculated") {
+      if (calculatedMode) {
         const c = calculated.get(item.id)!;
         map.set(item.id, { row: c.row ?? "unassigned", col: c.sprint + 1 });
         continue;
@@ -165,35 +152,82 @@ export function ProgramBoard() {
       map.set(item.id, { row, col });
     }
     return map;
-  }, [items, rows, columns, mode, calculated]);
+  }, [items, rows, columns, calculatedMode, calculated]);
 
-  const edges: Edge[] = useMemo(() => {
-    const done = new Map(items.map((i) => [i.id, data!.category(i.fields[F.type], i.fields[F.state]) === "Completed"]));
-    return dependenciesOf(items)
-      .filter((d) => placement.has(d.provider) && placement.has(d.consumer))
-      .map((d) => ({
-        from: d.provider,
-        to: d.consumer,
-        criticality: criticalityByIteration(placement.get(d.provider)!.col - 1, placement.get(d.consumer)!.col - 1, done.get(d.provider)),
-      }));
-  }, [items, placement, data]);
+  // --- filter (A6) --------------------------------------------------------------------------
+  const owningName = (i: WorkItem) => {
+    const owner = d.meta.get(i.id)?.owningNodeId;
+    return owner ? nodeName.get(owner) ?? owner : "None";
+  };
+  const involvedNames = (i: WorkItem) => (calculated.get(i.id)?.involved ?? []).map((k) => rows.find((r) => r.key === k)!.title);
+  const uniq = (xs: string[]) => Array.from(new Set(xs)).sort((a, b) => a.localeCompare(b));
+  const extraFacets: ExtraFacet[] = [
+    { key: "owningTeam", label: "Owning team", options: uniq(items.map(owningName)), values: (i) => [owningName(i)] },
+    { key: "involvedTeams", label: "Involved teams", options: uniq(items.flatMap(involvedNames)), values: involvedNames },
+  ];
+  const visibleItems = applyFilter(items, filter, extraFacets);
+  const visibleIds = new Set(visibleItems.map((i) => i.id));
 
-  const visibleEdges = edges.filter((e) => shown[e.criticality]);
+  // --- dependencies (A7) ---------------------------------------------------------------------
+  const deps = useMemo(() => {
+    const owner = ownerMap(d.items, d.children);
+    const lookup = new Map<number, WorkItem>();
+    for (const i of [...d.external, ...Array.from(d.children.values()).flat(), ...d.items]) lookup.set(i.id, i);
+    const extCol = new Map<number, number>();
+    for (const e of d.external) {
+      const col = pi ? externalColumn(e, d.externalChildren.get(e.id) ?? [], pi, sprintPaths, calculatedMode) : undefined;
+      if (col !== undefined) extCol.set(e.id, col);
+    }
+    const sprintOf = (id: number) => {
+      const o = owner.get(id);
+      if (o === id) return placement.get(id)!.col - 1;
+      if (o !== undefined) return sprintIndex(lookup.get(id)!.fields[F.iteration], sprintPaths);
+      return (extCol.get(id) ?? 0) - 1;
+    };
+    const done = (id: number) => {
+      const i = lookup.get(id)!;
+      return d.category(i.fields[F.type], i.fields[F.state]) === "Completed";
+    };
+    const sources = [...d.items, ...Array.from(d.children.values()).flat()];
+    const external = new Set(d.external.map((e) => e.id));
+    const edges: Edge[] = cardEdges(sources, owner, external, link).map((e) => ({
+      ...e,
+      criticality: worstCriticality(e.pairs.map((p) => criticalityByIteration(sprintOf(p.provider), sprintOf(p.consumer), done(p.provider)))),
+    }));
+    return { edges, extCol, lookup };
+  }, [d, placement, sprintPaths, calculatedMode, pi, link]);
+  const { edges, extCol, lookup } = deps;
 
-  const externalDeps = (item: WorkItem) =>
-    (item.relations ?? []).filter(
-      (r) => (r.rel === LINK.successor || r.rel === LINK.predecessor) && !placement.has(relationTargetId(r.url) ?? -1)
-    ).length;
+  const externalShown = d.external.filter((e) => extCol.has(e.id));
+  const externalGroups = groupByArea(externalShown);
+  const externalIds = new Set(d.external.map((e) => e.id));
+
+  const extArea = new Map(externalShown.map((e) => [e.id, extKey(String(e.fields[F.area] ?? ""))]));
+  const drawn = (id: number) => {
+    if (extArea.has(id)) return !collapsed.has(extArea.get(id)!);
+    const p = placement.get(id);
+    return !!p && visibleIds.has(id) && !collapsed.has(p.row);
+  };
+  const selectedEdges = edges.filter((e) => shown[e.criticality]);
+  const visibleEdges = selectedEdges.filter((e) => drawn(e.from) && drawn(e.to));
+  const hidden = new Map<number, HiddenPartners[]>();
+  if (showDeps) {
+    for (const e of selectedEdges) {
+      if (drawn(e.from) && !drawn(e.to)) addHidden(hidden, e.from, "consumers", e.to, e.criticality);
+      if (drawn(e.to) && !drawn(e.from)) addHidden(hidden, e.to, "providers", e.from, e.criticality);
+    }
+  }
+
+  const externalDeps = (item: WorkItem) => new Set(edges.flatMap((e) => (e.from === item.id && externalIds.has(e.to) ? [e.to] : e.to === item.id && externalIds.has(e.from) ? [e.from] : []))).size;
 
   const criticalByRow = (rowKey: string) =>
-    edges.filter((e) => e.criticality === "critical" && (placement.get(e.from)!.row === rowKey || placement.get(e.to)!.row === rowKey))
-      .length;
+    edges.filter((e) => e.criticality === "critical" && (placement.get(e.from)?.row === rowKey || placement.get(e.to)?.row === rowKey)).length;
 
   const visibleRows = rows.filter((r) => r.key !== "unassigned" || items.some((i) => placement.get(i.id)?.row === "unassigned"));
 
   const milestones = useMemo(
-    () => milestonesBySprint(data?.milestones ?? [], pathTo(config.root, node.id).map((n) => n.id), pi?.sprints ?? []),
-    [data, config, node, pi]
+    () => milestonesBySprint(d.milestones, pathTo(config.root, node.id).map((n) => n.id), pi?.sprints ?? []),
+    [d, config, node, pi]
   );
   const currentSprint = sprintIndexForDate(todayIso(), pi?.sprints ?? []);
 
@@ -208,13 +242,13 @@ export function ProgramBoard() {
   // --- drag & drop (feature iteration mode) ---------------------------------------------------
   const onDrop = async (id: number, row: Row, col: Column) => {
     const item = items.find((i) => i.id === id);
-    if (!item) return;
+    if (!item || !editable) return;
     const changes: Record<string, string> = {};
     if (row.areaPath && placement.get(id)?.row !== row.key) changes[F.area] = row.areaPath;
     if (item.fields[F.iteration] !== col.path) changes[F.iteration] = col.path;
     if (!Object.keys(changes).length) return;
     // Optimistic move, then refresh from the server.
-    setData({ ...data!, items: items.map((i) => (i.id === id ? { ...i, fields: { ...i.fields, ...changes } } : i)) });
+    setData({ ...d, items: items.map((i) => (i.id === id ? { ...i, fields: { ...i.fields, ...changes } } : i)) });
     try {
       await setFields(id, changes);
     } catch (e: any) {
@@ -224,7 +258,7 @@ export function ProgramBoard() {
   };
 
   const onCardClick = async (id: number) => {
-    if (!linkMode) {
+    if (!linkMode || !editable) {
       await openWorkItem(id);
       reload(true);
       return;
@@ -233,7 +267,7 @@ export function ProgramBoard() {
       setLinkFrom(id);
     } else if (linkFrom !== id) {
       try {
-        await addLink(linkFrom, id, LINK.successor, "Program board dependency");
+        await addLink(linkFrom, id, link.forward, "Program board dependency");
         setLinkFrom(null);
         reload(true);
       } catch (e: any) {
@@ -243,13 +277,13 @@ export function ProgramBoard() {
   };
 
   const onEdgeClick = async (edge: Edge) => {
-    if (!editable || !window.confirm(`Remove dependency #${edge.from} → #${edge.to}?`)) return;
-    const provider = items.find((i) => i.id === edge.from)!;
-    const onProvider = (provider.relations ?? []).some((r) => r.rel === LINK.successor && relationTargetId(r.url) === edge.to);
+    if (!editable || !edge.direct || !window.confirm(`Remove dependency #${edge.from} → #${edge.to}?`)) return;
+    const provider = lookup.get(edge.from)!;
+    const onProvider = (provider.relations ?? []).some((r) => r.rel === link.forward && relationTargetId(r.url) === edge.to);
     try {
       // The link may be stored on either side; Azure DevOps removes the reverse end automatically.
-      if (onProvider) await removeLink(edge.from, edge.to, LINK.successor);
-      else await removeLink(edge.to, edge.from, LINK.predecessor);
+      if (onProvider) await removeLink(edge.from, edge.to, link.forward);
+      else await removeLink(edge.to, edge.from, link.reverse);
       reload(true);
     } catch (e: any) {
       setActionError(`Could not remove dependency: ${e.message}`);
@@ -277,7 +311,7 @@ export function ProgramBoard() {
     const ro = new ResizeObserver(measure);
     ro.observe(grid);
     return () => ro.disconnect();
-  }, [items, placement, showDeps, collapsed]);
+  }, [data, placement, showDeps, collapsed, filter]);
 
   if (!pi) return null;
   if (loading && !data) return <Spinner label="Loading program board…" />;
@@ -287,19 +321,20 @@ export function ProgramBoard() {
     Criticality,
     number
   >;
+  const cardRef = (id: number, el: HTMLElement | null) => (el ? cardRefs.current.set(id, el) : cardRefs.current.delete(id));
 
   return (
     <div className="board-view">
       <div className="toolbar">
         <strong>{type}s</strong>
         <span className="muted">
-          {items.length} items · {edges.length} dependencies
+          {visibleItems.length} items · {edges.length} dependencies
           {counts.critical > 0 && <span className="danger"> · {counts.critical} critical</span>}
         </span>
         <span className="spacer" />
         <span className="segmented" role="group" aria-label="Placement">
           <span className="muted small">Placement:</span>
-          <button className={"btn" + (mode === "calculated" ? " primary" : "")} aria-pressed={mode === "calculated"} onClick={() => setMode("calculated")}>
+          <button className={"btn" + (calculatedMode ? " primary" : "")} aria-pressed={calculatedMode} onClick={() => setMode("calculated")}>
             Calculated from team plans
           </button>
           <button className={"btn" + (mode === "feature" ? " primary" : "")} aria-pressed={mode === "feature"} onClick={() => setMode("feature")}>
@@ -321,7 +356,7 @@ export function ProgramBoard() {
             {linkMode ? (linkFrom ? `Select successor of #${linkFrom}…` : "Select predecessor…") : "Add dependency"}
           </button>
         )}
-        <button className="btn" onClick={() => setCollapsed(new Set(visibleRows.map((r) => r.key)))}>
+        <button className="btn" onClick={() => setCollapsed(new Set([...visibleRows.map((r) => r.key), ...externalGroups.map((g) => extKey(g.area))]))}>
           Collapse all
         </button>
         <button className="btn" onClick={() => setCollapsed(new Set())}>
@@ -331,15 +366,19 @@ export function ProgramBoard() {
           <Icon name="Refresh" /> Refresh
         </button>
       </div>
+      <FilterBar value={filter} onChange={setFilter} options={facetOptions(items)} extraFacets={extraFacets} />
       <ErrorBar message={error ?? actionError} onClose={() => setActionError(undefined)} />
+      {mode === "feature" && !can.plan && (
+        <Info>You have read-only access to this area: re-planning by drag and drop, dependency editing and new items are disabled.</Info>
+      )}
       {!node.children.length && node.level !== "team" && (
         <Info>This {node.level === "art" ? "ART has no teams" : "node has no children"} yet. Add them in Setup to get one row per team.</Info>
       )}
       {items.length === 0 && !loading && (
         <Empty title={`No ${type}s in ${pi.name}`}>
           <p>
-            Items appear here when their Iteration Path is under <code>{pi.path}</code> and their Area Path is under{" "}
-            <code>{areas.join(", ") || "(no area configured)"}</code>.
+            Items appear here when their Area Path is under <code>{areas.join(", ") || "(no area configured)"}</code> and their Iteration
+            Path is under <code>{pi.path}</code>, their children are planned in it, or they are assigned to it.
           </p>
         </Empty>
       )}
@@ -371,27 +410,28 @@ export function ProgramBoard() {
               key={r.key}
               row={r}
               columns={columns}
-              items={items.filter((i) => placement.get(i.id)?.row === r.key)}
+              items={visibleItems.filter((i) => placement.get(i.id)?.row === r.key)}
               colOf={(id) => placement.get(id)!.col}
-              category={data.category}
+              category={d.category}
               pointsField={config.storyPointsField}
               externalDeps={externalDeps}
+              hidden={hidden}
               critical={criticalByRow(r.key)}
               collapsed={collapsed.has(r.key)}
               onToggle={() => toggleRow(r.key)}
               editable={editable}
               info={(id) => {
                 const c = calculated.get(id)!;
-                const owner = data.meta.get(id)?.owningNodeId;
+                const owner = d.meta.get(id)?.owningNodeId;
                 return {
                   involved: c.involved.map((k) => rows.find((x) => x.key === k)!.title),
                   unplanned: c.unplanned,
                   owner: owner ? nodeName.get(owner) ?? owner : undefined,
-                  hasChildren: (data.children.get(id) ?? []).length > 0,
+                  hasChildren: (d.children.get(id) ?? []).length > 0,
                 };
               }}
               selected={linkFrom}
-              cardRef={(id, el) => (el ? cardRefs.current.set(id, el) : cardRefs.current.delete(id))}
+              cardRef={cardRef}
               onDrop={onDrop}
               onCardClick={onCardClick}
               onNew={(col) =>
@@ -402,6 +442,56 @@ export function ProgramBoard() {
               }
             />
           ))}
+          {externalGroups.length > 0 && (
+            <>
+              <div className="ab-external-header" style={{ gridColumn: "1 / -1" }}>
+                <span className="ab-external-title">EXTERNAL</span>
+                <span className="muted small">Dependency partners outside this board, in their calculated iteration</span>
+              </div>
+              {externalGroups.map((g) => {
+                const name = lastSegment(g.area) || "(no area)";
+                const key = extKey(g.area);
+                const isCollapsed = collapsed.has(key);
+                return (
+                  <Fragment key={g.area}>
+                    <div className={"board-row-header ab-external-row" + (isCollapsed ? " collapsed" : "")}>
+                      <div className="ab-row-title" title={g.area}>
+                        <button
+                          className="link row-toggle"
+                          aria-expanded={!isCollapsed}
+                          aria-label={`${isCollapsed ? "Expand" : "Collapse"} external ${name}`}
+                          onClick={() => toggleRow(key)}
+                        >
+                          <Icon name={isCollapsed ? "ChevronRight" : "ChevronDown"} className="small" />
+                        </button>
+                        <span>{name}</span>
+                      </div>
+                      <div className="muted small">{g.items.length} items</div>
+                    </div>
+                    {columns.map((col, ci) => {
+                      const cellItems = g.items.filter((i) => extCol.get(i.id) === ci);
+                      return (
+                        <div key={col.key} role="group" aria-label={`External ${name} / ${col.title}`} className="board-cell ab-external-cell">
+                          {isCollapsed
+                            ? cellItems.length > 0 && <span className="muted small">{cellItems.length} items</span>
+                            : cellItems.map((i) => (
+                                <ExternalCard
+                                  key={i.id}
+                                  item={i}
+                                  category={d.category}
+                                  hidden={hidden.get(i.id) ?? []}
+                                  cardRef={(el) => cardRef(i.id, el)}
+                                  onOpen={() => openWorkItem(i.id).then(() => reload(true))}
+                                />
+                              ))}
+                        </div>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+            </>
+          )}
           {showDeps && (
             <svg className="dep-layer">
               <defs>
@@ -421,19 +511,23 @@ export function ProgramBoard() {
                 const y1 = a.y + a.height / 2;
                 const y2 = b.y + b.height / 2;
                 const dx = Math.max(40, Math.abs(x2 - x1) / 2) * (forward ? 1 : -1);
+                const removable = editable && e.direct;
+                const via = e.pairs.filter((p) => p.provider !== e.from || p.consumer !== e.to);
                 return (
                   <path
                     key={`${e.from}-${e.to}`}
+                    data-dep={`${e.from}-${e.to}`}
                     d={`M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`}
-                    className={`dep-line ${e.criticality}${editable ? "" : " readonly"}`}
+                    className={`dep-line ${e.criticality}${removable ? "" : " readonly"}${externalIds.has(e.from) || externalIds.has(e.to) ? " external" : ""}`}
                     style={{ stroke: CRITICALITY_COLOR[e.criticality] }}
                     markerEnd={`url(#arrow-${e.criticality})`}
                     onClick={() => onEdgeClick(e)}
                   >
                     <title>
-                      #{e.from} → #{e.to} ({CRITICALITY_LABEL[e.criticality]})
-                      {e.criticality === "critical" ? " — consumer is planned before its provider" : ""}
-                      {editable ? "\nClick to remove" : ""}
+                      {`#${e.from} → #${e.to} (${CRITICALITY_LABEL[e.criticality]})` +
+                        (e.criticality === "critical" ? " — consumer is planned before its provider" : "") +
+                        (via.length ? `\nvia ${via.map((p) => `#${p.provider} → #${p.consumer}`).join(", ")}` : "") +
+                        (removable ? "\nClick to remove" : "")}
                     </title>
                   </path>
                 );
@@ -457,7 +551,9 @@ export function ProgramBoard() {
         <span>
           {editable
             ? "Drag cards to re-plan. Changes update Area Path and Iteration Path."
-            : "Cards are placed in the sprint of their last planned child and the team planning it."}
+            : calculatedMode
+              ? "Cards are placed in the sprint of their last planned child and the team planning it."
+              : "Cards are placed by their own Area Path and Iteration Path."}
         </span>
       </div>
     </div>
@@ -479,6 +575,7 @@ function RowCells(props: {
   category: (type: string, state: string) => string;
   pointsField: string;
   externalDeps: (item: WorkItem) => number;
+  hidden: Map<number, HiddenPartners[]>;
   critical: number;
   collapsed: boolean;
   onToggle: () => void;
@@ -543,6 +640,7 @@ function RowCells(props: {
                     category={props.category}
                     pointsField={props.pointsField}
                     ext={props.externalDeps(i)}
+                    hidden={props.hidden.get(i.id) ?? []}
                     info={props.info(i.id)}
                     editable={editable}
                     selected={props.selected === i.id}
@@ -562,11 +660,32 @@ function RowCells(props: {
   );
 }
 
+/** Edge indicators: partners of this card that are not drawn (collapsed, filtered, outside the PI). */
+function EdgeIndicators({ id, hidden }: { id: number; hidden: HiddenPartners[] }) {
+  return (
+    <>
+      {hidden.map((h) => {
+        const label = `${h.side === "providers" ? "Hidden providers" : "Hidden consumers"} of #${id}`;
+        return (
+          <span
+            key={h.side}
+            className={`ab-edge ${h.side === "providers" ? "left" : "right"}`}
+            style={{ background: CRITICALITY_COLOR[hiddenCrits(h)[0]] }}
+            aria-label={label}
+            title={`${label}\n${hiddenDetail(h)}`}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function BoardCard(props: {
   item: WorkItem;
   category: (type: string, state: string) => string;
   pointsField: string;
   ext: number;
+  hidden: HiddenPartners[];
   info: CardInfo;
   editable: boolean;
   selected: boolean;
@@ -593,6 +712,7 @@ function BoardCard(props: {
       onClick={props.onClick}
       title={`${type} #${i.id}: ${i.fields[F.title]}`}
     >
+      <EdgeIndicators id={i.id} hidden={props.hidden} />
       <div className="card-title">{i.fields[F.title]}</div>
       <div className="card-meta">
         <span className="muted">#{i.id}</span>
@@ -607,7 +727,11 @@ function BoardCard(props: {
           </span>
         )}
         {target && <span className="pill due">Due {fmtDate(target)}</span>}
-        {info.owner && <span className="pill owner" title="Owning team"><Icon name="TeamFavorite" className="small" /> {info.owner}</span>}
+        {info.owner && (
+          <span className="pill owner" title="Owning team">
+            <Icon name="TeamFavorite" className="small" /> {info.owner}
+          </span>
+        )}
         {info.hasChildren && (
           <button className="pill link involved" aria-label={`Involved teams: ${info.involved.length}`} onClick={(e) => toggle(e, "teams")}>
             <Icon name="People" className="small" /> {info.involved.length}
@@ -649,6 +773,39 @@ function BoardCard(props: {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Read-only card of a dependency partner outside the board. */
+function ExternalCard(props: {
+  item: WorkItem;
+  category: (type: string, state: string) => string;
+  hidden: HiddenPartners[];
+  cardRef: (el: HTMLElement | null) => void;
+  onOpen: () => void;
+}) {
+  const { item: i } = props;
+  const type = i.fields[F.type];
+  const cat = props.category(type, i.fields[F.state]);
+  return (
+    <div
+      ref={props.cardRef}
+      className="card ab-external-card"
+      style={{ borderLeftColor: typeColor(type) }}
+      onClick={props.onOpen}
+      title={`${type} #${i.id}: ${i.fields[F.title]}`}
+    >
+      <EdgeIndicators id={i.id} hidden={props.hidden} />
+      <div className="card-title">{i.fields[F.title]}</div>
+      <div className="card-meta">
+        <span className="muted">#{i.id}</span>
+        <span className="muted">{type}</span>
+        <span className="state">
+          <i className="dot" style={{ background: CATEGORY_COLOR[cat] ?? "#999" }} />
+          {i.fields[F.state]}
+        </span>
+      </div>
     </div>
   );
 }

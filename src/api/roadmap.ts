@@ -1,4 +1,5 @@
-import { F, Level, ProgramIncrement, WorkItemMeta } from "./types";
+import { effectivePiRoot, pathTo } from "./org";
+import { F, Level, OrgNode, ProgramIncrement, SafeConfig, WorkItemMeta } from "./types";
 import { localToday } from "./rules";
 
 /**
@@ -91,15 +92,15 @@ export function resizeRange(r: DateRange, edge: "start" | "end", days: number): 
 }
 
 /**
- * Planned range of an item: the roadmap metadata, falling back to the ADO Start/Target Date
- * fields. Undefined when the item is unplanned.
+ * Planned range of an item: the ADO Start/Target Date fields when both are set (so edits made in
+ * Azure DevOps show up), else the roadmap metadata. Undefined when the item is unplanned.
  */
 export function resolveRange(meta?: Partial<WorkItemMeta>, fields?: Record<string, any>): DateRange | undefined {
-  let start = meta?.plannedStart;
-  let end = meta?.plannedEnd;
+  let start: string | undefined = fields?.[F.startDate];
+  let end: string | undefined = fields?.[F.targetDate];
   if (!start || !end) {
-    start = fields?.[F.startDate];
-    end = fields?.[F.targetDate];
+    start = meta?.plannedStart;
+    end = meta?.plannedEnd;
   }
   if (!start || !end) return undefined;
   const a = start.slice(0, 10);
@@ -171,6 +172,54 @@ export function freeLane(target: number, range: DateRange, occupied: { range: Da
   let lane = Math.max(0, target);
   while (occupied.some((o) => o.lane === lane && overlapDays(o.range, range) > 0)) lane++;
   return lane;
+}
+
+/**
+ * Stable PI ids parallel to `paths` (kept in sync with assignedPiPaths): known PIs give their
+ * identifier, other paths keep the id they had before ("" when none).
+ */
+export function piIdsFor(paths: string[], pis: ProgramIncrement[], prevPaths: string[] = [], prevIds: string[] = []): string[] {
+  return paths.map((path) => pis.find((p) => p.path === path)?.identifier ?? prevIds[prevPaths.indexOf(path)] ?? "");
+}
+
+/** Horizontal pixel window to render (viewport ± one viewport of buffer); undefined = everything. */
+export function renderWindow(viewport: { left: number; width: number }): { from: number; to: number } | undefined {
+  if (viewport.width <= 0) return undefined;
+  return { from: viewport.left - viewport.width, to: viewport.left + 2 * viewport.width };
+}
+
+/** True when [left, left + width] touches the window (no window = always). */
+export function inWindow(left: number, width: number, win: { from: number; to: number } | undefined): boolean {
+  return !win || (left + width >= win.from && left <= win.to);
+}
+
+/** `r` limited to [start, end] (may come out empty: start > end). */
+export function clipRange(r: DateRange, start: string, end: string): DateRange {
+  return { start: start > r.start ? start : r.start, end: end < r.end ? end : r.end };
+}
+
+export interface Cadence {
+  /** PI root iteration of the cadence. */
+  root: string;
+  /** Unit that owns the cadence (colours the band by its level). */
+  owner: OrgNode;
+}
+
+/**
+ * The PI cadences shown on a unit's roadmap: its own (owned by the nearest unit that sets a PI
+ * root, else the unit itself) and, when an ancestor runs a different cadence (e.g. a Solution
+ * Train above an ART), the nearest such ancestor's.
+ */
+export function roadmapCadences(config: SafeConfig, nodeId: string, ownRoot = effectivePiRoot(config, nodeId)): { own: Cadence; ancestor?: Cadence } {
+  const chain = pathTo(config.root, nodeId);
+  const self = chain[chain.length - 1];
+  const definer = [...chain].reverse().find((n) => n.piRootIteration === ownRoot);
+  const own: Cadence = { root: ownRoot, owner: definer ?? self };
+  for (let i = chain.length - 2; i >= 0; i--) {
+    const root = effectivePiRoot(config, chain[i].id);
+    if (root !== ownRoot) return { own, ancestor: { root, owner: chain[i] } };
+  }
+  return { own };
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

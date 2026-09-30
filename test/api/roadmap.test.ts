@@ -84,9 +84,11 @@ describe("roadmap date helpers", () => {
     expect(resizeRange(r, "end", -30)).toEqual({ start: "2026-01-10", end: "2026-01-10" });
   });
 
-  it("resolves the planned range from metadata, then from Start/Target Date", () => {
+  it("resolves the planned range from Start/Target Date when set, else from metadata", () => {
     const fields = { "Microsoft.VSTS.Scheduling.StartDate": "2026-02-01T00:00:00Z", "Microsoft.VSTS.Scheduling.TargetDate": "2026-02-10T00:00:00Z" };
-    expect(resolveRange({ plannedStart: "2026-01-01", plannedEnd: "2026-01-05" }, fields)).toEqual({ start: "2026-01-01", end: "2026-01-05" });
+    // The ADO fields win, so edits made in Azure DevOps show up on the roadmap.
+    expect(resolveRange({ plannedStart: "2026-01-01", plannedEnd: "2026-01-05" }, fields)).toEqual({ start: "2026-02-01", end: "2026-02-10" });
+    expect(resolveRange({ plannedStart: "2026-01-01", plannedEnd: "2026-01-05" }, { "Microsoft.VSTS.Scheduling.StartDate": "2026-02-01" })).toEqual({ start: "2026-01-01", end: "2026-01-05" });
     expect(resolveRange({ plannedStart: "2026-01-01" }, fields)).toEqual({ start: "2026-02-01", end: "2026-02-10" });
     expect(resolveRange(undefined, fields)).toEqual({ start: "2026-02-01", end: "2026-02-10" });
     expect(resolveRange(undefined, { "Microsoft.VSTS.Scheduling.StartDate": "2026-02-01" })).toBeUndefined();

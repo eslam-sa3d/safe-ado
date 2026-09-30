@@ -50,7 +50,8 @@ describe("ART Planning Board — feature iteration mode", () => {
     expect(within(cell("Unassigned / PI Backlog")).getByText("Fraud rules")).toBeInTheDocument();
     // Removed and other-ART / other-PI features are excluded
     expect(screen.queryByText("Legacy cleanup")).not.toBeInTheDocument();
-    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
+    // Other-ART features only appear as EXTERNAL dependency partners
+    expect(screen.getByText("Reports").closest(".card")).toHaveClass("ab-external-card");
     expect(screen.queryByText("Old feature")).not.toBeInTheDocument();
 
     const wiql = callsTo(/wiql/)[0].body.query;
@@ -60,7 +61,7 @@ describe("ART Planning Board — feature iteration mode", () => {
 
   it("summarises items, dependencies and critical ones; shows card metadata", async () => {
     await renderBoard();
-    expect(screen.getByText(/4 items · 3 dependencies/)).toBeInTheDocument();
+    expect(screen.getByText(/4 items · 4 dependencies/)).toBeInTheDocument();
     expect(screen.getByText("· 1 critical")).toBeInTheDocument();
     const payment = card("Payment API");
     expect(within(payment).getByText("#10")).toBeInTheDocument();
@@ -79,7 +80,9 @@ describe("ART Planning Board — feature iteration mode", () => {
     expect(byKey["#10 → #11 (Healthy)"]).toBe("dep-line healthy");
     expect(byKey["#12 → #10 (At risk)"]).toBe("dep-line atRisk");
     expect(byKey["#11 → #14 (Critical) — consumer is planned before its provider"]).toBe("dep-line critical");
-    expect(lines).toHaveLength(3);
+    // #20 sits on another ART: drawn to its EXTERNAL card
+    expect(byKey["#10 → #20 (Healthy)"]).toBe("dep-line healthy external");
+    expect(lines).toHaveLength(4);
     expect(lines[0].querySelector("title")!.textContent).toContain("Click to remove");
   });
 
@@ -178,7 +181,7 @@ describe("ART Planning Board — feature iteration mode", () => {
     const before = callsTo(/wiql/).length;
     fireEvent.click(card("Payment API"));
     await waitFor(() => expect(sdk.workItemForm.openWorkItem).toHaveBeenCalledWith(10));
-    await waitFor(() => expect(callsTo(/wiql/).length).toBe(before + 1));
+    await waitFor(() => expect(callsTo(/wiql/).length).toBeGreaterThan(before));
   });
 
   it("creates dependencies in link mode (predecessor, then successor)", async () => {
@@ -265,7 +268,7 @@ describe("ART Planning Board — feature iteration mode", () => {
     await renderBoard();
     const before = callsTo(/wiql/).length;
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await waitFor(() => expect(callsTo(/wiql/).length).toBe(before + 1));
+    await waitFor(() => expect(callsTo(/wiql/).length).toBeGreaterThan(before));
   });
 
   it("shows an empty state when the PI has no features", async () => {
@@ -376,8 +379,8 @@ describe("ART Planning Board — calculated mode (default)", () => {
     expect(placement("Wallet")).toBe("Team Blue / PI 2 Sprint 1");
     // No children: falls back to its own iteration (PI backlog) and area (no team row)
     expect(placement("Fraud rules")).toBe("Unassigned / PI Backlog");
-    // Children are fetched by id with a field list
-    expect(callsTo(/workitemsbatch/).some((c) => c.body.fields && c.body.ids.includes(101))).toBe(true);
+    // Children planned in the PI come from one query of the child type in the PI
+    expect(callsTo(/wiql/).some((c) => c.body.query.includes("('User Story')") && c.body.query.includes(PI2))).toBe(true);
   });
 
   it("disables drag-and-drop, link mode, new-item buttons and line removal", async () => {
@@ -402,13 +405,18 @@ describe("ART Planning Board — calculated mode (default)", () => {
     await renderBoard();
     const lines = Array.from(document.querySelectorAll("path.dep-line")).map((l) => l.getAttribute("class"));
     // 10 and 11 now share sprint 2 → at risk; 11 (sprint 2) → 14 (sprint 1) critical
-    expect(lines.sort()).toEqual(["dep-line atRisk readonly", "dep-line atRisk readonly", "dep-line critical readonly"]);
+    expect(lines.sort()).toEqual([
+      "dep-line atRisk readonly",
+      "dep-line atRisk readonly",
+      "dep-line critical readonly",
+      "dep-line healthy readonly external",
+    ]);
     const header = (name: string) => screen.getAllByText(name, { selector: ".row-title span" })[0].closest(".board-row-header") as HTMLElement;
     expect(within(header("Team Blue")).getByText("1 critical")).toHaveClass("danger");
     expect(within(header("Team Red")).getByText("0 critical")).toHaveClass("muted");
     expect(screen.getByText("Critical (1)")).toBeInTheDocument();
     expect(screen.getByText("At risk (2)")).toBeInTheDocument();
-    expect(screen.getByText("Healthy (0)")).toBeInTheDocument();
+    expect(screen.getByText("Healthy (1)")).toBeInTheDocument();
   });
 
   it("marks dependencies on completed providers as resolved", async () => {
@@ -422,14 +430,14 @@ describe("ART Planning Board — calculated mode (default)", () => {
 
   it("filters dependency lines by criticality", async () => {
     await renderBoard();
-    expect(document.querySelectorAll("path.dep-line")).toHaveLength(3);
+    expect(document.querySelectorAll("path.dep-line")).toHaveLength(4);
     fireEvent.click(screen.getByLabelText("Show critical dependencies"));
     expect(document.querySelector("path.dep-line.critical")).toBeNull();
-    expect(document.querySelectorAll("path.dep-line")).toHaveLength(2);
+    expect(document.querySelectorAll("path.dep-line")).toHaveLength(3);
     fireEvent.click(screen.getByLabelText("Show at risk dependencies"));
-    expect(document.querySelectorAll("path.dep-line")).toHaveLength(0);
-    fireEvent.click(screen.getByLabelText("Show critical dependencies"));
     expect(document.querySelectorAll("path.dep-line")).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText("Show critical dependencies"));
+    expect(document.querySelectorAll("path.dep-line")).toHaveLength(2);
   });
 
   it("puts a feature in its Owning Unit's row when that unit is a row", async () => {
@@ -538,7 +546,7 @@ describe("ART Planning Board — calculated mode (default)", () => {
     expect(document.querySelectorAll(".card")).toHaveLength(0);
     expect(document.querySelectorAll("path.dep-line")).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
-    expect(document.querySelectorAll(".card")).toHaveLength(4);
+    expect(document.querySelectorAll(".card")).toHaveLength(5);
   });
 
   it("switches to feature iteration mode and remembers the choice", async () => {
@@ -572,6 +580,7 @@ describe("ART Planning Board — calculated mode (default)", () => {
   });
 
   it("does not fetch children when no feature has any", async () => {
+    fake.workItems.get(20)!.relations = [];
     await renderBoard({ nodeId: "n-artb" });
     expect(placement("Reports")).toBe("Team Green / PI 2 IP");
     expect(callsTo(/workitemsbatch/).some((c) => c.body.fields)).toBe(false);

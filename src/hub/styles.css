@@ -802,3 +802,23 @@ a.member-name:hover { text-decoration: underline; }
 .flow-dist span { display: block; height: 100%; }
 .flow-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .flow-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+/* ---------- art board / roadmap v2 ---------- */
+.card { position: relative; }
+.ab-edge, .rm-edge { position: absolute; top: 4px; bottom: 4px; width: 4px; border-radius: 2px; }
+.ab-edge.left { left: -2px; }
+.ab-edge.right { right: -2px; }
+.ab-external-header { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: var(--bg-3, var(--bg-2)); border-top: 2px solid var(--warn); border-bottom: 1px solid var(--border); font-weight: 600; }
+.ab-external-title { letter-spacing: 0.04em; }
+.ab-external-row { font-weight: 400; }
+.ab-row-title { display: flex; align-items: center; gap: 4px; word-break: break-word; }
+.ab-external-cell { background: var(--bg-2); min-height: 64px; }
+.ab-external-card { opacity: 0.9; border-style: dashed; }
+.dep-line.external { stroke-dasharray: 6 4; }
+.rm-pi.cadence { border-color: var(--pi-color); background: color-mix(in srgb, var(--pi-color) 14%, transparent); }
+.rm-pi.cadence.current { background: var(--pi-color); color: #fff; }
+.rm-pis .rm-row-label { border-left: 3px solid var(--pi-color); }
+.rm-side-filter .filterbar { flex-wrap: wrap; gap: 4px; }
+.rm-side-filter .search-box { flex: 1 1 100%; }
+.rm-side-filter .search-box .search { width: 100%; }
+.rm-parent { display: inline-block; max-width: 45%; margin-right: 6px; padding: 0 6px; border: 1px solid; border-radius: 10px; background: var(--bg); color: var(--text-2); font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; cursor: pointer; }
+.rm-parent:hover { color: var(--text); background: var(--alpha-6); }
