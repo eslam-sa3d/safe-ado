@@ -91,6 +91,9 @@ interface Hidden {
  * iteration bands, milestones, draggable/resizable cards in lanes, an unplanned sidebar and
  * date-based dependency criticality.
  */
+
+/** Narrower compact bars show only the item; the parent stays in the tooltip. */
+const PARENT_PILL_MIN_W = 260;
 export function RoadmapView() {
   const { node } = useSafe();
   if (node.level === "team") return <Info>The roadmap is available for portfolios, solutions and ARTs.</Info>;
@@ -505,7 +508,7 @@ function Roadmap() {
         <aside className="rm-sidebar" aria-label="Unplanned items">
           <h3>Unplanned ({unplanned.length})</h3>
           <div className="rm-side-filter">
-            <FilterBar value={sideFilter} onChange={setSideFilter} options={sideOptions} showWiql={false} quickFilters={false} />
+            <FilterBar value={sideFilter} onChange={setSideFilter} options={sideOptions} showWiql={false} quickFilters={false} compact />
           </div>
           {unplanned.length === 0 && <div className="muted small">Nothing to plan.</div>}
           <ul>
@@ -645,6 +648,23 @@ function Roadmap() {
                 const cat = data.category(t, i.fields[F.state]);
                 const parentId = parentIdOf(i);
                 const parent = parentId === null ? undefined : data.parents.get(parentId);
+                // The item's own title comes first; the parent pill only where there is room for it.
+                const parentPill = parent && (
+                  <button
+                    className="rm-parent"
+                    aria-label={`Open parent #${parent.id} ${parent.fields[F.title]}`}
+                    title={`${parent.fields[F.type]} #${parent.id}: ${parent.fields[F.title]}`}
+                    style={{ borderColor: typeColor(parent.fields[F.type]) }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void open(parent.id);
+                    }}
+                  >
+                    {parent.fields[F.title]}
+                  </button>
+                );
                 return (
                   <div
                     key={i.id}
@@ -652,7 +672,7 @@ function Roadmap() {
                     role="button"
                     tabIndex={0}
                     aria-label={`#${i.id} ${i.fields[F.title]}`}
-                    title={`${t} #${i.id}: ${i.fields[F.title]}\n${shortDate(p.range.start)} – ${shortDate(p.range.end)}`}
+                    title={`${t} #${i.id}: ${i.fields[F.title]}\n${shortDate(p.range.start)} – ${shortDate(p.range.end)}${parent ? `\nParent: #${parent.id} ${parent.fields[F.title]}` : ""}`}
                     data-start={p.range.start}
                     data-end={p.range.end}
                     data-lane={p.lane}
@@ -664,26 +684,12 @@ function Roadmap() {
                       <span className="rm-handle start" aria-label={`Resize start of #${i.id}`} onMouseDown={(e) => startDrag(e, i.id, "start")} />
                     )}
                     <div className="rm-card-title">
-                      {parent && (
-                        <button
-                          className="rm-parent"
-                          aria-label={`Open parent #${parent.id} ${parent.fields[F.title]}`}
-                          title={`${parent.fields[F.type]} #${parent.id}: ${parent.fields[F.title]}`}
-                          style={{ borderColor: typeColor(parent.fields[F.type]) }}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void open(parent.id);
-                          }}
-                        >
-                          {parent.fields[F.title]}
-                        </button>
-                      )}
                       <span className="muted">#{i.id}</span> {i.fields[F.title]}
+                      {parentPill && !extended && p.width >= PARENT_PILL_MIN_W && parentPill}
                     </div>
                     {extended && (
                       <div className="rm-card-meta small">
+                        {parentPill}
                         <span className="state">
                           <i className="dot" style={{ background: CATEGORY_COLOR[cat] ?? "#999" }} />
                           {i.fields[F.state]}

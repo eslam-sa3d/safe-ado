@@ -44,7 +44,6 @@ describe("Work Item List", () => {
       "Assigned To",
       "Parent",
       "Iteration",
-      "Area",
       "Teams involved",
       "Owning team",
       "Assigned teams",
@@ -59,7 +58,18 @@ describe("Work Item List", () => {
     expect(screen.getByLabelText("Title of #10")).toHaveValue("Payment API");
     expect(within(row(10)).getByText("Active")).toBeInTheDocument();
     expect(cell(10, "iteration")).toHaveTextContent("PI 2 Sprint 1");
+    // Area is hidden by default at ART level; the Columns menu shows it and remembers the choice.
+    expect(cell(10, "area")).toBeNull();
+    const menu = screen.getByRole("group", { name: "Columns" });
+    expect(within(menu).getByLabelText("Title")).toBeDisabled();
+    fireEvent.click(within(menu).getByLabelText("Area"));
     expect(cell(10, "area")).toHaveTextContent("Team Red");
+    expect(JSON.parse(localStorage.getItem("safe-ado-wil-columns-art")!)).toEqual([]);
+    fireEvent.click(within(menu).getByLabelText("Priority"));
+    expect(cell(10, "priority")).toBeNull();
+    expect(screen.getByText("Columns (14 of 15)")).toBeInTheDocument();
+    fireEvent.click(within(menu).getByLabelText("Priority"));
+    expect(cell(10, "priority")).not.toBeNull();
     await waitFor(() => expect(screen.getByLabelText("Assigned to of #10")).toHaveValue("grace@fabrikam.com"));
     expect(screen.getByLabelText("Assigned to of #11")).toHaveValue("");
     // Teams involved come from the areas of the children.

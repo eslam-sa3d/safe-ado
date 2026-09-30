@@ -116,7 +116,8 @@ describe("Team Planning Board v2", () => {
     expect(card("Plain").querySelector(".tb-marker")).toBeNull();
     expect(within(team).queryByText("Refund card")).toBeNull();
 
-    // Sidebar filter: state facet
+    // Sidebar filter: state facet (behind the compact Filters toggle)
+    fireEvent.click(within(team).getByRole("button", { name: "Filters" }));
     fireEvent.click(within(team).getByRole("checkbox", { name: "Active" }));
     expect(within(team).queryByText("Plain")).toBeNull();
     expect(within(team).getByText("In PI 1")).toBeInTheDocument();

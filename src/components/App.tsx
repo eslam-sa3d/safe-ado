@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProject, onThrottled } from "../api/client";
 import { crossProjectKey, NO_CROSS_PROJECT, prepareCrossProject } from "../api/crossProject";
 import { defaultConfig, loadConfig, saveConfig as persistConfig } from "../api/data";
@@ -74,6 +74,26 @@ export const LEVEL_VIEWS: Record<Level, ViewKey[]> = {
 };
 
 const GLOBAL_VIEWS: ViewKey[] = ["organization", "pis", "setup"];
+
+/** Tab groups, separated by a divider in the tab bar: insight, planning, item lists, configuration. */
+type ViewGroup = "insight" | "plan" | "items" | "configure";
+const VIEW_GROUP: Record<ViewKey, ViewGroup> = {
+  reports: "insight",
+  roadmap: "plan",
+  kanban: "plan",
+  lean: "plan",
+  board: "plan",
+  teamboard: "plan",
+  planning: "plan",
+  objectives: "plan",
+  risks: "plan",
+  workitems: "items",
+  hierarchy: "items",
+  organization: "configure",
+  pis: "configure",
+  setup: "configure",
+};
+const GROUP_LABEL: Record<ViewGroup, string> = { insight: "Insight", plan: "Plan", items: "Work items", configure: "Configure" };
 
 /** Views that cannot render without a Program Increment. */
 const NEEDS_PI: ViewKey[] = ["board", "teamboard", "objectives"];
@@ -350,12 +370,18 @@ export function App() {
           )}
 
           <div className="tabs" role="tablist">
-            {levelViews.map((v) => (
-              <Tab key={v} active={activeView === v} onClick={() => setView(v)}>
-                {v === "board" && node.level === "solution" ? "Solution Planning Board" : VIEW_LABEL[v]}
-              </Tab>
+            {levelViews.map((v, i) => (
+              <Fragment key={v}>
+                {i > 0 && VIEW_GROUP[levelViews[i - 1]] !== VIEW_GROUP[v] && (
+                  <span className="tab-divider" aria-hidden="true" title={GROUP_LABEL[VIEW_GROUP[v]]} />
+                )}
+                <Tab active={activeView === v} onClick={() => setView(v)}>
+                  {v === "board" && node.level === "solution" ? "Solution Planning Board" : VIEW_LABEL[v]}
+                </Tab>
+              </Fragment>
             ))}
             <span className="tabs-spacer" />
+            <span className="tab-divider" aria-hidden="true" title={GROUP_LABEL.configure} />
             {GLOBAL_VIEWS.map((v) => (
               <Tab key={v} active={activeView === v} onClick={() => setView(v)}>
                 {VIEW_LABEL[v]}

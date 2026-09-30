@@ -186,4 +186,35 @@ describe("FilterBar — extended facets, validation and quick filters", () => {
     fireEvent.keyDown(within(menu).getByLabelText("Quick filter name"), { key: "Enter" });
     expect(await within(menu).findByText("quota")).toBeInTheDocument();
   });
+
+  it("compact: shows only search and a Filters toggle until opened; counts active facets", () => {
+    function Compact() {
+      const [f, setF] = useState<ItemFilter>(EMPTY_FILTER);
+      return (
+        <FilterBar
+          value={f}
+          options={OPTIONS}
+          onChange={setF}
+          extraFacets={[{ key: "team", label: "Team", options: ["Red"] }]}
+          showWiql={false}
+          quickFilters={false}
+          compact
+        />
+      );
+    }
+    render(<Compact />);
+    const toggle = screen.getByRole("button", { name: "Filters" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("group", { name: "Type filter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    fireEvent.click(within(screen.getByRole("group", { name: "Type filter" })).getByLabelText("Epic"));
+    fireEvent.click(within(screen.getByRole("group", { name: "Team filter" })).getByLabelText("Red"));
+    expect(screen.getByRole("button", { name: "Filters (2)" })).toHaveClass("primary");
+    // Collapsed with active filters: Clear stays reachable.
+    fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+    expect(screen.queryByRole("group", { name: "Type filter" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByRole("button", { name: "Filters" })).not.toHaveClass("primary");
+  });
 });

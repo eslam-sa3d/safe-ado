@@ -200,8 +200,12 @@ describe("Roadmap — filters and unplanned sidebar (R5/R9)", () => {
     // #15 (Closed) is excluded; Resolved is still open.
     expect(items()).toEqual(["10", "11", "12", "14"]);
     const side = within(sidebar()).getByRole("search");
+    // The sidebar filter is compact: facets open with the Filters toggle.
+    expect(within(side).queryByRole("group", { name: "State filter" })).toBeNull();
+    fireEvent.click(within(side).getByRole("button", { name: "Filters" }));
     fireEvent.click(within(within(side).getByRole("group", { name: "State filter" })).getByRole("checkbox", { name: "Resolved" }));
     expect(items()).toEqual(["12"]);
+    expect(within(side).getByRole("button", { name: "Filters (1)" })).toHaveAttribute("aria-expanded", "true");
     // The main filter still applies on top.
     fireEvent.change(within(mainBar()).getByLabelText("Filter text"), { target: { value: "nothing matches" } });
     expect(within(sidebar()).getByText("Nothing to plan.")).toBeInTheDocument();
@@ -251,6 +255,13 @@ describe("Roadmap — parent lozenge (H6)", () => {
     const f12 = fake.workItems.get(12)!;
     f12.relations = f12.relations!.filter((r) => !r.rel.includes("Hierarchy"));
     await renderRoadmap();
+    // A short compact bar keeps its own title; the parent moves to the tooltip.
+    if (parseFloat(card(10).style.width) < 260) {
+      expect(within(card(10)).queryByRole("button", { name: /Open parent/ })).not.toBeInTheDocument();
+      expect(card(10).getAttribute("title")).toContain("Parent: #1 Checkout revamp");
+    }
+    // The extended layout always shows it.
+    fireEvent.change(screen.getByLabelText("Card layout"), { target: { value: "extended" } });
     const lozenge = within(card(10)).getByRole("button", { name: "Open parent #1 Checkout revamp" });
     expect(lozenge).toHaveTextContent("Checkout revamp");
     expect(lozenge).toHaveAttribute("title", "Epic #1: Checkout revamp");

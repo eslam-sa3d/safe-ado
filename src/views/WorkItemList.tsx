@@ -16,7 +16,7 @@ import {
   relationTargetId,
   setFields,
 } from "../api/wit";
-import { CATEGORY_COLOR, Empty, ErrorBar, fmtDate, Info, lastSegment, Spinner, typeColor, useAsync } from "../components/common";
+import { CATEGORY_COLOR, Empty, ErrorBar, fmtDate, Info, lastSegment, Spinner, storage, typeColor, useAsync } from "../components/common";
 import { useCan, useSafe } from "../components/context";
 import { FilterBar } from "../components/FilterBar";
 import {
@@ -94,6 +94,14 @@ const TEAM_COLUMNS: Column[] = [
   { key: "piInvolvement", label: "PI involvement" },
   { key: "pis", label: "Assigned PIs" },
 ];
+
+/** Columns the user cannot hide (they identify the row). */
+const FIXED_COLUMNS: ColumnKey[] = ["id", "type", "title"];
+
+/** Hidden until the user shows them: at ART / Solution level the teams columns already say where an item lives. */
+export const DEFAULT_HIDDEN: Record<OrgNode["level"], ColumnKey[]> = { portfolio: [], solution: ["area"], art: ["area"], team: [] };
+
+const columnPrefs = (level: OrgNode["level"]) => storage<ColumnKey[]>(`safe-ado-wil-columns-${level}`, DEFAULT_HIDDEN[level]);
 
 export function columnsFor(level: OrgNode["level"]): Column[] {
   if (level === "art" || level === "solution") return [...BASE_COLUMNS, ...PROGRAM_COLUMNS];
@@ -252,7 +260,17 @@ export function WorkItemList() {
   const [showAll, setShowAll] = useState(false);
   const types = isTeam || showAll ? chain : [boardType(config, node.level)];
   const areas = scopeAreas(node);
+  // Every column is exported; the table shows the ones the user has not hidden.
   const columns = columnsFor(node.level);
+  const [readHidden, writeHidden] = columnPrefs(node.level);
+  const [hidden, setHidden] = useState<ColumnKey[]>(readHidden);
+  useEffect(() => setHidden(readHidden()), [node.level]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = columns.filter((c) => !hidden.includes(c.key));
+  const toggleColumn = (key: ColumnKey) => {
+    const next = hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key];
+    setHidden(next);
+    writeHidden(next);
+  };
   const needChildren = node.level === "art" || node.level === "solution";
 
   const [filter, setFilter] = useState<ItemFilter>(EMPTY_FILTER);
@@ -643,6 +661,24 @@ export function WorkItemList() {
           {loading ? "Loading…" : `${visible.length} of ${rows.length} items`}
         </span>
         <span className="spacer" />
+        <details className="facet columns-menu">
+          <summary className="btn">
+            Columns{hidden.length ? ` (${columns.length - hidden.filter((k) => columns.some((c) => c.key === k)).length} of ${columns.length})` : ""}
+          </summary>
+          <div className="facet-menu" role="group" aria-label="Columns">
+            {columns.map((c) => (
+              <label key={c.key} className="check">
+                <input
+                  type="checkbox"
+                  checked={!hidden.includes(c.key)}
+                  disabled={FIXED_COLUMNS.includes(c.key)}
+                  onChange={() => toggleColumn(c.key)}
+                />{" "}
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </details>
         <button className="btn" onClick={exportCsv} disabled={!visible.length}>
           Export CSV
         </button>
@@ -663,8 +699,8 @@ export function WorkItemList() {
             <table className="grid compact wil-table">
               <thead>
                 <tr>
-                  {columns.map((c) => (
-                    <th key={c.key} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+                  {shown.map((c) => (
+                    <th key={c.key} className={`col-${c.key}`} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
                       <button className="link sort-btn" onClick={() => onSort(c.key)}>
                         {c.label}
                         {sort.key === c.key ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
@@ -676,7 +712,7 @@ export function WorkItemList() {
               <tbody>
                 {visible.map((r) => (
                   <tr key={r.item.id} data-id={r.item.id}>
-                    {columns.map((c) => (
+                    {shown.map((c) => (
                       <td key={c.key} className={`col-${c.key}`}>
                         {renderCell(r, c.key)}
                       </td>

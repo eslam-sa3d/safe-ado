@@ -30,6 +30,7 @@ export function FilterBar({
   showWiql = true,
   extraFacets = [],
   quickFilters = true,
+  compact = false,
   validate = validateWiqlClause,
 }: {
   value: ItemFilter;
@@ -38,8 +39,11 @@ export function FilterBar({
   showWiql?: boolean;
   extraFacets?: ExtraFacet[];
   quickFilters?: boolean;
+  /** Side panels: only the search box and a "Filters" toggle; the facets open on demand. */
+  compact?: boolean;
   validate?: (clause: string) => Promise<string | null>;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [wiqlDraft, setWiqlDraft] = useState(value.wiql);
   const [wiqlError, setWiqlError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -81,8 +85,14 @@ export function FilterBar({
     }
   };
 
+  const activeFacets =
+    facets.reduce((n, f) => n + ((value[f]?.length ?? 0) > 0 ? 1 : 0), 0) +
+    extraFacets.reduce((n, f) => n + ((value.extra?.[f.key]?.length ?? 0) > 0 ? 1 : 0), 0) +
+    (value.wiql ? 1 : 0);
+  const showFacets = !compact || expanded;
+
   return (
-    <div className="filterbar" role="search">
+    <div className={"filterbar" + (compact ? " compact" : "")} role="search">
       <span className="search-box">
         <Icon name="Filter" />
         <input
@@ -93,7 +103,16 @@ export function FilterBar({
           onChange={(e) => onChange({ ...value, text: e.target.value })}
         />
       </span>
-      {facets.map((facet) => (
+      {compact && (
+        <button
+          className={"btn filter-toggle" + (activeFacets ? " primary" : "")}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((x) => !x)}
+        >
+          <Icon name="Filter" /> Filters{activeFacets ? ` (${activeFacets})` : ""}
+        </button>
+      )}
+      {showFacets && facets.map((facet) => (
         <FacetMenu
           key={facet}
           label={FACET_LABEL[facet]}
@@ -102,7 +121,7 @@ export function FilterBar({
           onToggle={(o) => toggle(facet, o)}
         />
       ))}
-      {extraFacets.map((facet) => (
+      {showFacets && extraFacets.map((facet) => (
         <FacetMenu
           key={facet.key}
           label={facet.label}
@@ -111,8 +130,8 @@ export function FilterBar({
           onToggle={(o) => toggleExtra(facet.key, o)}
         />
       ))}
-      {quickFilters && <QuickFilters value={value} onChange={onChange} />}
-      {showWiql && (
+      {showFacets && quickFilters && <QuickFilters value={value} onChange={onChange} />}
+      {showFacets && showWiql && (
         <span className="wiql-box">
           <input
             className={"wiql" + (value.wiql ? " active" : "") + (wiqlError ? " invalid" : "")}
@@ -133,18 +152,22 @@ export function FilterBar({
           )}
         </span>
       )}
-      <button className="btn" onClick={copy} disabled={!isFilterActive(value)} title={exported.omitted ? OMITTED_TITLE : "Copy the filter as a WIQL clause"}>
-        {copied ? (
-          <>
-            <Icon name="CheckMark" /> Copied
-          </>
-        ) : (
-          "Copy WIQL"
-        )}
-      </button>
-      <button className="btn" onClick={() => onChange(EMPTY_FILTER)} disabled={!isFilterActive(value)}>
-        Clear filters
-      </button>
+      {showFacets && (
+        <button className="btn" onClick={copy} disabled={!isFilterActive(value)} title={exported.omitted ? OMITTED_TITLE : "Copy the filter as a WIQL clause"}>
+          {copied ? (
+            <>
+              <Icon name="CheckMark" /> Copied
+            </>
+          ) : (
+            "Copy WIQL"
+          )}
+        </button>
+      )}
+      {(showFacets || isFilterActive(value)) && (
+        <button className="btn" onClick={() => onChange(EMPTY_FILTER)} disabled={!isFilterActive(value)}>
+          Clear filters
+        </button>
+      )}
     </div>
   );
 }

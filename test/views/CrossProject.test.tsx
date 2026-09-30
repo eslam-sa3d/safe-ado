@@ -88,6 +88,7 @@ describe("work item list and reports across projects", () => {
     expect(await screen.findByDisplayValue("Partner API")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Payment API")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Contoso backlog")).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("group", { name: "Columns" })).getByLabelText("Area"));
     const partner = screen.getByDisplayValue("Partner API").closest("tr")!;
     expect(within(partner).getByText("Team Orange")).toBeInTheDocument();
     expect(within(partner).getByText("PI 2 Sprint 1")).toBeInTheDocument();

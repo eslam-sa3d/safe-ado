@@ -41,6 +41,13 @@ the pushed tag, so every release needs a `## [x.y.z] - YYYY-MM-DD` heading here 
   contrast; progress-bar labels stay readable; ART and Team Planning Boards fit the whole PI on
   screen; Portfolio Kanban columns fit; cards sit above dependency lines; tighter filter bars;
   Setup checklist and "Create a PI" layout fixes; "1 item" wording.
+- Tab bar grouped with dividers (insight · plan · work items · configure).
+- Side-panel filters (Team board and Roadmap "Unplanned") are compact: search plus a
+  "Filters (n)" toggle.
+- Work Item List: a Columns menu (remembered per level; Area hidden by default at ART and
+  Solution level), ID / Type / Title pinned while scrolling sideways, team and PI lists wrap.
+- Roadmap cards lead with the item's own title; the parent pill moves to the extended layout or
+  wide bars, and to the tooltip otherwise; the Today marker runs behind the cards.
 
 ## [1.3.0] - 2026-09-30
 

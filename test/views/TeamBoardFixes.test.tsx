@@ -221,6 +221,7 @@ describe("Team board: sidebar queries", () => {
     expect(teamQuery).toContain("([System.WorkItemType] = 'User Story' AND [System.State] NOT IN ('Closed', 'Removed'))");
     expect(teamQuery).toContain("[System.WorkItemType] = 'Bug'");
 
+    fireEvent.click(within(panel()).getByRole("button", { name: "Filters" }));
     const menu = within(panel()).getByRole("group", { name: "Quick filters" });
     fireEvent.click(await within(menu).findByLabelText("MVP only"));
     await waitFor(() => expect(within(panel()).queryByText("Untagged")).toBeNull());
@@ -238,6 +239,7 @@ describe("Team board: sidebar queries", () => {
     fireEvent.click(screen.getByRole("tab", { name: "ART" }));
     const art = await screen.findByRole("tabpanel", { name: "ART backlog" });
     await within(art).findByText("Fraud rules");
+    fireEvent.click(within(art).getByRole("button", { name: "Filters" }));
     fireEvent.click(await within(within(art).getByRole("group", { name: "Quick filters" })).findByLabelText("Wallet only"));
     await waitFor(() => expect(within(art).queryByText("Fraud rules")).toBeNull());
     expect(within(art).getByText("Wallet")).toBeInTheDocument();

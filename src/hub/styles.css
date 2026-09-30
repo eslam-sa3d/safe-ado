@@ -158,8 +158,9 @@ button:disabled { cursor: default; }
 /* pivot tabs (bolt-tabbar tall) */
 .tabs { display: flex; padding: 0 24px; flex-wrap: nowrap; align-items: stretch; overflow-x: auto; scrollbar-width: thin; }
 .tabs .tab { flex-shrink: 0; white-space: nowrap; }
-.tab { background: none; border: 0; padding: 0 8px; height: 48px; color: var(--text); display: inline-flex; align-items: center; position: relative; border-radius: 2px; }
-.tab::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 6px; height: 2px; background: transparent; }
+.tab-divider { flex-shrink: 0; align-self: center; width: 1px; height: 20px; margin: 0 6px; background: var(--border-strong); }
+.tab { background: none; border: 0; padding: 0 6px; height: 48px; color: var(--text); display: inline-flex; align-items: center; position: relative; border-radius: 2px; }
+.tab::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 6px; height: 2px; background: transparent; }
 .tab:hover { background: var(--alpha-6); }
 .tab.active { font-weight: 600; }
 .tab.active::after { background: var(--accent); }
@@ -325,6 +326,8 @@ tr.uncommitted td:first-child input { font-style: italic; }
 
 /* ---------- shared filter bar (vss-FilterBar) ---------- */
 .filterbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 8px; background: var(--bg-callout); border-radius: var(--radius); box-shadow: var(--shadow); }
+.filterbar.compact .search-box { flex: 1; min-width: 0; }
+.filterbar.compact .search-box > input { width: 100%; }
 .filterbar .wiql { flex: 1; min-width: 220px; font-family: Menlo, Consolas, monospace; font-size: 12px; }
 .filterbar .wiql.active { border-color: var(--accent); }
 .filterbar .btn { background: transparent; font-weight: 400; padding: 5px 8px; }
@@ -371,7 +374,7 @@ tr.uncommitted td:first-child input { font-style: italic; }
 .rm-milestone:focus-visible { outline: 2px solid var(--accent); }
 .rm-lanes { position: relative; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--border) calc(100% - 1px)); }
 .rm-milestone-line { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #8764b8; pointer-events: none; }
-.rm-today { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--danger); pointer-events: none; z-index: 3; }
+.rm-today { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--danger); pointer-events: none; z-index: 1; }
 .rm-deps { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 1; }
 .rm-dep { fill: none; stroke-width: 2; pointer-events: stroke; }
 .rm-dep.atRisk { stroke-dasharray: 5 3; }
@@ -458,6 +461,16 @@ tr.uncommitted td:first-child input { font-style: italic; }
 .wil-table td { white-space: nowrap; }
 .wil-table td.col-title { min-width: 240px; white-space: normal; }
 .wil-table td.col-title .cell-input { min-width: 220px; }
+/* ID, type and title stay in view while the wide table scrolls sideways. */
+.wil-table .col-id, .wil-table .col-type, .wil-table .col-title { position: sticky; z-index: 1; background: var(--bg-callout); }
+.wil-table th.col-id, .wil-table th.col-type, .wil-table th.col-title { z-index: 3; background: var(--bg-2); }
+.wil-table .col-id { left: 0; min-width: 64px; width: 64px; }
+.wil-table .col-type { left: 64px; min-width: 110px; width: 110px; }
+.wil-table .col-title { left: 174px; box-shadow: 1px 0 0 var(--border); }
+.wil-table tbody tr:hover td.col-id, .wil-table tbody tr:hover td.col-type, .wil-table tbody tr:hover td.col-title { background: var(--bg-3); }
+/* Team and PI lists wrap instead of stretching the table. */
+.wil-table td.col-teams, .wil-table td.col-owner, .wil-table td.col-assigned, .wil-table td.col-pis, .wil-table td.col-piInvolvement { white-space: normal; min-width: 120px; max-width: 200px; }
+.columns-menu .facet-menu { left: auto; right: 0; }
 
 .org-canvas { position: relative; display: grid; gap: 28px; padding: 8px 0; }
 .org-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
@@ -828,7 +841,7 @@ a.member-name:hover { text-decoration: underline; }
 .rm-side-filter .filterbar { flex-wrap: wrap; gap: 4px; }
 .rm-side-filter .search-box { flex: 1 1 100%; }
 .rm-side-filter .search-box .search { width: 100%; }
-.rm-parent { display: inline-block; max-width: 45%; margin-right: 6px; padding: 0 6px; border: 1px solid; border-radius: 10px; background: var(--bg); color: var(--text-2); font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; cursor: pointer; }
+.rm-parent { display: inline-block; max-width: 45%; margin-left: 6px; padding: 0 6px; border: 1px solid; border-radius: 10px; background: var(--bg); color: var(--text-2); font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; cursor: pointer; }
 .rm-parent:hover { color: var(--text); background: var(--alpha-6); }
 
 /* ---------- reports v3 ---------- */

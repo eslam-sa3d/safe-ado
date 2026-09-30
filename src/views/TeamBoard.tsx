@@ -1432,7 +1432,7 @@ function BacklogList(props: SidebarProps & { tab: Tab }) {
   return (
     <div className="tb-backlog" role="tabpanel" aria-label={tab === "team" ? "Team backlog" : "ART backlog"}>
       <div className="tb-sidebar-filter">
-        <FilterBar value={filter} onChange={setFilter} options={facetOpts} showWiql={false} />
+        <FilterBar value={filter} onChange={setFilter} options={facetOpts} showWiql={false} compact />
       </div>
       <select aria-label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
         <option value="rank">Backlog order</option>
